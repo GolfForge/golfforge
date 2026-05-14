@@ -57,10 +57,11 @@ Steps 1–3 fully scriptable. Step 4 mostly scriptable. Steps 5 + 8 are where hu
 
 Unreal Engine 5 (5.7+). Chaos physics for ground interaction; custom C++ aerodynamics solver for ball flight (lift/drag/spin decay). ~500 lines of careful C++ plus a lot of tuning data.
 
-**MCP tooling:**
-- Primary: flopperam/unreal-engine-mcp — 50+ tools, landscape + PCG + foliage domains.
-- Secondary: NAJEMWEHBE/UnrealClaudeMCP — viewport screenshot returns for visual feedback loops.
-- Fallback: UE5 Python editor scripts directly, no MCP, for batch work.
+**MCP tooling (revised 2026-05-14):**
+- Primary: **NAJEMWEHBE/UnrealClaudeMCP** (free, MIT, v0.9.1+) — 96 tools including `inspect_landscape`, `import_texture`, `execute_unreal_python`, `spawn_actor`, viewport screenshots. Covers Milestone 0 / 0.5 and keeps the OSS contribution surface clean.
+- Escalation A: flopperam Flop MCP ($15/mo hosted, 50+ tools across 9 domains) — has first-class `landscape_edit` and `pcg_graph_edit`. Trial when NAJEMWEHBE starts feeling thin on foliage / PCG / splatmap painting.
+- Escalation B: StraySpark Unreal MCP Server ($89.99 lifetime, 359 tools, full C++ source) — heaviest toolset, Git-LFS-aware source control, closed-loop PIE control for ball-flight tuning. Worth the spend if the project's lifetime is confidently >6 months.
+- Fallback: UE5 Python editor scripts directly via `execute_unreal_python`, no MCP-specific tool, for batch work.
 
 ### 3. Walking integration
 

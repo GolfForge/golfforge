@@ -2,6 +2,8 @@
 
 This is the checklist for getting the Windows PC ready to do UE5 development against the `golfsim` repo. Run through it once per fresh machine.
 
+> **If you are a Claude / AI agent on the Windows side**, the very first thing to do after the repo is cloned is read [`AGENTS.md`](../AGENTS.md) at the repo root. That file is the session-handoff doc between Mac- and Windows-side sessions, and tells you what state the project is in.
+
 ## Prerequisites
 
 Install these first, in roughly this order. Time estimates assume a fast connection.

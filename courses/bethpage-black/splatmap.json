@@ -1,0 +1,15 @@
+{
+  "splatmap.png": {
+    "R": "fairway",
+    "G": "green",
+    "B": "bunker",
+    "A": "rough (catch-all)"
+  },
+  "size_px": 2017,
+  "bbox_wgs84": [
+    -73.454,
+    40.7423,
+    -73.4374,
+    40.7549
+  ]
+}

@@ -13,12 +13,11 @@ Runs on Mac / Linux. Output ends up in `../courses/<course-id>/`.
 ## Install
 
 ```bash
-python3 -m venv .venv
+./setup.sh
 source .venv/bin/activate
-pip install -r requirements.txt
 ```
 
-(Optional, faster) Use [uv](https://github.com/astral-sh/uv): `uv venv && uv pip install -r requirements.txt`.
+`setup.sh` auto-detects [uv](https://github.com/astral-sh/uv) (preferred — much faster) and falls back to `python3 -m venv` + `pip` if it isn't installed. Install uv once with `brew install uv` to get the fast path.
 
 For the higher-quality `--backend pdal` path you also need PDAL installed system-wide:
 ```bash

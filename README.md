@@ -46,14 +46,14 @@ Each platform target (Windows / Mac / Linux / iPad) ships as a **single monolith
 
 ```bash
 cd pipeline
-python3 -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
+./setup.sh
+source .venv/bin/activate
 ./example.sh
 ```
 
-### Engine (Windows, eventually)
+### Engine (Windows)
 
-Open `engine/` as a UE5.7 project. (TBD as we actually scaffold it.)
+See [`docs/windows-setup.md`](docs/windows-setup.md) for the full Windows-side setup checklist — prerequisites, clone steps, UE5 project creation, MCP wiring, and Milestone 0.
 
 ## License
 

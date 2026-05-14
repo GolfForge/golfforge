@@ -1,0 +1,69 @@
+# =====================================================================
+# Python
+# =====================================================================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+env/
+ENV/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+.eggs/
+dist/
+build/
+.coverage
+.coverage.*
+htmlcov/
+
+# =====================================================================
+# UE5  (Epic's standard project gitignore, lightly trimmed)
+# =====================================================================
+# Build artifacts and per-machine state
+engine/Binaries/
+engine/Build/
+engine/Intermediate/
+engine/Saved/
+engine/DerivedDataCache/
+engine/.vs/
+engine/.idea/
+engine/.vscode/
+engine/*.opensdf
+engine/*.sdf
+engine/*.suo
+engine/*.user
+engine/*.VC.db
+engine/*.VC.opendb
+engine/*.xcworkspace/
+engine/*.xcodeproj/
+
+# Visual Studio / Rider project files (regenerated)
+engine/*.sln
+engine/*.vcxproj
+engine/*.vcxproj.filters
+
+# Mac
+.DS_Store
+.AppleDouble
+.LSOverride
+Thumbs.db
+
+# Crash reports
+engine/CrashReportClient/
+
+# =====================================================================
+# Pipeline outputs (regenerable; LFS handles the ones we want to commit)
+# =====================================================================
+# Course output directories are git-tracked, but the raw cache files are not
+courses/**/osm_raw.json
+courses/**/dem.tif
+
+# Local OS junk
+*.swp
+*.swo
+*~

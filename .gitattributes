@@ -1,0 +1,40 @@
+# =====================================================================
+# Git LFS — large binary tracking
+# =====================================================================
+# UE5 assets — large binaries that must not bloat git history
+*.uasset       filter=lfs diff=lfs merge=lfs -text
+*.umap         filter=lfs diff=lfs merge=lfs -text
+*.upk          filter=lfs diff=lfs merge=lfs -text
+*.fbx          filter=lfs diff=lfs merge=lfs -text
+*.glb          filter=lfs diff=lfs merge=lfs -text
+*.gltf         filter=lfs diff=lfs merge=lfs -text
+*.obj          filter=lfs diff=lfs merge=lfs -text
+
+# Processed course data — heightmaps/splatmaps that we commit (often a few MB each)
+courses/**/*.png  filter=lfs diff=lfs merge=lfs -text
+courses/**/*.tif  filter=lfs diff=lfs merge=lfs -text
+
+# Images and audio likely to appear in engine/Content/
+engine/**/*.png  filter=lfs diff=lfs merge=lfs -text
+engine/**/*.jpg  filter=lfs diff=lfs merge=lfs -text
+engine/**/*.jpeg filter=lfs diff=lfs merge=lfs -text
+engine/**/*.tga  filter=lfs diff=lfs merge=lfs -text
+engine/**/*.exr  filter=lfs diff=lfs merge=lfs -text
+engine/**/*.hdr  filter=lfs diff=lfs merge=lfs -text
+engine/**/*.psd  filter=lfs diff=lfs merge=lfs -text
+engine/**/*.wav  filter=lfs diff=lfs merge=lfs -text
+engine/**/*.mp3  filter=lfs diff=lfs merge=lfs -text
+engine/**/*.ogg  filter=lfs diff=lfs merge=lfs -text
+
+# Documents / fonts
+*.pdf          filter=lfs diff=lfs merge=lfs -text
+*.ttf          filter=lfs diff=lfs merge=lfs -text
+*.otf          filter=lfs diff=lfs merge=lfs -text
+
+# =====================================================================
+# Line endings — keep text files LF, even when checked out on Windows
+# =====================================================================
+*               text=auto eol=lf
+*.bat           text eol=crlf
+*.cmd           text eol=crlf
+*.ps1           text eol=crlf

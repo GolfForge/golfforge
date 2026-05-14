@@ -43,11 +43,18 @@ import requests
 from PIL import Image, ImageDraw
 
 
-OVERPASS_URL = "https://overpass-api.de/api/interpreter"
+# Overpass main server is often slow or returning 504; try mirrors in order.
+# Order roughly: kumi (fastest historically) → main → coffee → de.
+OVERPASS_MIRRORS = [
+    "https://overpass.kumi.systems/api/interpreter",
+    "https://overpass-api.de/api/interpreter",
+    "https://overpass.private.coffee/api/interpreter",
+    "https://overpass.osm.ch/api/interpreter",
+]
 
 # Overpass usage policy requires a descriptive User-Agent on every request.
 HTTP_HEADERS = {
-    "User-Agent": "golfsim/0.1 (https://github.com/-/golfsim) python-requests",
+    "User-Agent": "golfsim/0.1 (https://github.com/pucho/golfsim) python-requests",
 }
 
 # OSM tag → splatmap channel index (R=0, G=1, B=2, A=3) or "extra" for separate PNG
@@ -90,10 +97,17 @@ def overpass_query(bbox: Tuple[float, float, float, float]) -> dict:
     out geom;
     """
 
-    print(f"[overpass] querying {bbox_str}")
-    r = requests.post(OVERPASS_URL, data={"data": query}, headers=HTTP_HEADERS, timeout=120)
-    r.raise_for_status()
-    return r.json()
+    last_err: Exception | None = None
+    for url in OVERPASS_MIRRORS:
+        try:
+            print(f"[overpass] querying {url}  bbox={bbox_str}")
+            r = requests.post(url, data={"data": query}, headers=HTTP_HEADERS, timeout=120)
+            r.raise_for_status()
+            return r.json()
+        except (requests.RequestException, ValueError) as e:
+            print(f"[overpass]   mirror failed: {e.__class__.__name__}: {e}")
+            last_err = e
+    raise RuntimeError(f"all Overpass mirrors failed; last error: {last_err}")
 
 
 def osm_element_to_polygons(elem: dict) -> List[List[Tuple[float, float]]]:
@@ -243,15 +257,33 @@ def main() -> None:
 
     out_dir = Path(args.out_dir) / args.course_id
 
-    if args.osm_cache and Path(args.osm_cache).exists():
-        print(f"[overpass] loading cached response from {args.osm_cache}")
-        osm_data = json.loads(Path(args.osm_cache).read_text())
-    else:
+    cache_path = out_dir / "osm_raw.json"
+    osm_data = None
+
+    # Try the explicit cache file or the implicit per-course cache, but never trust
+    # an empty result — those happen on broken mirrors and should not be persisted.
+    for candidate in [args.osm_cache, cache_path if cache_path.exists() else None]:
+        if not candidate:
+            continue
+        path = Path(candidate)
+        if not path.exists():
+            continue
+        cached = json.loads(path.read_text())
+        if cached.get("elements"):
+            print(f"[overpass] loaded cached response from {path} ({len(cached['elements'])} elements)")
+            osm_data = cached
+            break
+        else:
+            print(f"[overpass] ignoring empty cache at {path} (broken mirror response?)")
+
+    if osm_data is None:
         osm_data = overpass_query(args.bbox_wgs84)
-        cache_path = out_dir / "osm_raw.json"
-        cache_path.parent.mkdir(parents=True, exist_ok=True)
-        cache_path.write_text(json.dumps(osm_data))
-        print(f"[overpass] cached raw response to {cache_path}")
+        if not osm_data.get("elements"):
+            print("[overpass] WARNING: server returned 0 elements — not caching, splatmap will be empty.")
+        else:
+            cache_path.parent.mkdir(parents=True, exist_ok=True)
+            cache_path.write_text(json.dumps(osm_data))
+            print(f"[overpass] cached raw response to {cache_path}")
 
     build_splatmap(osm_data, args.bbox_wgs84, args.size, out_dir)
 

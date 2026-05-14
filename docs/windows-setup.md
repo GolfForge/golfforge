@@ -114,6 +114,53 @@ Follow its README to install the UE5 plugin into `engine/Plugins/` and wire Clau
 
 Either way: the success milestone is "Claude can spawn a cube in your running UE5 editor from a chat message." Pause there before moving on.
 
+## Pick a Claude surface for engine work
+
+Three Claude surfaces can talk to your machine. They are NOT equivalent for this project.
+
+| Surface | File access | MCP from `claude_desktop_config.json` | MCP from project `.mcp.json` | Task tracking | Best for |
+|---|---|---|---|---|---|
+| **Claude Code** (CLI) | yes | no | **yes** | yes | **Engine-side work in this repo** — recommended |
+| Cowork mode (in Claude Desktop) | yes (sandboxed) | **no** | no | yes | Repo / docs / cross-machine work; pipeline tweaks |
+| Regular Claude Desktop chat | no workspace | **yes** | no | no | Quick one-off UE driving without context |
+
+**For driving Unreal Engine from this repo, use Claude Code.** It reads `.mcp.json` at the repo root, which we ship as a per-machine template (`.mcp.json.example`).
+
+### Install Claude Code
+
+```powershell
+npm install -g @anthropic-ai/claude-code
+claude --version
+```
+
+(Node.js LTS is a prerequisite — installed in step 4 above.)
+
+### Wire up the project MCP
+
+From the repo root:
+
+```powershell
+cd C:\Users\pucho\code\golfsim
+Copy-Item .mcp.json.example .mcp.json
+```
+
+`.mcp.json` is gitignored so each machine keeps its own copy. The shipped example uses a workspace-relative path to the bridge script (`engine/UnrealClaudeMCP-upstream/bridge/unreal_claude_mcp_bridge.py`) and the Windows `py` launcher. On Mac/Linux, change `"py"` to `"python3"`.
+
+### Launch
+
+With the UE editor running (so the plugin's TCP server is alive on `127.0.0.1:18888`):
+
+```powershell
+cd C:\Users\pucho\code\golfsim
+claude
+```
+
+In the Claude Code REPL, type `/mcp` to confirm the `unreal-claude-mcp` server is connected and lists its tools. Then ask:
+
+> *"Spawn a cube actor at (0, 0, 200) in my UE editor and label it SmokeCube."*
+
+Watch the World Outliner. Cube appearing = Claude Code can drive UE from this repo. Milestone 0 picks up from there.
+
 ## First milestone (Milestone 0)
 
 Once everything is set up, the first concrete deliverable is to import the Pebble Beach test heightmap and verify a ball rolls on it. From the repo:

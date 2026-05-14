@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json.schemastore.org/mcp.json",
+  "_comment": "Per-machine Claude Code MCP config. Copy this file to .mcp.json (gitignored) and edit if needed. Then run `claude` from the repo root. Cross-platform notes: on Mac/Linux change 'py' to 'python3'. Requires engine/UnrealClaudeMCP-upstream/ to be cloned per docs/windows-setup.md, and the UE editor with the UnrealClaudeMCP plugin running so the TCP server on 127.0.0.1:18888 is alive when tools are invoked.",
+  "mcpServers": {
+    "unreal-claude-mcp": {
+      "command": "py",
+      "args": [
+        "engine/UnrealClaudeMCP-upstream/bridge/unreal_claude_mcp_bridge.py"
+      ],
+      "env": {}
+    }
+  }
+}

@@ -55,6 +55,10 @@ engine/**/*.vcxproj.filters
 engine/**/Plugins/UnrealClaudeMCP/
 engine/UnrealClaudeMCP-upstream/
 
+# Per-machine Claude Code MCP config (copy .mcp.json.example to .mcp.json and edit)
+.mcp.json
+.claude/
+
 # Crash reports
 engine/**/CrashReportClient/
 

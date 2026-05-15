@@ -55,6 +55,13 @@ engine/**/*.vcxproj.filters
 engine/**/Plugins/UnrealClaudeMCP/
 engine/UnrealClaudeMCP-upstream/
 
+# Quixel Megascans / Megaplant — re-downloadable for free per machine via
+# UE editor's Quixel Bridge. Skipping ~2 GB of LFS bloat. AGENTS.md lists
+# which assets are referenced (currently: Tree_Silver_Birch from Megaplant)
+# so a fresh clone knows what to re-download before opening BethPageBlack.
+engine/**/Content/Megaplant_Library/
+engine/**/Content/Megascans/
+
 # Per-machine Claude Code MCP config (copy .mcp.json.example to .mcp.json and edit)
 .mcp.json
 .claude/

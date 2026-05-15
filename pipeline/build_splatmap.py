@@ -33,6 +33,7 @@ Notes:
 
 import argparse
 import json
+import math
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -57,17 +58,22 @@ HTTP_HEADERS = {
     "User-Agent": "golfsim/0.1 (https://github.com/pucho/golfsim) python-requests",
 }
 
-# OSM tag → splatmap channel index (R=0, G=1, B=2, A=3) or "extra" for separate PNG
+# OSM tag → splatmap channel index (R=0, G=1, B=2, A=3) or "extra" for separate PNG.
+#
+# `geom` is "polygon" (area feature, force-closed if open) or "line" (linear feature
+# rendered as a stroke with real-world `width_m`). Mixing these up is what caused the
+# original cart-path "huge white areas" bug — open linestrings got force-closed into
+# bounding-box polygons and flood-filled.
 FEATURE_LAYERS = {
-    "fairway": {"channel": 0, "osm_tag": ["golf=fairway"]},
-    "green":   {"channel": 1, "osm_tag": ["golf=green"]},
-    "bunker":  {"channel": 2, "osm_tag": ["golf=bunker", "natural=sand"]},
-    "rough":   {"channel": 3, "osm_tag": ["golf=rough"]},  # also implicit-fill (below)
+    "fairway": {"channel": 0,    "osm_tag": ["golf=fairway"],                       "geom": "polygon"},
+    "green":   {"channel": 1,    "osm_tag": ["golf=green"],                         "geom": "polygon"},
+    "bunker":  {"channel": 2,    "osm_tag": ["golf=bunker", "natural=sand"],        "geom": "polygon"},
+    "rough":   {"channel": 3,    "osm_tag": ["golf=rough"],                         "geom": "polygon"},  # also implicit-fill
     # Extras — written as separate PNGs:
-    "tee":         {"channel": None, "osm_tag": ["golf=tee"]},
-    "water":       {"channel": None, "osm_tag": ["golf=water_hazard", "natural=water"]},
-    "cart_path":   {"channel": None, "osm_tag": ["golf=cartpath", "highway=path"]},
-    "trees":       {"channel": None, "osm_tag": ["natural=wood", "landuse=forest"]},
+    "tee":         {"channel": None, "osm_tag": ["golf=tee"],                       "geom": "polygon"},
+    "water":       {"channel": None, "osm_tag": ["golf=water_hazard", "natural=water"], "geom": "polygon"},
+    "cart_path":   {"channel": None, "osm_tag": ["golf=cartpath", "highway=path"],  "geom": "line", "width_m": 3.0},
+    "trees":       {"channel": None, "osm_tag": ["natural=wood", "landuse=forest"], "geom": "polygon"},
 }
 
 
@@ -111,15 +117,18 @@ def overpass_query(bbox: Tuple[float, float, float, float]) -> dict:
 
 
 def osm_element_to_polygons(elem: dict) -> List[List[Tuple[float, float]]]:
-    """Extract polygon rings from an OSM way/relation element. Returns list of (lon, lat) lists."""
+    """Extract polygon rings from an OSM way/relation element. Returns list of (lon, lat) lists.
+
+    Only call this for features that are *semantically* areas (e.g., golf=fairway).
+    Linear features must NOT be force-closed; use osm_element_to_lines() for those.
+    """
     rings: List[List[Tuple[float, float]]] = []
     if elem["type"] == "way" and "geometry" in elem:
         coords = [(p["lon"], p["lat"]) for p in elem["geometry"]]
         if len(coords) >= 3 and coords[0] == coords[-1]:
             rings.append(coords)
         elif len(coords) >= 3:
-            # Unclosed way — treat as polygon if it's a golf feature
-            rings.append(coords + [coords[0]])
+            rings.append(coords + [coords[0]])  # close it
     elif elem["type"] == "relation" and "members" in elem:
         # Multipolygon — only handle the simple case of outer rings here.
         for m in elem["members"]:
@@ -130,6 +139,40 @@ def osm_element_to_polygons(elem: dict) -> List[List[Tuple[float, float]]]:
                         coords.append(coords[0])
                     rings.append(coords)
     return rings
+
+
+def osm_element_to_lines(elem: dict) -> List[List[Tuple[float, float]]]:
+    """Extract polylines from an OSM way/relation element. Returns list of (lon, lat) lists.
+
+    For linear features. Never force-closes. Closed ways (where first == last) are
+    still returned as-is, which is correct — a closed cart-path loop should still
+    render as a stroke along the closed path, not flood-filled.
+    """
+    lines: List[List[Tuple[float, float]]] = []
+    if elem["type"] == "way" and "geometry" in elem:
+        coords = [(p["lon"], p["lat"]) for p in elem["geometry"]]
+        if len(coords) >= 2:
+            lines.append(coords)
+    elif elem["type"] == "relation" and "members" in elem:
+        for m in elem["members"]:
+            if "geometry" in m:
+                coords = [(p["lon"], p["lat"]) for p in m["geometry"]]
+                if len(coords) >= 2:
+                    lines.append(coords)
+    return lines
+
+
+def meters_per_pixel(bbox: Tuple[float, float, float, float], size_px: int) -> float:
+    """Approximate meters-per-pixel for the bbox at the given image size.
+
+    Uses the mean of x-resolution and y-resolution since the image is square but
+    the bbox typically isn't. At mid-latitude this is within a few percent of true.
+    """
+    minlon, minlat, maxlon, maxlat = bbox
+    mid_lat_rad = math.radians((minlat + maxlat) / 2.0)
+    width_m = (maxlon - minlon) * 111320.0 * math.cos(mid_lat_rad)
+    height_m = (maxlat - minlat) * 110540.0
+    return ((width_m / size_px) + (height_m / size_px)) / 2.0
 
 
 def classify_element(elem: dict) -> List[str]:
@@ -161,16 +204,61 @@ def lonlat_to_pixel(lon: float, lat: float, bbox: Tuple[float, float, float, flo
 def rasterize_layer(elements_by_layer: Dict[str, List[dict]],
                     layer_name: str,
                     bbox: Tuple[float, float, float, float],
-                    size: int) -> np.ndarray:
-    """Rasterize all elements assigned to `layer_name` into an 8-bit mask."""
+                    size: int,
+                    geom: str = "polygon",
+                    width_m: float = 0.0) -> np.ndarray:
+    """Rasterize all elements assigned to `layer_name` into an 8-bit mask.
+
+    geom == "polygon": flood-fill each ring (use for area features).
+    geom == "line":    stroke each polyline at `width_m` meters wide (use for cart paths).
+    """
     mask = Image.new("L", (size, size), 0)
     draw = ImageDraw.Draw(mask)
-    for elem in elements_by_layer.get(layer_name, []):
-        for ring in osm_element_to_polygons(elem):
-            pixel_ring = [lonlat_to_pixel(lon, lat, bbox, size) for lon, lat in ring]
-            if len(pixel_ring) >= 3:
-                draw.polygon(pixel_ring, fill=255)
+
+    if geom == "line":
+        line_width_px = max(1, round(width_m / meters_per_pixel(bbox, size)))
+        for elem in elements_by_layer.get(layer_name, []):
+            for line in osm_element_to_lines(elem):
+                pts = [lonlat_to_pixel(lon, lat, bbox, size) for lon, lat in line]
+                if len(pts) >= 2:
+                    draw.line(pts, fill=255, width=line_width_px, joint="curve")
+                    # Stroke endcaps — draw.line in PIL doesn't round-cap, so we
+                    # plant small filled circles at each vertex to smooth joints.
+                    r = line_width_px // 2
+                    if r >= 1:
+                        for x, y in pts:
+                            draw.ellipse((x - r, y - r, x + r, y + r), fill=255)
+    else:
+        for elem in elements_by_layer.get(layer_name, []):
+            for ring in osm_element_to_polygons(elem):
+                pixel_ring = [lonlat_to_pixel(lon, lat, bbox, size) for lon, lat in ring]
+                if len(pixel_ring) >= 3:
+                    draw.polygon(pixel_ring, fill=255)
+
     return np.array(mask, dtype=np.uint8)
+
+
+def export_lines_geojson(elements_by_layer: Dict[str, List[dict]],
+                         layer_name: str,
+                         out_path: Path) -> int:
+    """Write the layer's polylines as a GeoJSON FeatureCollection for spline-aware consumers."""
+    features = []
+    for elem in elements_by_layer.get(layer_name, []):
+        for line in osm_element_to_lines(elem):
+            features.append({
+                "type": "Feature",
+                "properties": {
+                    "osm_way_id": elem.get("id"),
+                    "osm_tags": elem.get("tags", {}),
+                },
+                "geometry": {
+                    "type": "LineString",
+                    "coordinates": [[lon, lat] for lon, lat in line],
+                },
+            })
+    fc = {"type": "FeatureCollection", "features": features}
+    out_path.write_text(json.dumps(fc))
+    return len(features)
 
 
 def build_splatmap(osm_data: dict,
@@ -190,12 +278,12 @@ def build_splatmap(osm_data: dict,
         f"{k}={len(v)}" for k, v in elements_by_layer.items() if len(v) > 0
     ))
 
-    # Rasterize core layers into the 4-channel splatmap
-    course_mask = rasterize_layer(elements_by_layer, "course", bbox, size)
-    fairway = rasterize_layer(elements_by_layer, "fairway", bbox, size)
-    green = rasterize_layer(elements_by_layer, "green", bbox, size)
-    bunker = rasterize_layer(elements_by_layer, "bunker", bbox, size)
-    explicit_rough = rasterize_layer(elements_by_layer, "rough", bbox, size)
+    # Rasterize core layers into the 4-channel splatmap (all polygons).
+    course_mask = rasterize_layer(elements_by_layer, "course", bbox, size, geom="polygon")
+    fairway = rasterize_layer(elements_by_layer, "fairway", bbox, size, geom="polygon")
+    green = rasterize_layer(elements_by_layer, "green", bbox, size, geom="polygon")
+    bunker = rasterize_layer(elements_by_layer, "bunker", bbox, size, geom="polygon")
+    explicit_rough = rasterize_layer(elements_by_layer, "rough", bbox, size, geom="polygon")
 
     # Implicit rough: anywhere inside the course polygon that's not fairway/green/bunker
     occupied = (fairway > 0) | (green > 0) | (bunker > 0)
@@ -217,16 +305,29 @@ def build_splatmap(osm_data: dict,
         print(f"[splatmap] wrote {out_layer}")
         written[f"splat_{layer_name}"] = str(out_layer)
 
-    # Extras as single-channel PNGs
+    # Extras as single-channel PNGs (and a GeoJSON sidecar for line features so the
+    # UE side can choose between weight-painting the raster and laying down splines).
+    mpp = meters_per_pixel(bbox, size)
     for layer_name, cfg in FEATURE_LAYERS.items():
         if cfg["channel"] is not None:
             continue
-        mask = rasterize_layer(elements_by_layer, layer_name, bbox, size)
+        geom = cfg.get("geom", "polygon")
+        width_m = cfg.get("width_m", 0.0)
+        mask = rasterize_layer(elements_by_layer, layer_name, bbox, size,
+                               geom=geom, width_m=width_m)
         if mask.max() == 0:
             continue
         out_path = out_dir / f"layer_{layer_name}.png"
         Image.fromarray(mask, mode="L").save(out_path)
-        print(f"[splatmap] wrote {out_path}")
+        if geom == "line":
+            stroke_px = max(1, round(width_m / mpp))
+            print(f"[splatmap] wrote {out_path}  (line, width={width_m}m ≈ {stroke_px}px @ {mpp:.2f} m/px)")
+            gj_path = out_dir / f"{layer_name}.geojson"
+            n = export_lines_geojson(elements_by_layer, layer_name, gj_path)
+            print(f"[splatmap] wrote {gj_path}  ({n} features)")
+            written[f"{layer_name}_geojson"] = str(gj_path)
+        else:
+            print(f"[splatmap] wrote {out_path}")
         written[layer_name] = str(out_path)
 
     # Channel legend (UE5 setup help)

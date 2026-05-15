@@ -210,6 +210,13 @@ def build_splatmap(osm_data: dict,
 
     written = {"splatmap": str(out_splat)}
 
+    # Per-channel single-channel PNGs — UE5 Landscape Paint mode imports one layer at a time.
+    for i, layer_name in enumerate(("fairway", "green", "bunker", "rough")):
+        out_layer = out_dir / f"splat_{layer_name}.png"
+        Image.fromarray(rgba[:, :, i], mode="L").save(out_layer)
+        print(f"[splatmap] wrote {out_layer}")
+        written[f"splat_{layer_name}"] = str(out_layer)
+
     # Extras as single-channel PNGs
     for layer_name, cfg in FEATURE_LAYERS.items():
         if cfg["channel"] is not None:

@@ -62,6 +62,13 @@ engine/UnrealClaudeMCP-upstream/
 engine/**/Content/Megaplant_Library/
 engine/**/Content/Megascans/
 
+# World Partition external actors/objects. Our course maps are deliberately
+# non-WP Basic levels (see M0 'Save As off Open World Template' pitfall), so
+# these only ever appear from third-party template demo maps (e.g. the FP
+# template's Lvl_FirstPerson). We don't ship those demo levels.
+engine/**/Content/__ExternalActors__/
+engine/**/Content/__ExternalObjects__/
+
 # Per-machine Claude Code MCP config (copy .mcp.json.example to .mcp.json and edit)
 .mcp.json
 .claude/

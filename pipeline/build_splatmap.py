@@ -69,9 +69,13 @@ FEATURE_LAYERS = {
     "green":   {"channel": 1,    "osm_tag": ["golf=green"],                         "geom": "polygon"},
     "bunker":  {"channel": 2,    "osm_tag": ["golf=bunker", "natural=sand"],        "geom": "polygon"},
     "rough":   {"channel": 3,    "osm_tag": ["golf=rough"],                         "geom": "polygon"},  # also implicit-fill
-    # Extras — written as separate PNGs:
+    # Extras — written as separate PNGs. `emit_geojson` opts a polygon layer into
+    # also emitting a `<name>.geojson` sidecar so the UE side can choose between
+    # weight-painting the raster and spawning vector-based actors (e.g.
+    # WaterBodyLake from a spline). Linear features always emit geojson.
     "tee":         {"channel": None, "osm_tag": ["golf=tee"],                       "geom": "polygon"},
-    "water":       {"channel": None, "osm_tag": ["golf=water_hazard", "natural=water"], "geom": "polygon"},
+    "water":       {"channel": None, "osm_tag": ["golf=water_hazard", "natural=water", "golf=lateral_water_hazard"],
+                                                                                    "geom": "polygon", "emit_geojson": True},
     "cart_path":   {"channel": None, "osm_tag": ["golf=cartpath", "highway=path"],  "geom": "line", "width_m": 3.0},
     "trees":       {"channel": None, "osm_tag": ["natural=wood", "landuse=forest"], "geom": "polygon"},
 }
@@ -261,6 +265,34 @@ def export_lines_geojson(elements_by_layer: Dict[str, List[dict]],
     return len(features)
 
 
+def export_polygons_geojson(elements_by_layer: Dict[str, List[dict]],
+                            layer_name: str,
+                            out_path: Path) -> int:
+    """Write the layer's polygons as a GeoJSON FeatureCollection for vector-aware consumers.
+
+    Sources polygons directly from the original OSM elements (not from the raster
+    mask), preserving full vertex precision and OSM provenance. Multi-ring elements
+    (relations with outer rings) yield one Feature per outer ring.
+    """
+    features = []
+    for elem in elements_by_layer.get(layer_name, []):
+        for ring in osm_element_to_polygons(elem):
+            features.append({
+                "type": "Feature",
+                "properties": {
+                    "osm_way_id": elem.get("id"),
+                    "osm_tags": elem.get("tags", {}),
+                },
+                "geometry": {
+                    "type": "Polygon",
+                    "coordinates": [[[lon, lat] for lon, lat in ring]],
+                },
+            })
+    fc = {"type": "FeatureCollection", "features": features}
+    out_path.write_text(json.dumps(fc))
+    return len(features)
+
+
 def build_splatmap(osm_data: dict,
                    bbox: Tuple[float, float, float, float],
                    size: int,
@@ -305,8 +337,9 @@ def build_splatmap(osm_data: dict,
         print(f"[splatmap] wrote {out_layer}")
         written[f"splat_{layer_name}"] = str(out_layer)
 
-    # Extras as single-channel PNGs (and a GeoJSON sidecar for line features so the
-    # UE side can choose between weight-painting the raster and laying down splines).
+    # Extras as single-channel PNGs. Linear features always emit a GeoJSON sidecar
+    # (spline-aware UE consumption). Polygon features opt in via emit_geojson=True
+    # (e.g. water → UE Water plugin's WaterBodyLake spline).
     mpp = meters_per_pixel(bbox, size)
     for layer_name, cfg in FEATURE_LAYERS.items():
         if cfg["channel"] is not None:
@@ -328,6 +361,11 @@ def build_splatmap(osm_data: dict,
             written[f"{layer_name}_geojson"] = str(gj_path)
         else:
             print(f"[splatmap] wrote {out_path}")
+            if cfg.get("emit_geojson"):
+                gj_path = out_dir / f"{layer_name}.geojson"
+                n = export_polygons_geojson(elements_by_layer, layer_name, gj_path)
+                print(f"[splatmap] wrote {gj_path}  ({n} polygon features)")
+                written[f"{layer_name}_geojson"] = str(gj_path)
         written[layer_name] = str(out_path)
 
     # Channel legend (UE5 setup help)

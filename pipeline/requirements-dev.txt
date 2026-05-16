@@ -1,0 +1,5 @@
+# Development extras — not shipped to end users running the pipeline.
+# Install with:  pip install -r requirements-dev.txt
+#
+-r requirements.txt
+pytest>=8.0

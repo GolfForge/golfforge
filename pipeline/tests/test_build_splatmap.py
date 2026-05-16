@@ -1,0 +1,352 @@
+"""Tests for pipeline/build_splatmap.py.
+
+The tests are organized roughly bottom-up: geometry helpers first, then
+classification, then rasterization, then exporters, finally end-to-end.
+
+Two categories of tests carry their weight:
+
+- **Regression tests for known bugs** (the cart-path flood-fill class). These
+  freeze the bug-fix contract: line-mode rasterization must NOT fill polygon
+  bounding regions, polygon export must produce closed rings, etc.
+
+- **Cross-machine contract tests** for the GeoJSON sidecars consumed by the
+  UE side. The Windows agent depends on the shape of `cart_path.geojson` and
+  `water.geojson`; these tests freeze that shape.
+
+Run from `pipeline/` with:  python3 -m pytest tests/
+"""
+
+import json
+import math
+import sys
+from pathlib import Path
+
+import numpy as np
+import pytest
+from PIL import Image
+
+# Add pipeline/ to sys.path so we can import build_splatmap as a module.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+import build_splatmap as bs  # noqa: E402
+
+
+# Real bbox we use as the reference for unit-scale sanity checks.
+BBOX_BETHPAGE = (-73.4540, 40.7423, -73.4374, 40.7549)
+
+
+# ---------- helpers ----------
+
+
+def way(id_, coords, tags=None):
+    """Construct a synthetic OSM way element."""
+    return {
+        "type": "way",
+        "id": id_,
+        "tags": tags or {},
+        "geometry": [{"lon": lon, "lat": lat} for lon, lat in coords],
+    }
+
+
+def relation(id_, members, tags=None):
+    """Construct a synthetic OSM relation element."""
+    return {"type": "relation", "id": id_, "tags": tags or {}, "members": members}
+
+
+# ---------- osm_element_to_polygons ----------
+
+
+def test_closed_way_remains_one_ring():
+    elem = way(1, [(0, 0), (1, 0), (1, 1), (0, 0)])
+    rings = bs.osm_element_to_polygons(elem)
+    assert len(rings) == 1
+    assert rings[0][0] == rings[0][-1]
+    assert len(rings[0]) == 4
+
+
+def test_open_way_gets_force_closed_for_polygon_consumers():
+    elem = way(2, [(0, 0), (1, 0), (1, 1)])
+    rings = bs.osm_element_to_polygons(elem)
+    assert len(rings) == 1
+    assert rings[0][0] == rings[0][-1]
+    assert len(rings[0]) == 4  # 3 originals + 1 close
+
+
+def test_short_way_returns_no_polygons():
+    elem = way(3, [(0, 0), (1, 0)])
+    assert bs.osm_element_to_polygons(elem) == []
+
+
+def test_relation_outer_rings_only():
+    outer = {
+        "type": "way", "ref": 100, "role": "outer",
+        "geometry": [{"lon": 0, "lat": 0}, {"lon": 1, "lat": 0}, {"lon": 1, "lat": 1}],
+    }
+    inner = {
+        "type": "way", "ref": 99, "role": "inner",
+        "geometry": [{"lon": 0.2, "lat": 0.2}, {"lon": 0.3, "lat": 0.2}, {"lon": 0.3, "lat": 0.3}],
+    }
+    rel = relation(4, [outer, inner])
+    rings = bs.osm_element_to_polygons(rel)
+    assert len(rings) == 1  # inner is ignored
+    assert rings[0][0] == rings[0][-1]
+
+
+# ---------- osm_element_to_lines ----------
+
+
+def test_open_line_is_not_force_closed():
+    """Regression: the cart-path bug was caused by force-closing open ways
+    before flood-filling them. Line mode must preserve the open shape.
+    """
+    elem = way(5, [(0, 0), (1, 0), (1, 1)])
+    lines = bs.osm_element_to_lines(elem)
+    assert len(lines) == 1
+    assert lines[0] == [(0, 0), (1, 0), (1, 1)]
+    assert lines[0][0] != lines[0][-1]
+
+
+def test_closed_line_stays_closed():
+    elem = way(6, [(0, 0), (1, 0), (1, 1), (0, 0)])
+    lines = bs.osm_element_to_lines(elem)
+    assert lines[0][0] == lines[0][-1]
+
+
+def test_two_point_line_is_valid():
+    elem = way(7, [(0, 0), (1, 0)])
+    lines = bs.osm_element_to_lines(elem)
+    assert lines == [[(0, 0), (1, 0)]]
+
+
+# ---------- meters_per_pixel ----------
+
+
+def test_meters_per_pixel_bethpage_within_expected_range():
+    mpp = bs.meters_per_pixel(BBOX_BETHPAGE, 2017)
+    # Empirically ~0.69 m/px at this bbox/size; allow some slack.
+    assert 0.6 < mpp < 0.8
+
+
+def test_meters_per_pixel_scales_inversely_with_size():
+    mpp_low = bs.meters_per_pixel(BBOX_BETHPAGE, 1009)
+    mpp_high = bs.meters_per_pixel(BBOX_BETHPAGE, 4033)
+    assert mpp_high < mpp_low
+    # 4033/1009 ≈ 4×, so mpp should be ~4× finer
+    assert math.isclose(mpp_low / mpp_high, 4.0, rel_tol=0.05)
+
+
+# ---------- lonlat_to_pixel ----------
+
+
+def test_lonlat_to_pixel_top_left_corner_is_minlon_maxlat():
+    bbox = (-1.0, 40.0, 1.0, 41.0)
+    assert bs.lonlat_to_pixel(-1.0, 41.0, bbox, 100) == (0, 0)
+
+
+def test_lonlat_to_pixel_bottom_right_corner_is_maxlon_minlat():
+    bbox = (-1.0, 40.0, 1.0, 41.0)
+    assert bs.lonlat_to_pixel(1.0, 40.0, bbox, 100) == (99, 99)
+
+
+def test_lonlat_to_pixel_center_with_odd_size():
+    bbox = (-1.0, 40.0, 1.0, 41.0)
+    assert bs.lonlat_to_pixel(0.0, 40.5, bbox, 101) == (50, 50)
+
+
+# ---------- classify_element ----------
+
+
+def test_classify_golf_fairway():
+    assert "fairway" in bs.classify_element(way(10, [], {"golf": "fairway"}))
+
+
+def test_classify_natural_water_routes_to_water_layer():
+    assert "water" in bs.classify_element(way(11, [], {"natural": "water"}))
+
+
+def test_classify_course_outline_yields_synthetic_course_class():
+    assert "course" in bs.classify_element(way(12, [], {"leisure": "golf_course"}))
+
+
+def test_classify_unrelated_tags_yields_no_match():
+    assert bs.classify_element(way(13, [], {"random": "tag"})) == []
+
+
+def test_classify_natural_sand_matches_bunker():
+    assert "bunker" in bs.classify_element(way(14, [], {"natural": "sand"}))
+
+
+# ---------- rasterize_layer ----------
+
+
+def test_rasterize_polygon_fills_interior():
+    bbox = (0.0, 0.0, 1.0, 1.0)
+    elements = {
+        "fairway": [way(20, [(0.25, 0.25), (0.75, 0.25), (0.75, 0.75), (0.25, 0.75)])],
+    }
+    mask = bs.rasterize_layer(elements, "fairway", bbox, 100, geom="polygon")
+    assert mask[50, 50] == 255  # interior filled
+    assert mask[10, 10] == 0    # outside empty
+    assert mask[90, 90] == 0
+
+
+def test_rasterize_line_does_not_flood_fill_bounding_region():
+    """The cart-path bug regression: an L-shaped open polyline must NOT
+    fill the implicit bounding triangle of its endpoints.
+    """
+    bbox = (0.0, 0.0, 1.0, 1.0)
+    elements = {
+        "cart_path": [way(30, [(0.1, 0.5), (0.9, 0.5), (0.9, 0.1)])],
+    }
+    mask = bs.rasterize_layer(elements, "cart_path", bbox, 200,
+                              geom="line", width_m=5.0)
+    # Interior point of the L's bounding triangle (around lon=0.5, lat=0.3),
+    # which would be filled if line rasterization fell back to flood-fill.
+    interior_x, interior_y = bs.lonlat_to_pixel(0.5, 0.3, bbox, 200)
+    assert mask[interior_y, interior_x] == 0, (
+        "Line mode is flood-filling the bounding region — the cart-path bug returned"
+    )
+
+
+def test_rasterize_line_strokes_along_the_path():
+    """Sanity: line mode does mark pixels ON the line itself."""
+    bbox = (0.0, 0.0, 1.0, 1.0)
+    elements = {
+        "cart_path": [way(31, [(0.1, 0.5), (0.9, 0.5)])],
+    }
+    # Width 50m is huge relative to the 1×1-deg bbox — guarantees the stroke
+    # covers a few pixels at any reasonable image size.
+    mask = bs.rasterize_layer(elements, "cart_path", bbox, 100,
+                              geom="line", width_m=50.0)
+    mid_x, mid_y = bs.lonlat_to_pixel(0.5, 0.5, bbox, 100)
+    assert mask[mid_y, mid_x] == 255
+
+
+# ---------- export_lines_geojson / export_polygons_geojson ----------
+
+
+def test_export_lines_geojson_round_trip(tmp_path):
+    elements = {
+        "cart_path": [way(40, [(0, 0), (1, 1)], tags={"golf": "cartpath"})],
+    }
+    out = tmp_path / "cart_path.geojson"
+    n = bs.export_lines_geojson(elements, "cart_path", out)
+    assert n == 1
+    fc = json.loads(out.read_text())
+    assert fc["type"] == "FeatureCollection"
+    feat = fc["features"][0]
+    assert feat["geometry"]["type"] == "LineString"
+    assert feat["properties"]["osm_way_id"] == 40
+    assert feat["properties"]["osm_tags"] == {"golf": "cartpath"}
+
+
+def test_export_polygons_geojson_round_trip(tmp_path):
+    elements = {
+        "water": [way(50, [(0, 0), (1, 0), (1, 1), (0, 0)], tags={"natural": "water"})],
+    }
+    out = tmp_path / "water.geojson"
+    n = bs.export_polygons_geojson(elements, "water", out)
+    assert n == 1
+    fc = json.loads(out.read_text())
+    feat = fc["features"][0]
+    assert feat["geometry"]["type"] == "Polygon"
+    assert feat["properties"]["osm_way_id"] == 50
+
+
+def test_export_polygons_geojson_emits_closed_rings_even_for_open_ways(tmp_path):
+    """Polygon export must always produce closed rings (UE WaterBody splines
+    expect the first and last vertex to coincide).
+    """
+    elements = {
+        "water": [way(51, [(0, 0), (1, 0), (1, 1)])],  # open
+    }
+    out = tmp_path / "water.geojson"
+    bs.export_polygons_geojson(elements, "water", out)
+    fc = json.loads(out.read_text())
+    ring = fc["features"][0]["geometry"]["coordinates"][0]
+    assert ring[0] == ring[-1]
+
+
+# ---------- end-to-end build_splatmap ----------
+
+
+def _synthetic_course_osm():
+    """A minimal but complete fake OSM payload exercising every layer type."""
+    return {"elements": [
+        # Course outline (closed polygon)
+        way(101, [(-0.9, 40.1), (0.9, 40.1), (0.9, 40.9), (-0.9, 40.9), (-0.9, 40.1)],
+            tags={"leisure": "golf_course"}),
+        # Fairway, green, bunker
+        way(102, [(-0.5, 40.3), (0.5, 40.3), (0.5, 40.7), (-0.5, 40.7), (-0.5, 40.3)],
+            tags={"golf": "fairway"}),
+        way(103, [(0.0, 40.5), (0.1, 40.5), (0.1, 40.6), (0.0, 40.6), (0.0, 40.5)],
+            tags={"golf": "green"}),
+        way(104, [(-0.3, 40.4), (-0.25, 40.4), (-0.25, 40.45), (-0.3, 40.45), (-0.3, 40.4)],
+            tags={"golf": "bunker"}),
+        # Cart path (open linestring) — exercises line+geojson path
+        way(105, [(-0.5, 40.5), (-0.4, 40.5), (-0.4, 40.6)],
+            tags={"golf": "cartpath"}),
+        # Water polygon — exercises polygon+emit_geojson path
+        way(106, [(0.3, 40.4), (0.35, 40.4), (0.35, 40.45), (0.3, 40.45), (0.3, 40.4)],
+            tags={"natural": "water"}),
+    ]}
+
+
+def test_build_splatmap_produces_expected_files(tmp_path):
+    bbox = (-1.0, 40.0, 1.0, 41.0)
+    out_dir = tmp_path / "fake-course"
+    bs.build_splatmap(_synthetic_course_osm(), bbox, 256, out_dir)
+
+    assert (out_dir / "splatmap.png").exists()
+    assert (out_dir / "splatmap.json").exists()
+    for layer in ("fairway", "green", "bunker", "rough"):
+        assert (out_dir / f"splat_{layer}.png").exists()
+    assert (out_dir / "layer_cart_path.png").exists()
+    assert (out_dir / "cart_path.geojson").exists()
+    assert (out_dir / "layer_water.png").exists()
+    assert (out_dir / "water.geojson").exists()
+
+
+def test_build_splatmap_splatmap_is_4_channel_rgba_with_data(tmp_path):
+    bbox = (-1.0, 40.0, 1.0, 41.0)
+    out_dir = tmp_path / "fake-course"
+    bs.build_splatmap(_synthetic_course_osm(), bbox, 256, out_dir)
+
+    sp = np.array(Image.open(out_dir / "splatmap.png"))
+    assert sp.shape == (256, 256, 4)
+    for i, layer in enumerate(("fairway", "green", "bunker", "rough")):
+        assert (sp[:, :, i] > 0).sum() > 0, f"channel {layer} is empty"
+
+
+def test_implicit_rough_does_not_overlap_explicit_features(tmp_path):
+    """The 'rough' channel is the catch-all inside the course polygon minus
+    fairway/green/bunker. It must not double-paint pixels covered by those.
+    """
+    bbox = (-1.0, 40.0, 1.0, 41.0)
+    osm = {"elements": [
+        way(201, [(-0.5, 40.4), (0.5, 40.4), (0.5, 40.6), (-0.5, 40.6), (-0.5, 40.4)],
+            tags={"leisure": "golf_course"}),
+        way(202, [(-0.1, 40.45), (0.1, 40.45), (0.1, 40.55), (-0.1, 40.55), (-0.1, 40.45)],
+            tags={"golf": "fairway"}),
+    ]}
+    out_dir = tmp_path / "test"
+    bs.build_splatmap(osm, bbox, 200, out_dir)
+
+    rough = np.array(Image.open(out_dir / "splat_rough.png"))
+    fairway = np.array(Image.open(out_dir / "splat_fairway.png"))
+    overlap = (rough > 0) & (fairway > 0)
+    assert overlap.sum() == 0
+
+
+def test_rough_does_not_paint_outside_the_course_outline(tmp_path):
+    bbox = (-1.0, 40.0, 1.0, 41.0)
+    osm = {"elements": [
+        way(301, [(-0.5, 40.4), (0.5, 40.4), (0.5, 40.6), (-0.5, 40.6), (-0.5, 40.4)],
+            tags={"leisure": "golf_course"}),
+    ]}
+    out_dir = tmp_path / "test"
+    bs.build_splatmap(osm, bbox, 200, out_dir)
+
+    rough = np.array(Image.open(out_dir / "splat_rough.png"))
+    # A pixel at (lon=-0.9, lat=40.1) is well outside the course outline.
+    edge_x, edge_y = bs.lonlat_to_pixel(-0.9, 40.1, bbox, 200)
+    assert rough[edge_y, edge_x] == 0

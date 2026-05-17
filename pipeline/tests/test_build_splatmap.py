@@ -302,7 +302,8 @@ def test_build_splatmap_produces_expected_files(tmp_path):
         assert (out_dir / f"splat_{layer}.png").exists()
     assert (out_dir / "layer_cart_path.png").exists()
     assert (out_dir / "cart_path.geojson").exists()
-    assert (out_dir / "layer_water.png").exists()
+    # Water is geojson-only (skip_raster=True); see test_skip_raster_*.
+    assert not (out_dir / "layer_water.png").exists()
     assert (out_dir / "water.geojson").exists()
 
 
@@ -335,6 +336,31 @@ def test_implicit_rough_does_not_overlap_explicit_features(tmp_path):
     fairway = np.array(Image.open(out_dir / "splat_fairway.png"))
     overlap = (rough > 0) & (fairway > 0)
     assert overlap.sum() == 0
+
+
+def test_skip_raster_suppresses_layer_png_but_keeps_geojson(tmp_path, monkeypatch):
+    """When FEATURE_LAYERS[layer]['skip_raster'] is True, no layer_<name>.png
+    should be emitted, but the GeoJSON sidecar still must be (water consumer
+    is the DynamicMesh actor script, not the painted material).
+    """
+    bbox = (-1.0, 40.0, 1.0, 41.0)
+    osm = {"elements": [
+        way(401, [(-0.5, 40.4), (0.5, 40.4), (0.5, 40.6), (-0.5, 40.6), (-0.5, 40.4)],
+            tags={"leisure": "golf_course"}),
+        way(402, [(0.3, 40.45), (0.35, 40.45), (0.35, 40.5), (0.3, 40.5), (0.3, 40.45)],
+            tags={"natural": "water"}),
+    ]}
+    out_dir = tmp_path / "test"
+    bs.build_splatmap(osm, bbox, 200, out_dir)
+
+    assert not (out_dir / "layer_water.png").exists(), (
+        "water has skip_raster=True; the painted PNG must NOT be emitted"
+    )
+    assert (out_dir / "water.geojson").exists(), (
+        "water has emit_geojson=True; the sidecar must still be emitted"
+    )
+    fc = json.loads((out_dir / "water.geojson").read_text())
+    assert len(fc["features"]) == 1
 
 
 def test_rough_does_not_paint_outside_the_course_outline(tmp_path):

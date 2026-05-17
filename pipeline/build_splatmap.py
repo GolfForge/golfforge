@@ -69,13 +69,19 @@ FEATURE_LAYERS = {
     "green":   {"channel": 1,    "osm_tag": ["golf=green"],                         "geom": "polygon"},
     "bunker":  {"channel": 2,    "osm_tag": ["golf=bunker", "natural=sand"],        "geom": "polygon"},
     "rough":   {"channel": 3,    "osm_tag": ["golf=rough"],                         "geom": "polygon"},  # also implicit-fill
-    # Extras — written as separate PNGs. `emit_geojson` opts a polygon layer into
-    # also emitting a `<name>.geojson` sidecar so the UE side can choose between
-    # weight-painting the raster and spawning vector-based actors (e.g.
-    # WaterBodyLake from a spline). Linear features always emit geojson.
+    # Extras — flags:
+    #   geom         — "polygon" (flood-fill closed rings) or "line" (stroke at width_m)
+    #   emit_geojson — polygon layers opt in to a `<name>.geojson` sidecar
+    #                  (LineString layers always emit geojson regardless)
+    #   skip_raster  — suppress the `layer_<name>.png` mask; use for layers that
+    #                  are consumed only as 3D actors (e.g. water → DynamicMesh
+    #                  actors per build_water_actors.py) so the painted weight
+    #                  layer doesn't visually duplicate the meshes
     "tee":         {"channel": None, "osm_tag": ["golf=tee"],                       "geom": "polygon"},
     "water":       {"channel": None, "osm_tag": ["golf=water_hazard", "natural=water", "golf=lateral_water_hazard"],
-                                                                                    "geom": "polygon", "emit_geojson": True},
+                                                                                    "geom": "polygon",
+                                                                                    "emit_geojson": True,
+                                                                                    "skip_raster": True},
     "cart_path":   {"channel": None, "osm_tag": ["golf=cartpath", "highway=path"],  "geom": "line", "width_m": 3.0},
     "trees":       {"channel": None, "osm_tag": ["natural=wood", "landuse=forest"], "geom": "polygon"},
 }
@@ -337,36 +343,44 @@ def build_splatmap(osm_data: dict,
         print(f"[splatmap] wrote {out_layer}")
         written[f"splat_{layer_name}"] = str(out_layer)
 
-    # Extras as single-channel PNGs. Linear features always emit a GeoJSON sidecar
-    # (spline-aware UE consumption). Polygon features opt in via emit_geojson=True
-    # (e.g. water → UE Water plugin's WaterBodyLake spline).
+    # Extras. Each non-core layer may emit a raster PNG, a GeoJSON sidecar, or
+    # both, depending on its flags (see FEATURE_LAYERS docstring).
     mpp = meters_per_pixel(bbox, size)
     for layer_name, cfg in FEATURE_LAYERS.items():
         if cfg["channel"] is not None:
             continue
         geom = cfg.get("geom", "polygon")
         width_m = cfg.get("width_m", 0.0)
-        mask = rasterize_layer(elements_by_layer, layer_name, bbox, size,
-                               geom=geom, width_m=width_m)
-        if mask.max() == 0:
-            continue
-        out_path = out_dir / f"layer_{layer_name}.png"
-        Image.fromarray(mask, mode="L").save(out_path)
+        skip_raster = cfg.get("skip_raster", False)
+
+        if not elements_by_layer.get(layer_name):
+            continue  # no source features → nothing to emit
+
+        # Raster pass (unless suppressed)
+        if not skip_raster:
+            mask = rasterize_layer(elements_by_layer, layer_name, bbox, size,
+                                   geom=geom, width_m=width_m)
+            if mask.max() > 0:
+                out_path = out_dir / f"layer_{layer_name}.png"
+                Image.fromarray(mask, mode="L").save(out_path)
+                if geom == "line":
+                    stroke_px = max(1, round(width_m / mpp))
+                    print(f"[splatmap] wrote {out_path}  (line, width={width_m}m ≈ {stroke_px}px @ {mpp:.2f} m/px)")
+                else:
+                    print(f"[splatmap] wrote {out_path}")
+                written[layer_name] = str(out_path)
+
+        # GeoJSON sidecar: always for lines, opt-in for polygons
         if geom == "line":
-            stroke_px = max(1, round(width_m / mpp))
-            print(f"[splatmap] wrote {out_path}  (line, width={width_m}m ≈ {stroke_px}px @ {mpp:.2f} m/px)")
             gj_path = out_dir / f"{layer_name}.geojson"
             n = export_lines_geojson(elements_by_layer, layer_name, gj_path)
-            print(f"[splatmap] wrote {gj_path}  ({n} features)")
+            print(f"[splatmap] wrote {gj_path}  ({n} line features)")
             written[f"{layer_name}_geojson"] = str(gj_path)
-        else:
-            print(f"[splatmap] wrote {out_path}")
-            if cfg.get("emit_geojson"):
-                gj_path = out_dir / f"{layer_name}.geojson"
-                n = export_polygons_geojson(elements_by_layer, layer_name, gj_path)
-                print(f"[splatmap] wrote {gj_path}  ({n} polygon features)")
-                written[f"{layer_name}_geojson"] = str(gj_path)
-        written[layer_name] = str(out_path)
+        elif cfg.get("emit_geojson"):
+            gj_path = out_dir / f"{layer_name}.geojson"
+            n = export_polygons_geojson(elements_by_layer, layer_name, gj_path)
+            print(f"[splatmap] wrote {gj_path}  ({n} polygon features)")
+            written[f"{layer_name}_geojson"] = str(gj_path)
 
     # Channel legend (UE5 setup help)
     legend = {

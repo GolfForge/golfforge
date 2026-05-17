@@ -55,12 +55,14 @@ engine/**/*.vcxproj.filters
 engine/**/Plugins/UnrealClaudeMCP/
 engine/UnrealClaudeMCP-upstream/
 
-# Quixel Megascans / Megaplant — re-downloadable for free per machine via
-# UE editor's Quixel Bridge. Skipping ~2 GB of LFS bloat. AGENTS.md lists
-# which assets are referenced (currently: Tree_Silver_Birch from Megaplant)
-# so a fresh clone knows what to re-download before opening BethPageBlack.
+# Quixel Megascans / Megaplant / Fab — re-downloadable for free per machine
+# via the UE5.7 Fab plugin (Quixel Bridge is deprecated; Megascans now ships
+# through Fab → /Game/Fab/...). Skipping ~2 GB of LFS bloat. AGENTS.md lists
+# which assets are referenced so a fresh clone knows what to re-download
+# before opening BethPageBlack.
 engine/**/Content/Megaplant_Library/
 engine/**/Content/Megascans/
+engine/**/Content/Fab/
 
 # World Partition external actors/objects. Our course maps are deliberately
 # non-WP Basic levels (see M0 'Save As off Open World Template' pitfall), so

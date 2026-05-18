@@ -42,9 +42,11 @@ GRASS_MESH_PATH = ("/Game/Fab/Megascans/Plants/Thatching_Grass_uddmcgbia"
 GRASS_DENSITY        = 150.0    # LandscapeGrassType variety density; tune at gate
 GRASS_CULL_START_CM  = 5000.0
 GRASS_CULL_END_CM    = 8000.0
-# Thatching grass is tall; fairway turf is ~1cm-mown -> scale way down.
-GRASS_SCALE_MIN      = 0.22
-GRASS_SCALE_MAX      = 0.45
+# SM_uddmcgbia_VarB is only ~13 cm tall at scale 1.0 (NOT tall as assumed);
+# 0.22-0.45 gave invisible ~3-6 cm fuzz. 1.0-2.5 -> ~13-32 cm visible
+# tufts (light fairway-fringe). Tune at the gate.
+GRASS_SCALE_MIN      = 1.0
+GRASS_SCALE_MAX      = 2.5
 GRASS_RANDOM_ROTATION  = True
 GRASS_ALIGN_TO_SURFACE = True
 LEVEL_HINT      = "BethPageBlack"

@@ -26,27 +26,43 @@
 #
 # bridge note: execute_unreal_python returns output:None. Feedback via
 # unreal.log() under LogPython; read with get_log_lines. Idempotent: the
-# grass type is found-and-reconfigured, never duplicated. GRASS_MESH_PATH is
-# a Megascans Bridge download (gitignored, per-machine) the USER supplies.
+# grass type is found-and-reconfigured, never duplicated. GRASS_MESHES are
+# Fab/marketplace assets (gitignored, per-machine, re-downloaded on a clone).
 
 import unreal
 
 # ---------------------------------------------------------------- parameters
 GRASS_TYPE_PATH = "/Game/Landscape/Grass/LGT_FairwayGrass"
 # Fab/Megascans grass clump (gitignored, per-machine). Thatching Grass is a
-# tall decorative grass -> scaled DOWN below so it reads as short fairway
-# tuft, not meadow. Build FAILS LOUD if it does not load.
-GRASS_MESH_PATH = ("/Game/Fab/Megascans/Plants/Thatching_Grass_uddmcgbia"
-                   "/Medium/uddmcgbia_tier_2/StaticMeshes/SM_uddmcgbia_VarB")
+# Kentucky Bluegrass (PC3D pack) - Substrate-validated this session; the
+# golf-turf species. Flowerless "Healthy" + "Slender" variants only (no
+# seed heads = the white parts; mown fairways don't flower). Nanite meshes,
+# ~33 cm natural. Multiple variants -> one GrassVariety each, for natural
+# variation. Build FAILS LOUD if any does not load.
+_KBG = "/Game/PC3D_Kentucky_Bluegrass_v14/Meshes"
+GRASS_MESHES = [
+    _KBG + "/Healthy/SM_Healthy_KentuckyBluegrass_01",
+    _KBG + "/Healthy/SM_Healthy_KentuckyBluegrass_02",
+    _KBG + "/Healthy/SM_Healthy_KentuckyBluegrass_03",
+    _KBG + "/Slender/SM_Healthy_Slender_KentuckyBluegrass_01",
+    _KBG + "/Slender/SM_Healthy_Slender_KentuckyBluegrass_02",
+]
 
-GRASS_DENSITY        = 150.0    # LandscapeGrassType variety density; tune at gate
-GRASS_CULL_START_CM  = 5000.0
-GRASS_CULL_END_CM    = 8000.0
-# SM_uddmcgbia_VarB is only ~13 cm tall at scale 1.0 (NOT tall as assumed);
-# 0.22-0.45 gave invisible ~3-6 cm fuzz. 1.0-2.5 -> ~13-32 cm visible
-# tufts (light fairway-fringe). Tune at the gate.
-GRASS_SCALE_MIN      = 1.0
-GRASS_SCALE_MAX      = 2.5
+# Total target density (reference-sim dense); split evenly across the
+# variants so total stays ~GRASS_DENSITY regardless of variant count.
+# ~700 read as ~1/m^2 (way too sparse); bumped ~10x for a lush carpet -
+# the de-risk gate (GRASS_MODE=report) checks the instance-count/perf cost.
+GRASS_DENSITY        = 10000.0
+# Near-camera cull (gate verdict: full-coverage dense 3D grass = perf wall).
+# Confined to ~35 m it's still far cheaper than an 80 m cull (area ~ r^2),
+# so we keep a lush density but only render it around the player/ball; the
+# tiled turf covers beyond. Wider start/end band = softer fade-out (the
+# abrupt cutoff looked weird). Standard golf-sim move.
+GRASS_CULL_START_CM  = 1000.0
+GRASS_CULL_END_CM    = 3500.0
+# KBG mesh ~33 cm at scale 1.0; mown fairway is short -> 0.5-0.8 = ~16-26 cm.
+GRASS_SCALE_MIN      = 0.5
+GRASS_SCALE_MAX      = 0.8
 GRASS_RANDOM_ROTATION  = True
 GRASS_ALIGN_TO_SURFACE = True
 LEVEL_HINT      = "BethPageBlack"
@@ -198,11 +214,12 @@ def _ensure_grass_type():
     except Exception as exc:
         _log("FATAL: could not create LandscapeGrassType (%s). MANUAL "
              "HANDOFF: Content Browser -> %s -> right-click -> Foliage -> "
-             "Landscape Grass Type, name '%s'; add 1 Grass Variety; set "
-             "Grass Mesh=%s, Density=%s, StartCull=%s, EndCull=%s, "
-             "ScaleX/Y/Z min=%s max=%s, RandomRotation=%s, AlignToSurface=%s; "
+             "Landscape Grass Type, name '%s'; add one Grass Variety per "
+             "mesh in %r; Density~%.0f each, StartCull=%s, EndCull=%s, "
+             "Scale min=%s max=%s, RandomRotation=%s, AlignToSurface=%s; "
              "save; then re-run MODE A (it will find+reuse it)."
-             % (str(exc)[:80], pkg, name, GRASS_MESH_PATH, GRASS_DENSITY,
+             % (str(exc)[:80], pkg, name, GRASS_MESHES,
+                GRASS_DENSITY / max(1, len(GRASS_MESHES)),
                 GRASS_CULL_START_CM, GRASS_CULL_END_CM, GRASS_SCALE_MIN,
                 GRASS_SCALE_MAX, GRASS_RANDOM_ROTATION,
                 GRASS_ALIGN_TO_SURFACE))
@@ -212,43 +229,52 @@ def _ensure_grass_type():
 
 
 def _configure_grass_type(gt):
-    mesh = unreal.load_asset(GRASS_MESH_PATH)
-    if mesh is None:
-        _log("FATAL: GRASS_MESH_PATH does not load: %s (set the real "
-             "Megascans path after Bridge download; not flat-faking it)"
-             % GRASS_MESH_PATH)
-        return False
-    gv = unreal.GrassVariety()
-    gv.set_editor_property("grass_mesh", mesh)
-    gv.set_editor_property("random_rotation", GRASS_RANDOM_ROTATION)
-    gv.set_editor_property("align_to_surface", GRASS_ALIGN_TO_SURFACE)
-    # UE5.7: grass_density is FPerPlatformFloat; start/end_cull_distance are
-    # FPerPlatformInt (a plain int/float is rejected) - set the .default.
-    ppd = unreal.PerPlatformFloat()
-    ppd.set_editor_property("default", float(GRASS_DENSITY))
-    gv.set_editor_property("grass_density", ppd)
-    for prop, cm in (("start_cull_distance", GRASS_CULL_START_CM),
-                     ("end_cull_distance", GRASS_CULL_END_CM)):
-        ppi = unreal.PerPlatformInt()
-        ppi.set_editor_property("default", int(cm))
-        gv.set_editor_property(prop, ppi)
-    for prop in ("scale_x", "scale_y", "scale_z"):
-        fi = unreal.FloatInterval()
-        fi.set_editor_property("min", GRASS_SCALE_MIN)
-        fi.set_editor_property("max", GRASS_SCALE_MAX)
-        try:
-            gv.set_editor_property(prop, fi)
-        except Exception as exc:
-            _log("GrassVariety.%s note: %s" % (prop, str(exc)[:50]))
+    meshes = []
+    for p in GRASS_MESHES:
+        m = unreal.load_asset(p)
+        if m is None:
+            _log("FATAL: grass mesh does not load: %s (not flat-faking it)"
+                 % p)
+            return False
+        meshes.append(m)
+    per = float(GRASS_DENSITY) / max(1, len(meshes))  # total ~= GRASS_DENSITY
+    varieties = []
+    for m in meshes:
+        gv = unreal.GrassVariety()
+        gv.set_editor_property("grass_mesh", m)
+        gv.set_editor_property("random_rotation", GRASS_RANDOM_ROTATION)
+        gv.set_editor_property("align_to_surface", GRASS_ALIGN_TO_SURFACE)
+        # UE5.7: grass_density is FPerPlatformFloat; cull distances are
+        # FPerPlatformInt (plain int/float rejected) - set the .default.
+        ppd = unreal.PerPlatformFloat()
+        ppd.set_editor_property("default", per)
+        gv.set_editor_property("grass_density", ppd)
+        for prop, cm in (("start_cull_distance", GRASS_CULL_START_CM),
+                         ("end_cull_distance", GRASS_CULL_END_CM)):
+            ppi = unreal.PerPlatformInt()
+            ppi.set_editor_property("default", int(cm))
+            gv.set_editor_property(prop, ppi)
+        for prop in ("scale_x", "scale_y", "scale_z"):
+            fi = unreal.FloatInterval()
+            fi.set_editor_property("min", GRASS_SCALE_MIN)
+            fi.set_editor_property("max", GRASS_SCALE_MAX)
+            try:
+                gv.set_editor_property(prop, fi)
+            except Exception as exc:
+                _log("GrassVariety.%s note: %s" % (prop, str(exc)[:50]))
+        varieties.append(gv)
     try:
-        gt.set_editor_property("grass_varieties", [gv])
+        gt.set_editor_property("grass_varieties", varieties)
     except Exception as exc:
-        _log("FATAL: grass_varieties not settable (%s). MANUAL: open %s, add "
-             "1 variety, Mesh=%s Density=%s Cull=%s/%s Scale=%s-%s." % (
-                 str(exc)[:60], GRASS_TYPE_PATH, GRASS_MESH_PATH,
-                 GRASS_DENSITY, GRASS_CULL_START_CM, GRASS_CULL_END_CM,
-                 GRASS_SCALE_MIN, GRASS_SCALE_MAX))
+        _log("FATAL: grass_varieties not settable (%s). MANUAL: open %s, "
+             "add %d varieties for %r, density~%.0f each, cull %s/%s, "
+             "scale %s-%s." % (str(exc)[:60], GRASS_TYPE_PATH, len(meshes),
+                               GRASS_MESHES, per, GRASS_CULL_START_CM,
+                               GRASS_CULL_END_CM, GRASS_SCALE_MIN,
+                               GRASS_SCALE_MAX))
         return False
+    _log("configured %d varieties @ %.0f density each (~%.0f total)"
+         % (len(varieties), per, GRASS_DENSITY))
     return True
 
 
@@ -260,9 +286,10 @@ def main():
     if not _configure_grass_type(gt):
         return
     unreal.EditorAssetLibrary.save_asset(GRASS_TYPE_PATH)
-    _log("saved %s mesh=%s density=%s cull=%s/%s"
-         % (GRASS_TYPE_PATH, GRASS_MESH_PATH, GRASS_DENSITY,
-            GRASS_CULL_START_CM, GRASS_CULL_END_CM))
+    _log("saved %s : %d KBG varieties, ~%.0f total density, cull=%s/%s, "
+         "scale %s-%s" % (GRASS_TYPE_PATH, len(GRASS_MESHES), GRASS_DENSITY,
+                          GRASS_CULL_START_CM, GRASS_CULL_END_CM,
+                          GRASS_SCALE_MIN, GRASS_SCALE_MAX))
     _log("NEXT: build_course_material.py main() must run so its "
          "LandscapeGrassOutput binds this grass type; then USER triggers "
          "'Build > Build Grass Maps' / moves camera over Fairway; then run "
@@ -272,7 +299,11 @@ def main():
 
 def report():
     _log("=== DE-RISK GATE REPORT ===")
-    mesh = unreal.load_asset(GRASS_MESH_PATH)
+    meshes = set()
+    for p in GRASS_MESHES:
+        mm = unreal.load_asset(p)
+        if mm is not None:
+            meshes.add(mm)
     total = 0
     ncomp = 0
     for a in _eas().get_all_level_actors():
@@ -296,7 +327,7 @@ def report():
                 sm = c.get_editor_property("static_mesh")
             except Exception:
                 pass
-            if mesh is not None and sm is not None and sm != mesh:
+            if meshes and sm is not None and sm not in meshes:
                 continue
             ncomp += 1
             total += n

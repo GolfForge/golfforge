@@ -65,8 +65,10 @@ MACRO_BLEND       = 0.45
 # LandscapeGrassOutput (Fairway only for now).
 LAYERS = [
     dict(name="Fairway",  mode="textured", grass=True, tiling=3.0,
+         tint=(0.10, 0.26, 0.08),
          **_surf("Lawn_Grass_tkynejer", "tkynejer")),
     dict(name="Green",    mode="textured", tiling=4.0,
+         tint=(0.10, 0.26, 0.08),
          **_surf("Lawn_Grass_tkynejer", "tkynejer")),
     dict(name="Bunker",   mode="textured", tiling=3.0,
          **_surf("Bright_Desert_Sand_sjzkfega", "sjzkfega")),
@@ -75,6 +77,7 @@ LAYERS = [
     dict(name="CartPath", mode="textured", tiling=4.0,
          **_surf("Concrete_Floor_virrebs", "virrebs")),
     dict(name="Tee",      mode="textured", tiling=3.0,
+         tint=(0.10, 0.26, 0.08),
          **_surf("Lawn_Grass_tkynejer", "tkynejer")),
     dict(name="Trees",    mode="textured", tiling=2.5,
          **_surf("Clover_Patches_on_Grass_sgmkajak", "sgmkajak")),
@@ -240,16 +243,38 @@ def _macro_albedo(mat, layer, x, y):
                  unreal.MaterialSamplerType.SAMPLERTYPE_COLOR,
                  x, y + 360, layer["tiling"] / MACRO_SCALE_DIV)
     if macro is None:
-        return detail, "RGB"
-    lerp = _mel().create_material_expression(
-        mat, unreal.MaterialExpressionLinearInterpolate, x + 220, y)
-    a = _mel().create_material_expression(
-        mat, unreal.MaterialExpressionConstant, x + 60, y + 220)
-    a.set_editor_property("r", float(MACRO_BLEND))
-    _mel().connect_material_expressions(detail, "RGB", lerp, "A")
-    _mel().connect_material_expressions(macro, "RGB", lerp, "B")
-    _mel().connect_material_expressions(a, "", lerp, "Alpha")
-    return lerp, ""
+        src, pin = detail, "RGB"
+    else:
+        lerp = _mel().create_material_expression(
+            mat, unreal.MaterialExpressionLinearInterpolate, x + 220, y)
+        a = _mel().create_material_expression(
+            mat, unreal.MaterialExpressionConstant, x + 60, y + 220)
+        a.set_editor_property("r", float(MACRO_BLEND))
+        _mel().connect_material_expressions(detail, "RGB", lerp, "A")
+        _mel().connect_material_expressions(macro, "RGB", lerp, "B")
+        _mel().connect_material_expressions(a, "", lerp, "Alpha")
+        src, pin = lerp, ""
+    # Optional per-layer recolor: DESATURATE the albedo to luminance, then
+    # MULTIPLY by `tint` (a target color). This makes the tiled base adopt
+    # the tint's HUE while keeping the texture's light/dark detail - a
+    # plain multiply can only darken (can't hue-shift), which is why tint
+    # tweaks were imperceptible. `tint` here is the KBG turf-green target so
+    # the base inherently meshes with the KBG 3D grass at the cull boundary.
+    tint = layer.get("tint")
+    if not tint:
+        return src, pin
+    des = _mel().create_material_expression(
+        mat, unreal.MaterialExpressionDesaturation, x + 380, y)
+    _mel().connect_material_expressions(src, pin, des, "")  # -> luminance
+    mul = _mel().create_material_expression(
+        mat, unreal.MaterialExpressionMultiply, x + 560, y)
+    tc = _mel().create_material_expression(
+        mat, unreal.MaterialExpressionConstant3Vector, x + 400, y + 220)
+    tc.set_editor_property(
+        "constant", unreal.LinearColor(tint[0], tint[1], tint[2], 1.0))
+    _mel().connect_material_expressions(des, "", mul, "A")
+    _mel().connect_material_expressions(tc, "", mul, "B")
+    return mul, ""
 
 
 def _layer_src(mat, layer, channel, x, y):

@@ -129,6 +129,8 @@ The canonical shot event. All units SI.
 `sidespin_rpm` follows the same sign convention.
 `lie` is one of `tee`, `fairway`, `rough`, `bunker`, `green`, `fringe`, `water`, `cart_path`, `unknown`.
 
+**Optional monitor-resolved fields.** Some launch monitors (e.g. Square Omni, Garmin Approach R50, ProTee VX) also report their *own* computed flight metrics — but not a sampled path. A driver MAY attach these as optional fields: `carry_m`, `apex_m`, `descent_deg`, `hang_s`. When present, the sim's "trace" mode reconstructs an arc that matches those numbers (so the in-game ball lands where the device says) instead of simulating from the launch conditions. Absent these, the sim simulates the flight itself. Exact per-device field mapping is firmed up at the v0.3 launch-monitor milestone.
+
 #### `shot.cancel`
 
 Player aborts a shot before contact.

@@ -75,63 +75,108 @@ void UGolfRangePanel::BuildTree()
 	UVerticalBoxSlot* GridSlot = Col->AddChildToVerticalBox(Grid);
 	GridSlot->SetPadding(FMargin(0.f, 6.f, 0.f, 6.f));
 
-	// Club dropdown. A code-only ComboBoxString renders fully styled in 5.7 (its ctor defaults
-	// WidgetStyle/ItemStyle/Font from the style cache), so no style asset is needed. Options are
-	// supplied later by the HUD via SetClubOptions.
-	ClubCombo = WidgetTree->ConstructWidget<UComboBoxString>();
-	// Light row text so the club names read against the dark dropdown menu (the default TextColor is
-	// dark). SelectedTextColor is left at its default so the hovered row stays readable on its
-	// light highlight.
+	// Three labeled dropdowns (Club / Time / Sky). A code-only ComboBoxString renders fully styled in
+	// 5.7 (its ctor defaults WidgetStyle/ItemStyle/Font from the style cache), so no style asset is
+	// needed; we only lighten the row text so names read against the dark dropdown menu (the default
+	// ItemStyle.TextColor is dark; SelectedTextColor stays default so the hovered row reads on its
+	// light highlight). Options are supplied later by the HUD.
+	auto AddLabeledCombo = [&](const TCHAR* Label) -> UComboBoxString*
 	{
-		FTableRowStyle ItemStyle = ClubCombo->GetItemStyle();
+		UTextBlock* Lbl = WidgetTree->ConstructWidget<UTextBlock>();
+		Lbl->SetText(FText::FromString(Label));
+		UVerticalBoxSlot* LblSlot = Col->AddChildToVerticalBox(Lbl);
+		LblSlot->SetPadding(FMargin(0.f, 6.f, 0.f, 1.f));
+
+		UComboBoxString* Combo = WidgetTree->ConstructWidget<UComboBoxString>();
+		FTableRowStyle ItemStyle = Combo->GetItemStyle();
 		ItemStyle.TextColor = FSlateColor(FLinearColor::White);
-		ClubCombo->SetItemStyle(ItemStyle);
-	}
+		Combo->SetItemStyle(ItemStyle);
+		Col->AddChildToVerticalBox(Combo);
+		return Combo;
+	};
+
+	ClubCombo = AddLabeledCombo(TEXT("Club"));
 	ClubCombo->OnSelectionChanged.AddDynamic(this, &UGolfRangePanel::HandleClubSelectionChanged);
-	Col->AddChildToVerticalBox(ClubCombo);
+	TimeCombo = AddLabeledCombo(TEXT("Time"));
+	TimeCombo->OnSelectionChanged.AddDynamic(this, &UGolfRangePanel::HandleTimeSelectionChanged);
+	SkyCombo = AddLabeledCombo(TEXT("Sky"));
+	SkyCombo->OnSelectionChanged.AddDynamic(this, &UGolfRangePanel::HandleSkySelectionChanged);
 }
 
-void UGolfRangePanel::SetClubOptions(const TArray<FString>& Names)
+namespace
 {
-	if (!ClubCombo)
+	// Repopulate a dropdown's options from a name list.
+	void FillCombo(UComboBoxString* Combo, const TArray<FString>& Names)
 	{
-		return;
-	}
-	ClubCombo->ClearOptions();
-	for (const FString& Name : Names)
-	{
-		ClubCombo->AddOption(Name);
+		if (!Combo)
+		{
+			return;
+		}
+		Combo->ClearOptions();
+		for (const FString& Name : Names)
+		{
+			Combo->AddOption(Name);
+		}
 	}
 }
 
-void UGolfRangePanel::SetSelectedClubIndex(int32 Index)
+void UGolfRangePanel::SetClubOptions(const TArray<FString>& Names) { FillCombo(ClubCombo, Names); }
+void UGolfRangePanel::SetTimeOptions(const TArray<FString>& Names) { FillCombo(TimeCombo, Names); }
+void UGolfRangePanel::SetSkyOptions(const TArray<FString>& Names)  { FillCombo(SkyCombo, Names); }
+
+void UGolfRangePanel::SetComboIndexGuarded(UComboBoxString* Combo, int32 Index)
 {
-	if (!ClubCombo || ClubCombo->GetOptionCount() <= 0)
+	if (!Combo || Combo->GetOptionCount() <= 0)
 	{
 		return;   // nothing to select yet (options not populated)
 	}
-	const int32 Clamped = FMath::Clamp(Index, 0, ClubCombo->GetOptionCount() - 1);
+	const int32 Clamped = FMath::Clamp(Index, 0, Combo->GetOptionCount() - 1);
 	bSuppressSelectionCallback = true;
-	ClubCombo->SetSelectedIndex(Clamped);
+	Combo->SetSelectedIndex(Clamped);
 	bSuppressSelectionCallback = false;
 }
 
-void UGolfRangePanel::HandleClubSelectionChanged(FString SelectedItem, ESelectInfo::Type SelectionType)
+void UGolfRangePanel::SetSelectedClubIndex(int32 Index) { SetComboIndexGuarded(ClubCombo, Index); }
+void UGolfRangePanel::SetSelectedTimeIndex(int32 Index) { SetComboIndexGuarded(TimeCombo, Index); }
+void UGolfRangePanel::SetSelectedSkyIndex(int32 Index)  { SetComboIndexGuarded(SkyCombo, Index); }
+
+void UGolfRangePanel::HandleClubSelectionChanged(FString, ESelectInfo::Type SelectionType)
 {
-	// Programmatic selection (SetSelectedIndex) re-broadcasts with ESelectInfo::Direct; only act
-	// on genuine user picks. The bool guard is belt-and-suspenders for the same reentrancy.
-	if (bSuppressSelectionCallback || SelectionType == ESelectInfo::Direct || !ClubCombo)
+	HandleComboPick(ClubCombo, OnClubChosen, SelectionType);
+}
+
+void UGolfRangePanel::HandleTimeSelectionChanged(FString, ESelectInfo::Type SelectionType)
+{
+	HandleComboPick(TimeCombo, OnTimeChosen, SelectionType);
+}
+
+void UGolfRangePanel::HandleSkySelectionChanged(FString, ESelectInfo::Type SelectionType)
+{
+	HandleComboPick(SkyCombo, OnSkyChosen, SelectionType);
+}
+
+void UGolfRangePanel::HandleComboPick(UComboBoxString* Combo, const TFunction<void(int32)>& OnChosen,
+	ESelectInfo::Type SelectionType)
+{
+	// Programmatic selection (SetSelectedIndex) re-broadcasts with ESelectInfo::Direct; only act on
+	// genuine user picks. The bool guard is belt-and-suspenders for the same reentrancy.
+	if (bSuppressSelectionCallback || SelectionType == ESelectInfo::Direct || !Combo)
 	{
 		return;
 	}
-	const int32 Idx = ClubCombo->GetSelectedIndex();
-	if (Idx >= 0 && OnClubChosen)
+	const int32 Idx = Combo->GetSelectedIndex();
+	if (Idx >= 0 && OnChosen)
 	{
-		OnClubChosen(Idx);
+		OnChosen(Idx);
 	}
-	// Hand keyboard focus back to the game viewport so Space/1-6/arrows reach gameplay instead of
-	// the focused combobox (otherwise Space toggles the dropdown). Deferred a tick so it runs after
-	// the combobox finishes its own post-selection focus handling.
+	ReturnFocusToGameViewport();
+}
+
+void UGolfRangePanel::ReturnFocusToGameViewport()
+{
+	// Hand keyboard focus back to the game viewport so Space/1-6/arrows reach gameplay instead of the
+	// focused combobox (otherwise Space toggles the dropdown). Deferred a tick so it runs after the
+	// combobox finishes its own post-selection focus handling.
 	if (UWorld* World = GetWorld())
 	{
 		TWeakObjectPtr<UGolfRangePanel> WeakSelf(this);

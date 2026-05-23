@@ -28,23 +28,43 @@ public:
 	void UpdateMetrics(const FString& Club, double SpeedMph, double LaunchDeg,
 		double SpinRpm, double CarryYd, double OfflineYd);
 
-	// Sync the dropdown to the active club (e.g. after a 1-6 key press). Guarded so it does
-	// not re-enter the selection callback.
-	void SetSelectedClubIndex(int32 Index);
+	// Populate the Time-of-day / Sky dropdowns from the environment director's preset names.
+	void SetTimeOptions(const TArray<FString>& Names);
+	void SetSkyOptions(const TArray<FString>& Names);
 
-	// Set by the owning HUD; the ComboBox pushes the user's pick back through this.
+	// Sync a dropdown to the active index (e.g. after a 1-6 key press, or to the director's
+	// startup defaults). Guarded so it does not re-enter the selection callback.
+	void SetSelectedClubIndex(int32 Index);
+	void SetSelectedTimeIndex(int32 Index);
+	void SetSelectedSkyIndex(int32 Index);
+
+	// Set by the owning HUD; each ComboBox pushes the user's pick back through its delegate.
 	TFunction<void(int32)> OnClubChosen;
+	TFunction<void(int32)> OnTimeChosen;
+	TFunction<void(int32)> OnSkyChosen;
 
 protected:
 	virtual void NativeOnInitialized() override;
 
-	UFUNCTION()
-	void HandleClubSelectionChanged(FString SelectedItem, ESelectInfo::Type SelectionType);
+	UFUNCTION() void HandleClubSelectionChanged(FString SelectedItem, ESelectInfo::Type SelectionType);
+	UFUNCTION() void HandleTimeSelectionChanged(FString SelectedItem, ESelectInfo::Type SelectionType);
+	UFUNCTION() void HandleSkySelectionChanged(FString SelectedItem, ESelectInfo::Type SelectionType);
 
 private:
 	void BuildTree();
 
+	// Shared body for the three dropdowns: ignore programmatic re-broadcasts, report genuine picks
+	// via OnChosen, then hand keyboard focus back to the game so Space/1-6/arrows still reach gameplay.
+	void HandleComboPick(UComboBoxString* Combo, const TFunction<void(int32)>& OnChosen,
+		ESelectInfo::Type SelectionType);
+	void ReturnFocusToGameViewport();
+
+	// Select an index without re-entering the selection callback (sets bSuppressSelectionCallback).
+	void SetComboIndexGuarded(UComboBoxString* Combo, int32 Index);
+
 	UPROPERTY(Transient) TObjectPtr<UComboBoxString> ClubCombo;
+	UPROPERTY(Transient) TObjectPtr<UComboBoxString> TimeCombo;
+	UPROPERTY(Transient) TObjectPtr<UComboBoxString> SkyCombo;
 	UPROPERTY(Transient) TObjectPtr<UTextBlock> ValClub;
 	UPROPERTY(Transient) TObjectPtr<UTextBlock> ValSpeed;
 	UPROPERTY(Transient) TObjectPtr<UTextBlock> ValLaunch;

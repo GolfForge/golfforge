@@ -1,11 +1,13 @@
 #include "GolfRangeHUD.h"
 
 #include "GolfBallActor.h"
+#include "GolfRangeEnvironment.h"
 #include "Physics/BallFlightSolver.h"
 #include "Physics/BallFlightTypes.h"
 
 #include "EngineUtils.h"
 #include "Components/InputComponent.h"
+#include "Engine/Canvas.h"          // UCanvas (SizeX/SizeY) for the DrawHUD resolution readout
 #include "Engine/GameViewportClient.h"
 #include "GameFramework/PlayerController.h"
 #include "GameFramework/Pawn.h"
@@ -42,6 +44,20 @@ namespace
 		FActorSpawnParameters Params;
 		Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
 		return World->SpawnActor<AGolfBallActor>(AGolfBallActor::StaticClass(), Loc, Rot, Params);
+	}
+
+	// Find the range's environment director, or spawn one if absent. Logic-only + PIE-only, so
+	// nothing is persisted into the umap. Mirrors GetOrSpawnBallAt / GolfsimConsole's helpers.
+	AGolfRangeEnvironment* GetOrSpawnRangeEnv(UWorld* World)
+	{
+		for (TActorIterator<AGolfRangeEnvironment> It(World); It; ++It)
+		{
+			return *It;
+		}
+		FActorSpawnParameters Params;
+		Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+		return World->SpawnActor<AGolfRangeEnvironment>(AGolfRangeEnvironment::StaticClass(),
+			FVector::ZeroVector, FRotator::ZeroRotator, Params);
 	}
 }
 
@@ -140,6 +156,29 @@ void AGolfRangeHUD::EnsureInputBound()
 			Panel->AddToViewport();
 			Panel->SetSelectedClubIndex(ActiveClub);
 			Panel->UpdateMetrics(GBag[ActiveClub].Name, 0.0, 0.0, 0.0, 0.0, 0.0);   // "-" until first shot
+
+			// Environment director: find-or-spawn the range's time-of-day/weather actor and wire the
+			// Time + Sky dropdowns to it. Names come from the director (single source of truth, like
+			// the club bag); weak capture so a dropdown can never call into a destroyed actor.
+			if (UWorld* World = GetWorld())
+			{
+				if (AGolfRangeEnvironment* Env = GetOrSpawnRangeEnv(World))
+				{
+					TWeakObjectPtr<AGolfRangeEnvironment> WeakEnv(Env);
+					Panel->OnTimeChosen = [WeakEnv](int32 Idx)
+					{
+						if (AGolfRangeEnvironment* E = WeakEnv.Get()) { E->SetTime(Idx); }
+					};
+					Panel->OnSkyChosen = [WeakEnv](int32 Idx)
+					{
+						if (AGolfRangeEnvironment* E = WeakEnv.Get()) { E->SetSky(Idx); }
+					};
+					Panel->SetTimeOptions(Env->GetTimePresetNames());
+					Panel->SetSkyOptions(Env->GetSkyPresetNames());
+					Panel->SetSelectedTimeIndex(Env->GetTimeIndex());
+					Panel->SetSelectedSkyIndex(Env->GetSkyIndex());
+				}
+			}
 		}
 	}
 	if (!InputComponent)

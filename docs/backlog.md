@@ -4,9 +4,9 @@
 
 ## 1. Practice Range polish (active)
 
-The flat walkable+shootable range is the default map (minimal level DONE 2026-05-23, see worklog). This pass turns it into a proper launch-monitor range. **Decisions (2026-05-23):** UMG panel for the UI; essentials metrics in yd/mph; arrows yaw camera+aim with no walking/mouse-look; environment selectors after the core. Build order R1 → R2 → R3 → R4.
+The flat walkable+shootable range is the default map (minimal level DONE 2026-05-23, see worklog). This pass turns it into a proper launch-monitor range. **Decisions (2026-05-23):** UMG panel for the UI; essentials metrics in yd/mph; arrows yaw camera+aim with no walking/mouse-look; environment selectors after the core. Build order R1 → R2 → R3 → R4 — **R1 done, R2 next.**
 
-**R1 — Tee-fixed aim + arrow-key aiming** *(gameplay/input; small).* Player stays planted on the tee box. Left/Right arrows yaw the view + aim together; Space fires along that heading (already works — `GolfRangeHUD::FireRandom` reads the pawn's flattened rotation). Disable WASD movement and mouse-look. Cleanest path reuses the HUD's existing legacy `InputComponent` binding (same way 1-6/Space are bound) to drive controller yaw — avoids the Enhanced-Input/IMC editing friction (see cookbook). *Done when:* on the tee, arrows turn where you face, Space fires that way, you can't walk off.
+**R1 — Tee-fixed aim + arrow-key aiming** — ✓ **DONE 2026-05-23** (see worklog; recipe in cookbook). Player planted on the tee; Left/Right arrows yaw view+aim; WASD/mouse-look off; shot follows the aim. Plan: `docs/superpowers/plans/2026-05-23-range-r1-tee-aim.md`.
 
 **R2 — UMG range panel: metrics grid + club dropdown** *(UI; replaces the canvas HUD).* New UMG widget, top-right. Metrics grid refreshed after each shot: **Club · Ball Speed (mph) · Launch (deg) · Spin (rpm) · Carry (yd) · Offline (yd L/R)**. A ComboBox club dropdown (the 6 bag clubs) sets the active club; keep keys 1-6 + Space as shortcuts, synced to the dropdown. SI→display conversion (m→yd ×1.09361, m/s→mph ×2.23694); values pulled from the last `FBallTrajectory` + `FShotInput`. Firing/bag logic stays in C++ (`AGolfRangeHUD` or a PlayerController); the widget displays + selects. *Done when:* dropdown switches club and each shot updates the grid in yd/mph.
 

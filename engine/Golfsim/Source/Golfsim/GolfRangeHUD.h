@@ -16,7 +16,9 @@ class GOLFSIM_API AGolfRangeHUD : public AHUD
 	GENERATED_BODY()
 
 public:
+	AGolfRangeHUD();
 	virtual void BeginPlay() override;
+	virtual void Tick(float DeltaSeconds) override;
 	virtual void DrawHUD() override;
 
 private:
@@ -32,7 +34,16 @@ private:
 	void SelectClub4() { SelectClub(4); }
 	void SelectClub5() { SelectClub(5); }
 
+	// Arrow-key aim: press/release toggle a held flag; Tick integrates the yaw.
+	void TurnLeftPressed()   { bTurnLeft = true; }
+	void TurnLeftReleased()  { bTurnLeft = false; }
+	void TurnRightPressed()  { bTurnRight = true; }
+	void TurnRightReleased() { bTurnRight = false; }
+
 	int32 ActiveClub = 0;
 	FString LastShotText;
 	bool bInputBound = false;
+	bool bControlsLocked = false;   // move + mouse-look ignored once (range-only)
+	bool bTurnLeft = false;
+	bool bTurnRight = false;
 };

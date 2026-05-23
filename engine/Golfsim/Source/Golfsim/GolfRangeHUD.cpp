@@ -26,6 +26,9 @@ namespace
 	};
 	static constexpr int32 GBagNum = UE_ARRAY_COUNT(GBag);
 
+	// Aim turn speed while an arrow is held, deg/sec. Tunable.
+	static constexpr float TurnRateDegPerSec = 75.0f;
+
 	// Place the ball at the player pawn (the tee), facing its heading with pitch/roll
 	// flattened. Reuses one ball, repositioning per shot. Mirrors GolfsimConsole.cpp.
 	AGolfBallActor* GetOrSpawnBallAt(UWorld* World, const FVector& Loc, const FRotator& Rot)
@@ -41,10 +44,35 @@ namespace
 	}
 }
 
+AGolfRangeHUD::AGolfRangeHUD()
+{
+	PrimaryActorTick.bCanEverTick = true;
+	PrimaryActorTick.bStartWithTickEnabled = true;
+}
+
 void AGolfRangeHUD::BeginPlay()
 {
 	Super::BeginPlay();
 	EnsureInputBound();
+}
+
+void AGolfRangeHUD::Tick(float DeltaSeconds)
+{
+	Super::Tick(DeltaSeconds);
+
+	const float Dir = (bTurnRight ? 1.0f : 0.0f) - (bTurnLeft ? 1.0f : 0.0f);
+	if (Dir == 0.0f)
+	{
+		return;
+	}
+	APlayerController* PC = GetOwningPlayerController();
+	if (!PC)
+	{
+		return;
+	}
+	FRotator CR = PC->GetControlRotation();
+	CR.Yaw += TurnRateDegPerSec * DeltaSeconds * Dir;   // camera follows (bUsePawnControlRotation)
+	PC->SetControlRotation(CR);
 }
 
 void AGolfRangeHUD::EnsureInputBound()
@@ -59,6 +87,12 @@ void AGolfRangeHUD::EnsureInputBound()
 		return;   // PlayerOwner not ready yet; retried from DrawHUD
 	}
 	EnableInput(PC);
+	if (!bControlsLocked)
+	{
+		PC->SetIgnoreMoveInput(true);   // planted on the tee
+		PC->SetIgnoreLookInput(true);   // arrows aim instead of the mouse
+		bControlsLocked = true;
+	}
 	if (!InputComponent)
 	{
 		return;
@@ -70,6 +104,10 @@ void AGolfRangeHUD::EnsureInputBound()
 	InputComponent->BindKey(EKeys::Five,     IE_Pressed, this, &AGolfRangeHUD::SelectClub4);
 	InputComponent->BindKey(EKeys::Six,      IE_Pressed, this, &AGolfRangeHUD::SelectClub5);
 	InputComponent->BindKey(EKeys::SpaceBar, IE_Pressed, this, &AGolfRangeHUD::FireRandom);
+	InputComponent->BindKey(EKeys::Left,     IE_Pressed,  this, &AGolfRangeHUD::TurnLeftPressed);
+	InputComponent->BindKey(EKeys::Left,     IE_Released, this, &AGolfRangeHUD::TurnLeftReleased);
+	InputComponent->BindKey(EKeys::Right,    IE_Pressed,  this, &AGolfRangeHUD::TurnRightPressed);
+	InputComponent->BindKey(EKeys::Right,    IE_Released, this, &AGolfRangeHUD::TurnRightReleased);
 	bInputBound = true;
 }
 
@@ -88,14 +126,13 @@ void AGolfRangeHUD::FireRandom()
 		return;
 	}
 
+	FRotator Rot = PC->GetControlRotation();   // aim = where the camera points
+	Rot.Pitch = 0.f;
+	Rot.Roll = 0.f;
 	FVector Loc = FVector::ZeroVector;
-	FRotator Rot = FRotator::ZeroRotator;
 	if (APawn* Pawn = PC->GetPawn())
 	{
-		Loc = Pawn->GetActorLocation();
-		Rot = Pawn->GetActorRotation();
-		Rot.Pitch = 0.f;
-		Rot.Roll = 0.f;
+		Loc = Pawn->GetActorLocation();        // launch from the tee
 	}
 
 	const FClubPreset& C = GBag[FMath::Clamp(ActiveClub, 0, GBagNum - 1)];
@@ -116,8 +153,8 @@ void AGolfRangeHUD::FireRandom()
 		C.Name, T.CarryM,
 		(T.LateralOffsetM >= 0.0 ? TEXT("R") : TEXT("L")), FMath::Abs(T.LateralOffsetM));
 	UE_LOG(LogTemp, Display,
-		TEXT("golfsim range: %s carry=%.1fm apex=%.1fm lateral=%.1fm"),
-		C.Name, T.CarryM, T.ApexM, T.LateralOffsetM);
+		TEXT("golfsim range: %s aim=%.1fdeg carry=%.1fm apex=%.1fm lateral=%.1fm"),
+		C.Name, Rot.Yaw, T.CarryM, T.ApexM, T.LateralOffsetM);
 }
 
 void AGolfRangeHUD::DrawHUD()
@@ -131,7 +168,7 @@ void AGolfRangeHUD::DrawHUD()
 
 	const FClubPreset& C = GBag[FMath::Clamp(ActiveClub, 0, GBagNum - 1)];
 	const FString L1 = FString::Printf(TEXT("Club:  %s"), C.Name);
-	const FString L2 = TEXT("[1-6] club    [Space] hit");
+	const FString L2 = TEXT("[1-6] club   [<- ->] aim   [Space] hit");
 	const FString L3 = LastShotText.IsEmpty() ? FString() : (TEXT("Last:  ") + LastShotText);
 
 	const float TitleScale = 1.5f;

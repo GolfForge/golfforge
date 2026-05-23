@@ -57,7 +57,7 @@ See [`docs/windows-setup.md`](docs/windows-setup.md) for the full Windows-side s
 
 ## For Claude / AI agents
 
-This repo is being built across two machines (Mac for pipeline + docs, Windows for UE5). Cowork sessions don't sync across desktop installations, so we use [`AGENTS.md`](AGENTS.md) at the repo root as the shared session-handoff document. If you are an AI assistant landing here, read `AGENTS.md` first.
+This repo is being built across two machines (Mac for pipeline + docs, Windows for UE5). Sessions don't sync across desktop installations, so we use [`CLAUDE.md`](CLAUDE.md) at the repo root as the shared session-handoff document. If you are an AI assistant landing here, read `CLAUDE.md` first.
 
 ## License
 

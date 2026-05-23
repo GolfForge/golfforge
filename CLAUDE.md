@@ -50,7 +50,7 @@ This file stays slim on purpose. The heavyweight reference material lives in `do
 ## Current status
 
 - **Latest:** Practice Range minimal level + range spacebar shot tool DONE (2026-05-23, Windows). The flat walkable range is the default map; in PIE, keys 1-6 select a club and Space hits a randomized shot with a tracer.
-- **Active focus:** practice-range polish — 3D grass, perimeter PCG trees, yardage markers, `golfsim.SetPin`. See `docs/backlog.md` for the full queue.
+- **Active focus:** practice-range polish, ordered R1→R4 — tee-fixed arrow-key aim, UMG metrics/club panel (yd/mph), perimeter trees, then time-of-day + weather selectors. See `docs/backlog.md` for the full breakdown.
 - History → `docs/worklog.md`. Next work → `docs/backlog.md`. Engine gotchas → `docs/ue5-cookbook.md`.
 
 ## Session-end checklist

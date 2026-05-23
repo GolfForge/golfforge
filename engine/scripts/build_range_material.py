@@ -76,6 +76,12 @@ LAYERS = [
 BASE_COLOR_FALLBACK = (0.05, 0.20, 0.05)   # chain terminator
 ROUGH_FALLBACK      = 0.70
 GRASS_TYPE_PATH     = "/Game/Landscape/Grass/LGT_FairwayGrass"
+# The range ships WITHOUT 3D LandscapeGrass by default: dense camera-driven KBG
+# clumps on the fairway you stand on dominated the GPU (halved fullscreen FPS),
+# and a flat synthetic range reads fine on the textured fairway alone. Override
+# BUILD_GRASS=True before exec to restore the LandscapeGrassOutput node. (The
+# course material M_GolfsimCourse keeps its grass independently.)
+BUILD_GRASS         = globals().get("BUILD_GRASS", False)
 
 _PROBE_MAT = "/Game/Materials/_PROBE_RANGEMATBUILD_DELETE"
 
@@ -398,7 +404,11 @@ def main():
              "half-wired material. Backup %s is intact; restore it if the "
              "live material was already deleted." % BACKUP_PATH)
         return
-    _build_grass_output(mat)
+    if BUILD_GRASS:
+        _build_grass_output(mat)
+    else:
+        _log("BUILD_GRASS=False: skipping LandscapeGrassOutput (range has no 3D "
+             "grass; set BUILD_GRASS=True to restore it)")
     _mel().recompile_material(mat)   # returns None by design; no exception=ok
     unreal.EditorAssetLibrary.save_asset(MATERIAL_PATH)
     _reassign_landscape(mat)

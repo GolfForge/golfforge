@@ -109,6 +109,10 @@ void AGolfRangeHUD::EnsureInputBound()
 			GVC->SetHardwareCursor(EMouseCursor::Default, CursorPath, HotSpot);
 			GVC->SetHardwareCursor(EMouseCursor::Hand, CursorPath, HotSpot);
 		}
+		// Always-on FPS overlay so range perf is visible at a glance in PIE and
+		// fullscreen (range-only, like the rest of this lock block; runs once).
+		// Swap to "stat unit" for the GPU/draw ms breakdown when diagnosing.
+		PC->ConsoleCommand(TEXT("stat fps"));
 		bControlsLocked = true;
 	}
 	if (!Panel)
@@ -214,5 +218,13 @@ void AGolfRangeHUD::DrawHUD()
 {
 	Super::DrawHUD();
 	EnsureInputBound();   // still the retry that binds input + creates the panel once the PC exists
-	// The UMG panel (UGolfRangePanel) now draws the club + metrics; no canvas drawing here.
+	// The UMG panel draws club + metrics. We only add a tiny render-resolution
+	// readout (top-left) to sit alongside the stat fps overlay, so fullscreen /
+	// 4K perf is easy to gauge. Canvas->SizeX/Y is the actual viewport draw size.
+	if (Canvas)
+	{
+		const FString Res = FString::Printf(TEXT("Res: %d x %d"),
+			(int32)Canvas->SizeX, (int32)Canvas->SizeY);
+		DrawText(Res, FLinearColor(1.0f, 0.92f, 0.35f), 20.0f, 20.0f);
+	}
 }

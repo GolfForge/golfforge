@@ -12,6 +12,18 @@
 # non-input/output nodes + edges, then recreates the full chain), so it is
 # safe to re-run and produces an identical graph each time.
 #
+# SIBLING GRAPHS: GRAPH_PATH and DENSITY_PPSM read from globals() first, so a
+# caller can author a separate graph at a different density WITHOUT disturbing
+# the BethPage-validated defaults. If GRAPH_PATH names a graph that does not
+# exist yet, main() seeds it by duplicating BASE_GRAPH_PATH (so it builds from
+# a valid PCGGraph copy). This is how the practice range gets its own denser
+# graph (the shared graph stays at the BethPage value):
+#
+#   DENSITY_PPSM=0.35; GRAPH_PATH="/Game/PCG/PCG_TreeScatter_Range"
+#   exec(compile(open(r"C:\Users\pucho\code\golfsim\engine\scripts"
+#                     r"\build_pcg_treescatter.py").read(),
+#                "build_pcg_treescatter.py", "exec"))
+#
 # Final graph topology:
 #
 #   GetLandscape ----------------\
@@ -33,14 +45,18 @@
 import unreal
 
 # ---------------------------------------------------------------- parameters
-GRAPH_PATH       = "/Game/PCG/PCG_TreeScatter"
+# BASE_GRAPH_PATH is the canonical (BethPage-validated) graph and the seed for
+# any sibling. GRAPH_PATH / DENSITY_PPSM honor a pre-set global so a caller can
+# author a separate, denser graph (e.g. the range) without editing this file.
+BASE_GRAPH_PATH  = "/Game/PCG/PCG_TreeScatter"
+GRAPH_PATH       = globals().get("GRAPH_PATH", BASE_GRAPH_PATH)
 # Nanite SkeletalMesh hero tree (Megaplant; gitignored, re-download via Bridge
 # on a fresh clone). _D is the lowest-poly full-tree variant.
 MESH_SOFT_PATH   = ("/Game/Megaplant_Library/Tree_Silver_Birch/"
                     "Tree_Silver_Birch_01/SK_Silver_Birch_01_D.SK_Silver_Birch_01_D")
 TREES_LAYER_NAME = "Trees"     # must match the LII_Trees landscape layer name
 TREES_THRESHOLD  = 0.3         # keep points where Trees weight > this
-DENSITY_PPSM     = 0.02        # points per m^2 (sparse de-risk value)
+DENSITY_PPSM     = globals().get("DENSITY_PPSM", 0.02)  # points/m^2 (BethPage de-risk default)
 SCALE_MIN        = 0.85
 SCALE_MAX        = 1.20
 MESH_ATTR_NAME   = "Mesh"      # attribute that carries the mesh soft path
@@ -98,10 +114,22 @@ def _set_selector(owner, prop, attr_name):
 
 
 def main():
+    _log("target graph = %s @ %.3f ppsm" % (GRAPH_PATH, DENSITY_PPSM))
     graph = unreal.load_asset(GRAPH_PATH)
     if graph is None:
-        _log("FATAL: graph not found at %s" % GRAPH_PATH)
-        return
+        # A sibling graph (overridden GRAPH_PATH) that doesn't exist yet: seed
+        # it by duplicating the base graph so we author from a valid PCGGraph.
+        # When GRAPH_PATH IS the base and it's missing, that's a fresh-clone
+        # state with nothing to seed from -> fail loud (unchanged behavior).
+        eal = unreal.EditorAssetLibrary
+        if GRAPH_PATH != BASE_GRAPH_PATH and eal.does_asset_exist(BASE_GRAPH_PATH):
+            if eal.duplicate_asset(BASE_GRAPH_PATH, GRAPH_PATH) is not None:
+                _log("seeded %s by duplicating %s" % (GRAPH_PATH, BASE_GRAPH_PATH))
+                graph = unreal.load_asset(GRAPH_PATH)
+        if graph is None:
+            _log("FATAL: graph not found at %s (and could not seed from %s)"
+                 % (GRAPH_PATH, BASE_GRAPH_PATH))
+            return
 
     # --- 1. clean slate (idempotent) -------------------------------------
     for n in list(graph.get_editor_property("nodes")):

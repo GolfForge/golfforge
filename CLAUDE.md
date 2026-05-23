@@ -49,8 +49,8 @@ This file stays slim on purpose. The heavyweight reference material lives in `do
 
 ## Current status
 
-- **Latest:** Practice Range R1 DONE (2026-05-23, Windows) — player fixed on the tee, Left/Right arrows aim, WASD/mouse-look off, shot follows the view. Built on the minimal range + spacebar shot tool.
-- **Active focus:** practice-range polish, **R2 next** — UMG metrics/club panel (yd/mph); then R3 perimeter trees, R4 time-of-day + weather. See `docs/backlog.md` for the full breakdown.
+- **Latest:** Practice Range R2 DONE (2026-05-23, Windows) — UMG launch-monitor panel, the project's first UMG widget, pure-C++ `UGolfRangePanel` (no WBP): top-right metrics grid (yd/mph) refreshed per shot + `UComboBoxString` club dropdown synced with the 1-6 keys. Range now shows the cursor (GameAndUI) so the dropdown is clickable; Space still fires. Bundled a themed golf-tee **hardware cursor** on the range (transparent PNG in `Content/Slate/`, set via `SetHardwareCursor`). Built on R1 (tee-fixed arrow aim) + the spacebar shot tool.
+- **Active focus:** practice-range polish, **R3 next** — perimeter trees (+ optional 3D grass) via the existing PCG path; then R4 time-of-day + weather selectors driven from the R2 panel. See `docs/backlog.md` for the full breakdown.
 - History → `docs/worklog.md`. Next work → `docs/backlog.md`. Engine gotchas → `docs/ue5-cookbook.md`.
 
 ## Session-end checklist

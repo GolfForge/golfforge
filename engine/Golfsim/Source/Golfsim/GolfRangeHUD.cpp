@@ -4,11 +4,12 @@
 #include "Physics/BallFlightSolver.h"
 #include "Physics/BallFlightTypes.h"
 
-#include "Engine/Canvas.h"
 #include "EngineUtils.h"
 #include "Components/InputComponent.h"
+#include "Engine/GameViewportClient.h"
 #include "GameFramework/PlayerController.h"
 #include "GameFramework/Pawn.h"
+#include "GenericPlatform/ICursor.h"
 
 namespace
 {
@@ -91,7 +92,51 @@ void AGolfRangeHUD::EnsureInputBound()
 	{
 		PC->SetIgnoreMoveInput(true);   // planted on the tee
 		PC->SetIgnoreLookInput(true);   // arrows aim instead of the mouse
+		// Free the cursor so the player can click the panel's club dropdown. GameAndUI keeps
+		// the legacy key binds (1-6 / Space / arrows) live while routing clicks to the UI.
+		PC->bShowMouseCursor = true;
+		FInputModeGameAndUI InputMode;
+		InputMode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
+		InputMode.SetHideCursorDuringCapture(false);
+		PC->SetInputMode(InputMode);
+		// Themed golf-tee hardware cursor (range-only). Loads Content/Slate/golf_tee_cursor.png;
+		// hotspot (normalized) sits on the sharp tip. Override Default + Hand so it shows over the UI too.
+		UWorld* World = GetWorld();
+		if (UGameViewportClient* GVC = World ? World->GetGameViewport() : nullptr)
+		{
+			const FName CursorPath(TEXT("Slate/golf_tee_cursor"));
+			const FVector2D HotSpot(0.063, 0.047);
+			GVC->SetHardwareCursor(EMouseCursor::Default, CursorPath, HotSpot);
+			GVC->SetHardwareCursor(EMouseCursor::Hand, CursorPath, HotSpot);
+		}
 		bControlsLocked = true;
+	}
+	if (!Panel)
+	{
+		Panel = CreateWidget<UGolfRangePanel>(PC, UGolfRangePanel::StaticClass());
+		if (Panel)
+		{
+			// Weak capture: the panel must never call into a destroyed HUD (e.g. during PIE teardown).
+			TWeakObjectPtr<AGolfRangeHUD> WeakThis(this);
+			Panel->OnClubChosen = [WeakThis](int32 Idx)
+			{
+				if (AGolfRangeHUD* HUD = WeakThis.Get())
+				{
+					HUD->SelectClub(Idx);
+				}
+			};
+			// Feed the dropdown from the bag so the names can't drift from the firing presets.
+			TArray<FString> ClubNames;
+			ClubNames.Reserve(GBagNum);
+			for (const FClubPreset& P : GBag)
+			{
+				ClubNames.Add(P.Name);
+			}
+			Panel->SetClubOptions(ClubNames);
+			Panel->AddToViewport();
+			Panel->SetSelectedClubIndex(ActiveClub);
+			Panel->UpdateMetrics(GBag[ActiveClub].Name, 0.0, 0.0, 0.0, 0.0, 0.0);   // "-" until first shot
+		}
 	}
 	if (!InputComponent)
 	{
@@ -115,6 +160,10 @@ void AGolfRangeHUD::SelectClub(int32 Index)
 {
 	ActiveClub = FMath::Clamp(Index, 0, GBagNum - 1);
 	UE_LOG(LogTemp, Display, TEXT("golfsim range: club -> %s"), GBag[ActiveClub].Name);
+	if (Panel)
+	{
+		Panel->SetSelectedClubIndex(ActiveClub);   // keep the dropdown in step with 1-6 keys (guarded)
+	}
 }
 
 void AGolfRangeHUD::FireRandom()
@@ -149,9 +198,13 @@ void AGolfRangeHUD::FireRandom()
 		Ball->PlayTrajectory(T);
 	}
 
-	LastShotText = FString::Printf(TEXT("%s   carry %.0f m   %s%.0f m"),
-		C.Name, T.CarryM,
-		(T.LateralOffsetM >= 0.0 ? TEXT("R") : TEXT("L")), FMath::Abs(T.LateralOffsetM));
+	if (Panel)
+	{
+		const double SpeedMph  = Shot.BallSpeedMps   * 2.2369362921;   // m/s -> mph
+		const double CarryYd   = T.CarryM            * 1.0936132983;   // m   -> yd
+		const double OfflineYd = T.LateralOffsetM    * 1.0936132983;   // signed; + = right
+		Panel->UpdateMetrics(C.Name, SpeedMph, Shot.LaunchAngleDeg, Shot.BackspinRpm, CarryYd, OfflineYd);
+	}
 	UE_LOG(LogTemp, Display,
 		TEXT("golfsim range: %s aim=%.1fdeg carry=%.1fm apex=%.1fm lateral=%.1fm"),
 		C.Name, Rot.Yaw, T.CarryM, T.ApexM, T.LateralOffsetM);
@@ -160,38 +213,6 @@ void AGolfRangeHUD::FireRandom()
 void AGolfRangeHUD::DrawHUD()
 {
 	Super::DrawHUD();
-	EnsureInputBound();
-	if (!Canvas)
-	{
-		return;
-	}
-
-	const FClubPreset& C = GBag[FMath::Clamp(ActiveClub, 0, GBagNum - 1)];
-	const FString L1 = FString::Printf(TEXT("Club:  %s"), C.Name);
-	const FString L2 = TEXT("[1-6] club   [<- ->] aim   [Space] hit");
-	const FString L3 = LastShotText.IsEmpty() ? FString() : (TEXT("Last:  ") + LastShotText);
-
-	const float TitleScale = 1.5f;
-	float w1 = 0.f, h1 = 0.f, w2 = 0.f, h2 = 0.f, w3 = 0.f, h3 = 0.f;
-	GetTextSize(L1, w1, h1, nullptr, TitleScale);
-	GetTextSize(L2, w2, h2, nullptr, 1.0f);
-	if (!L3.IsEmpty())
-	{
-		GetTextSize(L3, w3, h3, nullptr, 1.0f);
-	}
-
-	const float Margin = 28.f;
-	const float BlockW = FMath::Max3(w1, w2, w3);
-	const float BlockH = h1 + h2 + (L3.IsEmpty() ? 0.f : h3) + 12.f;
-	float X = Canvas->ClipX - BlockW - Margin;
-	float Y = Canvas->ClipY - BlockH - Margin;
-
-	DrawText(L1, FLinearColor(1.0f, 0.92f, 0.35f), X, Y, nullptr, TitleScale);
-	Y += h1 + 4.f;
-	DrawText(L2, FLinearColor::White, X, Y, nullptr, 1.0f);
-	if (!L3.IsEmpty())
-	{
-		Y += h2 + 4.f;
-		DrawText(L3, FLinearColor(0.65f, 0.9f, 1.0f), X, Y, nullptr, 1.0f);
-	}
+	EnsureInputBound();   // still the retry that binds input + creates the panel once the PC exists
+	// The UMG panel (UGolfRangePanel) now draws the club + metrics; no canvas drawing here.
 }

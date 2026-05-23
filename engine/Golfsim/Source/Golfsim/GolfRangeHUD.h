@@ -8,6 +8,7 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/HUD.h"
+#include "GolfRangePanel.h"
 #include "GolfRangeHUD.generated.h"
 
 UCLASS()
@@ -41,9 +42,10 @@ private:
 	void TurnRightReleased() { bTurnRight = false; }
 
 	int32 ActiveClub = 0;
-	FString LastShotText;
 	bool bInputBound = false;
 	bool bControlsLocked = false;   // move + mouse-look ignored once (range-only)
 	bool bTurnLeft = false;
 	bool bTurnRight = false;
+
+	UPROPERTY(Transient) TObjectPtr<UGolfRangePanel> Panel;
 };

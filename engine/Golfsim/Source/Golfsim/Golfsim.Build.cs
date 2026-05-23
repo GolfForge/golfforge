@@ -11,13 +11,10 @@ public class Golfsim : ModuleRules
 		// Allow path-qualified includes from the module root (e.g. "Physics/BallFlightSolver.h").
 		PublicIncludePaths.Add(ModuleDirectory);
 
-		PublicDependencyModuleNames.AddRange(new string[] { "Core", "CoreUObject", "Engine", "InputCore", "EnhancedInput" });
+		PublicDependencyModuleNames.AddRange(new string[] { "Core", "CoreUObject", "Engine", "InputCore", "EnhancedInput", "UMG", "Slate", "SlateCore" });
 
 		PrivateDependencyModuleNames.AddRange(new string[] {  });
 
-		// Uncomment if you are using Slate UI
-		// PrivateDependencyModuleNames.AddRange(new string[] { "Slate", "SlateCore" });
-		
 		// Uncomment if you are using online features
 		// PrivateDependencyModuleNames.Add("OnlineSubsystem");
 

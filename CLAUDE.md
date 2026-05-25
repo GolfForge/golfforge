@@ -8,8 +8,8 @@ file (committed to git) is how the Mac-side and Windows-side sessions stay coher
 This file stays slim on purpose. The heavyweight reference material lives in `docs/` and is read
 **on demand** — pull these in only when the task calls for it:
 
-- `docs/worklog.md` — what's been done (summarized history)
-- `docs/backlog.md` — what's next (the prioritized work queue)
+- **Linear** ([linear.app/golfsim](https://linear.app/golfsim)) — the prioritized work queue. Every ticket has goal, plan, done-when, dependencies, and files to touch. Each is also tagged `machine/windows` / `machine/mac` / `machine/either` so you can filter to what the current machine can actually do.
+- `docs/worklog.md` — what's been done (summarized history). This is the "shipped features" reference.
 - `docs/ue5-cookbook.md` — UE5/MCP/PCG pitfalls + recipes + Fab asset list (read when you hit an engine issue)
 - `docs/pipeline-data-contract.md` — the `courses/<id>/` file-shape contract
 - `docs/plan.md` — full project plan, MVP ladder, decisions
@@ -49,19 +49,26 @@ This file stays slim on purpose. The heavyweight reference material lives in `do
 
 ## Current status
 
-- **Latest:** Practice Range R4 DONE (2026-05-23, Windows) — environment selectors (time-of-day + weather). Two dropdowns on the R2 panel (Time: Dawn/Morning/Noon/Dusk/Night · Sky: Clear/Cloudy/Overcast) drive a new **`AGolfRangeEnvironment`** director actor (the canonical UE pattern — one actor owning the sky state, like `BP_Sky_Sphere`), find-or-spawned at runtime by `AGolfRangeHUD`. `ApplyEnvironment()` composes the active Time×Sky pair → DirectionalLight rotation/temperature/intensity + fog + SkyLight intensity + VolumetricCloud `Cloud_GlobalCoverage`/`Cloud_GlobalDensity` (runtime MID). **Pure C++, zero umap/asset changes** — recon found the UE5.7 Basic level already ships the VolumetricCloud (`m_SimpleVolumetricCloud_Inst`) + a Movable/RealTimeCapture SkyLight + SkyAtmosphere, so nothing to spawn, no Python, no manual recapture (ambient auto-tracks the sun), and the cloud was already in the 4K/~16 ms budget (heavier weather isn't more expensive). `golfsim.SetTime`/`golfsim.SetSky` console commands added. Verified live in PIE; preset look-and-feel values are functional seeds, tuning deferred. Built on R1–R3.
-- **Active focus:** practice-range core polish **R1–R4 all DONE**. Next options: (a) tune the R4 Time/Sky preset look-and-feel (seeds are functional but unpolished); (b) practice-range optional items (yardage markers · `golfsim.SetPin` target green · far-end Nanite backdrop); (c) shift to ball-flight follow-ups (ground/roll + the in-process EventBus). See `docs/backlog.md` for the full breakdown.
-- History → `docs/worklog.md`. Next work → `docs/backlog.md`. Engine gotchas → `docs/ue5-cookbook.md`.
+- **Latest:** Practice Range R3 + R4 DONE (2026-05-23, Windows). **R3 trees:** range got its own PCG graph `/Game/PCG/PCG_TreeScatter_Range` (separate from BethPage's to dodge the shared-density footgun), driven by `scatter_range_trees.py` (persistent, GenerateOnLoad). `build_range_splatmap.py` reworked from 504 m perimeter ring → tight 400×70-yd open lane framed by a 22-yd tree wall (trees ±35 yd off center). Perf: 4K had tanked to ~45 FPS (GPU/geometry-bound; 3D fairway grass was ~half the cost), so grass **removed from the range** (grass-output node deleted from `M_PracticeRange`; `build_range_material.py` defaults `BUILD_GRASS=False`) and tree density dialed to **0.10 ppsm (~1,966 trees)**. Landed ~50 FPS / 16 ms GPU. `stat fps` + resolution readout added to the range HUD. **R4 environment selectors:** two Time/Sky dropdowns on the R2 panel drive a new `AGolfRangeEnvironment` director actor (canonical UE pattern), find-or-spawned by HUD in PIE. `ApplyEnvironment()` composes Time (Dawn/Morning/Noon/Dusk/Night) × Sky (Clear/Cloudy/Overcast) → DirectionalLight rotation/temperature/intensity + fog + SkyLight intensity + VolumetricCloud `Cloud_GlobalCoverage`/`Cloud_GlobalDensity` (runtime MID). Pure C++, zero umap/asset changes — UE5.7 Basic level already ships the cloud + RealTimeCapture SkyLight + SkyAtmosphere. `golfsim.SetTime`/`golfsim.SetSky` console commands added.
+- **Backlog moved to Linear (2026-05-25):** `docs/backlog.md` is gone; the prioritized work queue is now [linear.app/golfsim](https://linear.app/golfsim). Tickets are self-contained (goal + plan + done-when + files + pitfalls) so an agent can pick one cold. Filter by `machine/windows` or `machine/mac` to see what fits the current machine.
+- **Active focus:** Practice Range R1-R4 all DONE. Two parallel tracks open up from here, depending on machine + appetite:
+  - **Architecture (Urgent):** **GOL-7 EventBus** — day-one invariant, not built yet, blocks every hardware driver. Pick this first on Windows.
+  - **Pipeline polish (High, Mac/either):** **GOL-33** — Bethpage's pipeline output has holes / missing tees / missing fairways. Audit + fix the OSM extraction before chasing more courses (GOL-19 second-course deferred until this lands).
+  - **Walking track (High, Mac):** **GOL-32** — order ESP32 + TCRT5000 parts (5-minute Amazon run). Unblocks **GOL-13** build → **GOL-14** FTMS Windows driver.
+  - **Launch monitor track (High, Windows, after GOL-7):** **GOL-11 OpenFlight** — first real LM input via WebSocket; AGPL-isolated.
+  - **Range polish (Low, Windows):** GOL-27 (R4 preset tuning), GOL-28 (yardage markers), GOL-29 (`SetPin` target), GOL-30 (Nanite backdrop), GOL-31 (static-Nanite trees) — all optional follow-ups from R3/R4.
+  - **Course-quality arc (Medium, after GOL-33):** **GOL-34 bunker authoring tools** (raised lip + depression — sand traps that look like real bunkers), **GOL-35 fairway cut patterns** (stripes / criss-cross / diagonal mowing lines). Both blocked by GOL-33 — the polish pass establishes the corrected feature polygons these tools consume.
+- History → `docs/worklog.md`. Next work → Linear. Engine gotchas → `docs/ue5-cookbook.md`.
 
 ## Session-end checklist
 
 Before you stop a session, in order:
 
-1. **Summarize** newly-completed work into `docs/worklog.md` (prepend a dated, tight entry — outcome + committed artifact, not blow-by-blow).
-2. **Update** `docs/backlog.md` — drop shipped items, re-prioritize what's next.
+1. **Summarize** newly-completed work into `docs/worklog.md` (prepend a dated, tight entry — outcome + committed artifact, not blow-by-blow). Reference the Linear ticket ID (e.g., `GOL-5 R3 trees DONE`) so cross-links are easy.
+2. **Update Linear:** mark shipped tickets Done, drop a brief outcome comment (numbers, what files landed). File new tickets for any follow-ups you discovered while working. Re-prioritize the top of the queue if your work changes what's next.
 3. **Append** any new gotchas/recipes to `docs/ue5-cookbook.md`.
-4. **Bump** the Current status section above.
+4. **Bump** the Current status section above (especially the "Latest" line and the active-focus pointer to specific Linear ticket IDs).
 5. **Update** `docs/plan.md` if an architectural decision changed.
 6. **Commit + push**, and tell the user what state the repo is in so the other machine knows what it'll see on `git pull`.
 
-The next session — possibly on the other machine — starts by reading this file and picks up from here.
+The next session — possibly on the other machine — starts by reading this file, scans Linear for the top-priority ticket tagged for its machine, and picks up from there.

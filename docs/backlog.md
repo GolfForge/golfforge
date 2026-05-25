@@ -1,29 +1,31 @@
-# Backlog — what's next (priority order)
+# Backlog — moved to Linear
 
-> The prioritized work queue. When an item ships, summarize it into `docs/worklog.md` and drop it from here. Engine gotchas/recipes live in `docs/ue5-cookbook.md`.
+The prioritized work queue moved to Linear on 2026-05-25.
 
-## 1. Practice Range polish (active)
+→ **[linear.app/golfsim](https://linear.app/golfsim)**
 
-The flat walkable+shootable range is the default map (minimal level DONE 2026-05-23, see worklog). This pass turns it into a proper launch-monitor range. **Decisions (2026-05-23):** UMG panel for the UI; essentials metrics in yd/mph; arrows yaw camera+aim with no walking/mouse-look; environment selectors after the core. Build order R1 → R2 → R3 → R4 — **R1–R4 all done.** What remains in this section is optional (preset look-and-feel tuning + the "Later / optional" items below).
+## Why
 
-**R1 — Tee-fixed aim + arrow-key aiming** — ✓ **DONE 2026-05-23** (see worklog; recipe in cookbook). Player planted on the tee; Left/Right arrows yaw view+aim; WASD/mouse-look off; shot follows the aim. Plan: `docs/superpowers/plans/2026-05-23-range-r1-tee-aim.md`.
+`docs/backlog.md` was outgrowing its format — tickets got long, dependencies got implicit, and there was no good way for an agent to filter by which machine could pick up a given task. Linear gives us self-contained tickets with goal/plan/done-when/files/pitfalls, explicit blockers, and `machine/windows` / `machine/mac` / `machine/either` labels.
 
-**R2 — UMG range panel: metrics grid + club dropdown** — ✓ **DONE 2026-05-23** (see worklog; UMG-in-C++ recipe in cookbook). Pure-C++ `UGolfRangePanel : UUserWidget` (no WBP), top-right grid (Club · Ball Speed mph · Launch deg · Spin rpm · Carry yd · Offline yd) refreshed per shot, `UComboBoxString` club dropdown synced with the 1-6 keys; `AGolfRangeHUD` owns firing/bag and drives the widget. Range now shows the mouse cursor + `FInputModeGameAndUI` so the dropdown is clickable; Space still fires (focus returned to the viewport after a pick).
+## Conventions in Linear
 
-**R3 — Trees on the sides** — ✓ **DONE 2026-05-23** (see worklog; PCG-2nd-graph, skinned-ISM-introspection + grass/skinning perf recipes in cookbook). Trees frame the range via the existing PCG path. Range got its own graph `/Game/PCG/PCG_TreeScatter_Range` (separate from BethPage's, to dodge the shared-density footgun), driven by new `scatter_range_trees.py` (persistent, GenerateOnLoad). `build_range_splatmap.py` layout reworked from a 504 m perimeter ring into a tight 400×70-yd open lane framed by a 22-yd tree wall (trees ±35 yd off center) after the wide-plain look was rejected. **Perf:** 4K fullscreen had tanked to ~45 FPS — diagnosed GPU/geometry-bound; the 3D fairway grass was ~half the cost, so it was **removed from the range** (grass-output node deleted from `M_PracticeRange`, range-only; `build_range_material.py` now defaults `BUILD_GRASS=False`) and tree density dialed to **0.10 ppsm (~1,966 trees)** to avoid a "wall of green". Landed at ~50 FPS / 16 ms GPU. Added an always-on `stat fps` + resolution readout to the range HUD. *Optional later:* import a static-Nanite tree (Megaplant trees are skinned-only, costly up close) for more headroom; sparse short grass on the range if desired.
+- **Labels:**
+  - `area/*` — `area/pipeline`, `area/engine`, `area/range`, `area/launch-monitor`, `area/walking`, `area/hardware`, `area/architecture`, `area/cross-platform`, `area/docs`
+  - `machine/*` — `machine/windows`, `machine/mac`, `machine/either`. Pick a ticket whose label matches where you're sitting.
+  - **Kind:** `Feature`, `Improvement`, `Bug` (Linear defaults).
+- **Priority:** Urgent (1) is reserved for architectural invariants and broken-state stuff. High (2) is the next 1-2 things to actually do. Medium (3) and Low (4) are the queue.
+- **Blockers:** every ticket states its dependencies explicitly. Linear renders these as graph edges.
+- **Done flow:** when a ticket lands, drop a short outcome comment (numbers, files landed) and mark Done. Add a dated entry to `docs/worklog.md` referencing the ticket ID.
 
-**R4 — Environment selectors: time-of-day + weather** — ✓ **DONE 2026-05-23** (see worklog; cloud/runtime-lighting + editor-vs-PIE-world recipes in cookbook). Two dropdowns on the R2 panel drive a new `AGolfRangeEnvironment` director actor (canonical UE pattern, find-or-spawned by the HUD in PIE) whose `ApplyEnvironment()` composes **Time** (Dawn/Morning/Noon/Dusk/Night) × **Sky** (Clear/Cloudy/Overcast) → DirectionalLight rotation/temperature/intensity + fog + SkyLight intensity + VolumetricCloud `Cloud_GlobalCoverage`/`Cloud_GlobalDensity` (runtime MID). **Pure C++** — the UE5.7 Basic level already ships the cloud + a RealTimeCapture SkyLight + SkyAtmosphere, so no umap/asset/Python changes and no manual recapture. `golfsim.SetTime`/`golfsim.SetSky` console commands added. Preset look-and-feel values are functional **seeds** — *optional follow-up:* tune them (sun lux/pitch per time, cloud coverage/density per sky, night believability) in the placed actor's Details or the code defaults; consider exposing `r.VolumetricCloud.*` quality cvars as a low/med/high settings preset for the eventual options menu.
+## What lives where now
 
-**Later / optional** *(kept, lower priority):* R4 preset look-and-feel tuning (above) · yardage markers (50–300 yd `ATextRenderActor`s along +X from the tee, ×91.44 cm/yd) · `golfsim.SetPin <yards>` + `AGolfPinActor` target green/flag (C++ editor-closed; add `SetPinCmd` to `GolfsimConsole.cpp` mirroring the `FAutoConsoleCommandWithWorldAndArgs` + `GetOrSpawnBall` pattern) · USER-supplied far-end Nanite backdrop. Real LM driver stays the v0.3 milestone; shots fired manually with `golfsim.FireShot` / Space for now.
+- **What's been built:** `docs/worklog.md` (dated, summarized, "shipped features" reference).
+- **What's next:** Linear.
+- **Architectural decisions / project plan:** `docs/plan.md`.
+- **Engine pitfalls / recipes:** `docs/ue5-cookbook.md`.
+- **Pipeline → engine file shapes:** `docs/pipeline-data-contract.md`.
 
-## 2. Ball-flight follow-ups (sim correctness)
+## For agents
 
-**Ball flight DONE (2026-05-22, see worklog).** Next pieces, in order: **(a) Ground interaction + roll (Chaos)** — turn the solver's carry/landing (position, speed, descent angle, lie) into `total_m` + `final_lie` via bounce/roll on the landing surface; the other half of `session.shot_outcome`. (Also unlocks a Total-distance metric for the range grid.) **(b) In-process EventBus** (`docs/event-protocol.md`) — the day-one architecture invariant still isn't built: stand up the `EventBus` subsystem, a `manual-shot-dialog` driver that publishes `shot.taken`, and a subscriber that runs `GolfBallFlight::Simulate` and emits `session.shot_outcome`. `FShotInput` already mirrors `shot.taken`, so this is mostly wiring + the pub/sub. **(c) Blueprint / live-tuning layer (additive, anytime):** expose the solver for real-time tuning without recompiling — promote `FShotInput` / `FAeroCoefficients` / `FBallTrajectory` to `USTRUCT(BlueprintType)`, add a `UGolfBallFlightLibrary : UBlueprintFunctionLibrary` with `BlueprintCallable` `Simulate` / `TraceFromResolved`, and an `EditAnywhere FAeroCoefficients` on `AGolfBallActor` (or a `UDataAsset`) so Cd/Cl knobs are tweakable in Details. Optional UMG slider panel to dial the model against more reference data. Keep the pure-C++ integrator untouched — thin wrapper/reflection layer only.
-
-## 3. M0.8.5 tree-scatter polish (BethPage, optional)
-
-Scale-up is validated (29,070 Silver Birch @ 100 FPS / 4.3 GB on BethPage); punted at the stop-at-gate decision, pick up anytime: (a) tune `DENSITY_PPSM` / `TREES_THRESHOLD` in `build_pcg_treescatter.py` for a denser forest (0.02 was the gate value, likely sparse); (b) add **Baltic Pine** (`Tree_Baltic_Pine`, on disk — SkeletalMesh+ProceduralVegetationPreset format) as a 2nd species; (c) save `BethPageBlack.umap` with a non-transient full volume so the forest persists. Re-measure perf after density changes (watch `stat streaming`; `r.Streaming.PoolSize` is a fixed 1000 MB default). PCG Python API reference → `docs/ue5-cookbook.md`.
-
-## 4. ESP32 walking-pad driver (parallel hardware track)
-
-Order LilyGo TTGO T-Display + TCRT5000 sensors. Optical-sensor mode with belt marks via 3D-printed jig.
+Read `CLAUDE.md` first. It points here, points at Linear, and tells you which machine you're on. Then filter Linear by `machine/<your-machine>` and `priority: Urgent or High` to see what's actionable right now.

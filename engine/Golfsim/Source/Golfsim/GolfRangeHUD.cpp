@@ -2,8 +2,8 @@
 
 #include "GolfBallActor.h"
 #include "GolfRangeEnvironment.h"
-#include "Physics/BallFlightSolver.h"
-#include "Physics/BallFlightTypes.h"
+#include "Events/EventBusSubsystem.h"      // publish shot.taken / subscribe shot.outcome (GOL-7)
+#include "Physics/BallFlightTypes.h"       // FBallTrajectory (carried on the outcome event)
 
 #include "EngineUtils.h"
 #include "Components/InputComponent.h"
@@ -71,6 +71,17 @@ void AGolfRangeHUD::BeginPlay()
 {
 	Super::BeginPlay();
 	EnsureInputBound();
+}
+
+void AGolfRangeHUD::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+	if (UEventBusSubsystem* EBus = EventBusWeak.Get())
+	{
+		EBus->Unsubscribe(OutcomeSub);   // weak-captured anyway, but don't leave a dead entry
+	}
+	OutcomeSub = FGolfEventSubscription{};
+	EventBusWeak = nullptr;
+	Super::EndPlay(EndPlayReason);
 }
 
 void AGolfRangeHUD::Tick(float DeltaSeconds)
@@ -181,6 +192,25 @@ void AGolfRangeHUD::EnsureInputBound()
 			}
 		}
 	}
+	// Subscribe once to shot outcomes: the integrator (UEventBusSubsystem) runs the solver and
+	// publishes the resolved flight; OnShotOutcome plays the ball + refreshes the panel. Weak
+	// capture so a late dispatch during PIE teardown can never call into a destroyed HUD.
+	if (!OutcomeSub.IsValid())
+	{
+		if (UEventBusSubsystem* EBus = UEventBusSubsystem::Get(this))
+		{
+			TWeakObjectPtr<AGolfRangeHUD> WeakThis(this);
+			OutcomeSub = EBus->Subscribe(EEventKind::ShotOutcome,
+				[WeakThis](const FGolfEvent& Event)
+				{
+					if (AGolfRangeHUD* HUD = WeakThis.Get())
+					{
+						HUD->OnShotOutcome(Event);
+					}
+				});
+			EventBusWeak = EBus;   // cache for a reliable Unsubscribe in EndPlay
+		}
+	}
 	if (!InputComponent)
 	{
 		return;
@@ -211,9 +241,8 @@ void AGolfRangeHUD::SelectClub(int32 Index)
 
 void AGolfRangeHUD::FireRandom()
 {
-	UWorld* World = GetWorld();
 	APlayerController* PC = GetOwningPlayerController();
-	if (!World || !PC)
+	if (!PC)
 	{
 		return;
 	}
@@ -226,31 +255,70 @@ void AGolfRangeHUD::FireRandom()
 	{
 		Loc = Pawn->GetActorLocation();        // launch from the tee
 	}
+	LastLaunchLoc = Loc;                        // OnShotOutcome plays the ball from here
+	LastLaunchRot = Rot;
 
 	const FClubPreset& C = GBag[FMath::Clamp(ActiveClub, 0, GBagNum - 1)];
-	FShotInput Shot;
+
+	// Build the shot.taken envelope (club-typical values + per-shot dispersion) and publish it.
+	// The integrator subscriber runs the solver and publishes shot.outcome; we no longer call
+	// GolfBallFlight::Simulate here (GOL-7: the range fires through the bus).
+	FShotTakenEvent Shot;
+	Shot.Source         = TEXT("range-fire");
+	Shot.PlayerId       = GolfsimEvents::LocalPlayerId();
+	Shot.Club           = C.Name;
+	Shot.Lie            = TEXT("tee");
 	Shot.BallSpeedMps   = C.SpeedMps  * FMath::FRandRange(0.97, 1.03);
 	Shot.LaunchAngleDeg = C.LaunchDeg + FMath::FRandRange(-1.5, 1.5);
 	Shot.BackspinRpm    = C.SpinRpm   * FMath::FRandRange(0.92, 1.08);
 	Shot.AzimuthDeg     = FMath::FRandRange(-2.5, 2.5);     // face/path spread
 	Shot.SidespinRpm    = FMath::FRandRange(-700.0, 700.0); // curve
 
-	const FBallTrajectory T = GolfBallFlight::Simulate(Shot);
-	if (AGolfBallActor* Ball = GetOrSpawnBallAt(World, Loc, Rot))
+	// Stash the input-derived panel fields; carry/offline are filled when the outcome returns.
+	LastClubName  = C.Name;
+	LastSpeedMph  = Shot.BallSpeedMps * 2.2369362921;   // m/s -> mph
+	LastLaunchDeg = Shot.LaunchAngleDeg;
+	LastSpinRpm   = Shot.BackspinRpm;
+
+	UE_LOG(LogTemp, Display, TEXT("golfsim range: %s aim=%.1fdeg -> shot.taken published"),
+		C.Name, Rot.Yaw);
+
+	if (UEventBusSubsystem* EBus = UEventBusSubsystem::Get(this))
 	{
-		Ball->PlayTrajectory(T);
+		EBus->Publish(Shot);   // synchronous: integrator simulates + publishes outcome -> OnShotOutcome
+	}
+	else
+	{
+		UE_LOG(LogTemp, Warning, TEXT("golfsim range: no EventBus subsystem; shot dropped"));
+	}
+}
+
+void AGolfRangeHUD::OnShotOutcome(const FGolfEvent& Event)
+{
+	if (Event.Kind != EEventKind::ShotOutcome)
+	{
+		return;
+	}
+	const FShotOutcomeEvent& Out = static_cast<const FShotOutcomeEvent&>(Event);
+
+	// Play the resolved flight on the ball, launched from the tee + aim recorded at fire time.
+	if (UWorld* World = GetWorld())
+	{
+		if (AGolfBallActor* Ball = GetOrSpawnBallAt(World, LastLaunchLoc, LastLaunchRot))
+		{
+			Ball->PlayTrajectory(Out.Trajectory);
+		}
 	}
 
 	if (Panel)
 	{
-		const double SpeedMph  = Shot.BallSpeedMps   * 2.2369362921;   // m/s -> mph
-		const double CarryYd   = T.CarryM            * 1.0936132983;   // m   -> yd
-		const double OfflineYd = T.LateralOffsetM    * 1.0936132983;   // signed; + = right
-		Panel->UpdateMetrics(C.Name, SpeedMph, Shot.LaunchAngleDeg, Shot.BackspinRpm, CarryYd, OfflineYd);
+		const double CarryYd   = Out.CarryM         * 1.0936132983;   // m -> yd
+		const double OfflineYd = Out.LateralOffsetM * 1.0936132983;   // signed; + = right
+		Panel->UpdateMetrics(LastClubName, LastSpeedMph, LastLaunchDeg, LastSpinRpm, CarryYd, OfflineYd);
 	}
 	UE_LOG(LogTemp, Display,
-		TEXT("golfsim range: %s aim=%.1fdeg carry=%.1fm apex=%.1fm lateral=%.1fm"),
-		C.Name, Rot.Yaw, T.CarryM, T.ApexM, T.LateralOffsetM);
+		TEXT("golfsim range: shot.outcome carry=%.1fm lateral=%.1fm -> ball played, panel updated"),
+		Out.CarryM, Out.LateralOffsetM);
 }
 
 void AGolfRangeHUD::DrawHUD()

@@ -9,6 +9,7 @@
 #include "CoreMinimal.h"
 #include "GameFramework/HUD.h"
 #include "GolfRangePanel.h"
+#include "Events/EventBusSubsystem.h"   // FGolfEventSubscription member + EventBus access
 #include "GolfRangeHUD.generated.h"
 
 UCLASS()
@@ -19,6 +20,7 @@ class GOLFSIM_API AGolfRangeHUD : public AHUD
 public:
 	AGolfRangeHUD();
 	virtual void BeginPlay() override;
+	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 	virtual void Tick(float DeltaSeconds) override;
 	virtual void DrawHUD() override;
 
@@ -26,6 +28,10 @@ private:
 	void EnsureInputBound();
 	void SelectClub(int32 Index);
 	void FireRandom();
+
+	// EventBus subscriber: the integrator publishes the resolved flight; we play the ball + refresh
+	// the panel here. (GOL-7: the HUD publishes shot.taken instead of running the solver itself.)
+	void OnShotOutcome(const FGolfEvent& Event);
 
 	// BindKey needs parameterless members; thin shims onto SelectClub(i).
 	void SelectClub0() { SelectClub(0); }
@@ -46,6 +52,21 @@ private:
 	bool bControlsLocked = false;   // move + mouse-look ignored once (range-only)
 	bool bTurnLeft = false;
 	bool bTurnRight = false;
+
+	// Last shot's launch transform (tee + aim) and input-derived panel metrics, stashed at fire
+	// time. The carry/offline arrive later with the outcome event, where the ball is played and the
+	// panel refreshed in one update. One shot in flight at a time on the range, so "last" is exact.
+	FVector LastLaunchLoc = FVector::ZeroVector;
+	FRotator LastLaunchRot = FRotator::ZeroRotator;
+	FString LastClubName;
+	double LastSpeedMph = 0.0;
+	double LastLaunchDeg = 0.0;
+	double LastSpinRpm = 0.0;
+
+	// Cached at subscribe time so EndPlay can Unsubscribe reliably -- resolving the subsystem via
+	// world-context at teardown can return null, which would leave the dead subscriber in the bus.
+	TWeakObjectPtr<UEventBusSubsystem> EventBusWeak;
+	FGolfEventSubscription OutcomeSub;   // shot.outcome subscription; released in EndPlay
 
 	UPROPERTY(Transient) TObjectPtr<UGolfRangePanel> Panel;
 };

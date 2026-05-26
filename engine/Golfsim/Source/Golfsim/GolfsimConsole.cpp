@@ -11,6 +11,7 @@
 #include "Physics/BallFlightSolver.h"
 #include "GolfBallActor.h"
 #include "GolfRangeEnvironment.h"
+#include "Events/EventBusSubsystem.h"
 
 namespace
 {
@@ -157,6 +158,46 @@ namespace
 			UE_LOG(LogTemp, Warning, TEXT("golfsim.SetSky: no AGolfRangeEnvironment in this level (range only)"));
 		}
 	}
+
+	// EventBus round-trip exerciser (GOL-7): publish a shot.taken through the bus; the built-in
+	// integrator subscriber runs the solver and publishes session.shot_outcome. A temporary local
+	// subscriber logs the outcome so the publish->subscribe path is visible headlessly in the log.
+	void PublishTestShotCmd(const TArray<FString>& Args, UWorld* World)
+	{
+		UEventBusSubsystem* EBus = UEventBusSubsystem::Get(World);
+		if (!EBus)
+		{
+			UE_LOG(LogTemp, Warning,
+				TEXT("golfsim.PublishTestShot: no EventBus subsystem (need a running game/PIE world)"));
+			return;
+		}
+
+		// Defaults reproduce a stock 7-iron; optional args override ballspeed/launch/backspin.
+		FShotTakenEvent Shot;
+		Shot.Source         = TEXT("console-test");
+		Shot.PlayerId       = GolfsimEvents::LocalPlayerId();
+		Shot.Club           = TEXT("7-Iron");
+		Shot.Lie            = TEXT("tee");
+		Shot.BallSpeedMps   = Args.Num() > 0 ? FCString::Atod(*Args[0]) : 55.0;
+		Shot.LaunchAngleDeg = Args.Num() > 1 ? FCString::Atod(*Args[1]) : 16.3;
+		Shot.BackspinRpm    = Args.Num() > 2 ? FCString::Atod(*Args[2]) : 7097.0;
+
+		// Probe the outcome channel for the duration of this one publish (dispatch is synchronous,
+		// so the probe fires before we unsubscribe), then remove it so we don't leak a subscriber.
+		FGolfEventSubscription Probe = EBus->Subscribe(EEventKind::ShotOutcome,
+			[](const FGolfEvent& Event)
+			{
+				const FShotOutcomeEvent& Out = static_cast<const FShotOutcomeEvent&>(Event);
+				UE_LOG(LogTemp, Display,
+					TEXT("golfsim.PublishTestShot: received session.shot_outcome carry=%.1fm lateral=%.1fm samples=%d"),
+					Out.CarryM, Out.LateralOffsetM, Out.Trajectory.Samples.Num());
+			});
+		EBus->Publish(Shot);
+		EBus->Unsubscribe(Probe);
+
+		UE_LOG(LogTemp, Display,
+			TEXT("golfsim.PublishTestShot: published shot.taken through the bus (see outcome above)"));
+	}
 }
 
 static FAutoConsoleCommandWithWorldAndArgs GFireShotCmd(
@@ -178,3 +219,8 @@ static FAutoConsoleCommandWithWorldAndArgs GSetSkyCmd(
 	TEXT("golfsim.SetSky"),
 	TEXT("Range sky/weather preset: golfsim.SetSky <index>  (0=Clear 1=Cloudy 2=Overcast)"),
 	FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&SetSkyCmd));
+
+static FAutoConsoleCommandWithWorldAndArgs GPublishTestShotCmd(
+	TEXT("golfsim.PublishTestShot"),
+	TEXT("EventBus round-trip: publish shot.taken; logs the session.shot_outcome the integrator returns. [ballspeed_mps launch_deg backspin_rpm]"),
+	FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&PublishTestShotCmd));

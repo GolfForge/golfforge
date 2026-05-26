@@ -12,6 +12,9 @@
 #include "Events/EventBusSubsystem.h"   // FGolfEventSubscription member + EventBus access
 #include "GolfRangeHUD.generated.h"
 
+class UManualShotDialog;
+struct FManualShotValues;
+
 UCLASS()
 class GOLFSIM_API AGolfRangeHUD : public AHUD
 {
@@ -28,6 +31,15 @@ private:
 	void EnsureInputBound();
 	void SelectClub(int32 Index);
 	void FireRandom();
+
+	// Shared publish half for both fire paths: stamp the launch transform (tee + aim), remember the
+	// input-derived panel metrics, build + publish the shot.taken envelope through the bus.
+	void PublishShotTaken(double BallMps, double LaunchDeg, double AzDeg, double BackRpm,
+		double SideRpm, const FString& Club, const FString& Source);
+
+	// Manual-shot dialog (GOL-8): M toggles it (hiding the auto-fire panel); Fire routes here.
+	void ToggleManualDialog();
+	void FireManualShot(const FManualShotValues& Values);
 
 	// EventBus subscriber: the integrator publishes the resolved flight; we play the ball + refresh
 	// the panel here. (GOL-7: the HUD publishes shot.taken instead of running the solver itself.)
@@ -68,5 +80,8 @@ private:
 	TWeakObjectPtr<UEventBusSubsystem> EventBusWeak;
 	FGolfEventSubscription OutcomeSub;   // shot.outcome subscription; released in EndPlay
 
+	bool bManualOpen = false;            // is the manual-shot dialog showing (auto-fire panel hidden)
+
 	UPROPERTY(Transient) TObjectPtr<UGolfRangePanel> Panel;
+	UPROPERTY(Transient) TObjectPtr<UManualShotDialog> ManualDialog;
 };

@@ -2,6 +2,7 @@
 
 #include "GolfBallActor.h"
 #include "GolfRangeEnvironment.h"
+#include "ManualShotDialog.h"              // manual-shot dialog (GOL-8)
 #include "Events/EventBusSubsystem.h"      // publish shot.taken / subscribe shot.outcome (GOL-7)
 #include "Physics/BallFlightTypes.h"       // FBallTrajectory (carried on the outcome event)
 
@@ -226,6 +227,7 @@ void AGolfRangeHUD::EnsureInputBound()
 	InputComponent->BindKey(EKeys::Left,     IE_Released, this, &AGolfRangeHUD::TurnLeftReleased);
 	InputComponent->BindKey(EKeys::Right,    IE_Pressed,  this, &AGolfRangeHUD::TurnRightPressed);
 	InputComponent->BindKey(EKeys::Right,    IE_Released, this, &AGolfRangeHUD::TurnRightReleased);
+	InputComponent->BindKey(EKeys::M,        IE_Pressed,  this, &AGolfRangeHUD::ToggleManualDialog);
 	bInputBound = true;
 }
 
@@ -240,6 +242,27 @@ void AGolfRangeHUD::SelectClub(int32 Index)
 }
 
 void AGolfRangeHUD::FireRandom()
+{
+	const FClubPreset& C = GBag[FMath::Clamp(ActiveClub, 0, GBagNum - 1)];
+	// Club-typical values + per-shot dispersion (so no two shots are identical).
+	const double BallMps = C.SpeedMps  * FMath::FRandRange(0.97, 1.03);
+	const double Launch  = C.LaunchDeg + FMath::FRandRange(-1.5, 1.5);
+	const double Back    = C.SpinRpm   * FMath::FRandRange(0.92, 1.08);
+	const double Az      = FMath::FRandRange(-2.5, 2.5);      // face/path spread
+	const double Side    = FMath::FRandRange(-700.0, 700.0);  // curve
+	PublishShotTaken(BallMps, Launch, Az, Back, Side, C.Name, TEXT("range-fire"));
+}
+
+void AGolfRangeHUD::FireManualShot(const FManualShotValues& Values)
+{
+	// Display units -> SI at the boundary: only ball speed converts; angles stay degrees, spin rpm.
+	const double BallMps = Values.BallSpeedMph * 0.44704;   // mph -> m/s
+	PublishShotTaken(BallMps, Values.LaunchDeg, Values.AzimuthDeg, Values.BackspinRpm,
+		Values.SidespinRpm, Values.Club, TEXT("manual-shot-dialog"));
+}
+
+void AGolfRangeHUD::PublishShotTaken(double BallMps, double LaunchDeg, double AzDeg, double BackRpm,
+	double SideRpm, const FString& Club, const FString& Source)
 {
 	APlayerController* PC = GetOwningPlayerController();
 	if (!PC)
@@ -258,30 +281,28 @@ void AGolfRangeHUD::FireRandom()
 	LastLaunchLoc = Loc;                        // OnShotOutcome plays the ball from here
 	LastLaunchRot = Rot;
 
-	const FClubPreset& C = GBag[FMath::Clamp(ActiveClub, 0, GBagNum - 1)];
-
-	// Build the shot.taken envelope (club-typical values + per-shot dispersion) and publish it.
-	// The integrator subscriber runs the solver and publishes shot.outcome; we no longer call
-	// GolfBallFlight::Simulate here (GOL-7: the range fires through the bus).
+	// Build the shot.taken envelope and publish it. The integrator subscriber runs the solver and
+	// publishes shot.outcome; the HUD no longer calls GolfBallFlight::Simulate (GOL-7: fires through
+	// the bus). Both the randomized and manual fire paths funnel through here.
 	FShotTakenEvent Shot;
-	Shot.Source         = TEXT("range-fire");
+	Shot.Source         = Source;
 	Shot.PlayerId       = GolfsimEvents::LocalPlayerId();
-	Shot.Club           = C.Name;
+	Shot.Club           = Club;
 	Shot.Lie            = TEXT("tee");
-	Shot.BallSpeedMps   = C.SpeedMps  * FMath::FRandRange(0.97, 1.03);
-	Shot.LaunchAngleDeg = C.LaunchDeg + FMath::FRandRange(-1.5, 1.5);
-	Shot.BackspinRpm    = C.SpinRpm   * FMath::FRandRange(0.92, 1.08);
-	Shot.AzimuthDeg     = FMath::FRandRange(-2.5, 2.5);     // face/path spread
-	Shot.SidespinRpm    = FMath::FRandRange(-700.0, 700.0); // curve
+	Shot.BallSpeedMps   = BallMps;
+	Shot.LaunchAngleDeg = LaunchDeg;
+	Shot.AzimuthDeg     = AzDeg;
+	Shot.BackspinRpm    = BackRpm;
+	Shot.SidespinRpm    = SideRpm;
 
 	// Stash the input-derived panel fields; carry/offline are filled when the outcome returns.
-	LastClubName  = C.Name;
-	LastSpeedMph  = Shot.BallSpeedMps * 2.2369362921;   // m/s -> mph
-	LastLaunchDeg = Shot.LaunchAngleDeg;
-	LastSpinRpm   = Shot.BackspinRpm;
+	LastClubName  = Club;
+	LastSpeedMph  = BallMps * 2.2369362921;   // m/s -> mph
+	LastLaunchDeg = LaunchDeg;
+	LastSpinRpm   = BackRpm;
 
-	UE_LOG(LogTemp, Display, TEXT("golfsim range: %s aim=%.1fdeg -> shot.taken published"),
-		C.Name, Rot.Yaw);
+	UE_LOG(LogTemp, Display, TEXT("golfsim range: %s aim=%.1fdeg -> shot.taken published (%s)"),
+		*Club, Rot.Yaw, *Source);
 
 	if (UEventBusSubsystem* EBus = UEventBusSubsystem::Get(this))
 	{
@@ -290,6 +311,66 @@ void AGolfRangeHUD::FireRandom()
 	else
 	{
 		UE_LOG(LogTemp, Warning, TEXT("golfsim range: no EventBus subsystem; shot dropped"));
+	}
+}
+
+void AGolfRangeHUD::ToggleManualDialog()
+{
+	APlayerController* PC = GetOwningPlayerController();
+	if (!PC)
+	{
+		return;
+	}
+
+	if (!ManualDialog)
+	{
+		ManualDialog = CreateWidget<UManualShotDialog>(PC, UManualShotDialog::StaticClass());
+		if (!ManualDialog)
+		{
+			return;
+		}
+
+		// Fire routes back here so the launch transform + panel bookkeeping stay in one place.
+		TWeakObjectPtr<AGolfRangeHUD> WeakThis(this);
+		ManualDialog->OnFire = [WeakThis](const FManualShotValues& V)
+		{
+			if (AGolfRangeHUD* HUD = WeakThis.Get())
+			{
+				HUD->FireManualShot(V);
+			}
+		};
+		// Picking a club seeds the spinners from that club's bag preset (autofill); straight shot.
+		TWeakObjectPtr<UManualShotDialog> WeakDlg(ManualDialog);
+		ManualDialog->OnClubChosen = [WeakDlg](int32 Idx)
+		{
+			if (UManualShotDialog* D = WeakDlg.Get())
+			{
+				const FClubPreset& P = GBag[FMath::Clamp(Idx, 0, GBagNum - 1)];
+				D->SetFields(P.SpeedMps * 2.2369362921, P.LaunchDeg, P.SpinRpm, 0.0, 0.0);
+			}
+		};
+
+		// Club options from the bag (same single source as the auto-fire panel).
+		TArray<FString> ClubNames;
+		ClubNames.Reserve(GBagNum);
+		for (const FClubPreset& P : GBag)
+		{
+			ClubNames.Add(P.Name);
+		}
+		ManualDialog->SetClubOptions(ClubNames);
+		ManualDialog->AddToViewport(10);   // above the auto-fire panel
+		ManualDialog->SetSelectedClubIndex(ActiveClub);
+		// Open on the active club's realistic values rather than zeros.
+		const FClubPreset& A = GBag[FMath::Clamp(ActiveClub, 0, GBagNum - 1)];
+		ManualDialog->SetFields(A.SpeedMps * 2.2369362921, A.LaunchDeg, A.SpinRpm, 0.0, 0.0);
+	}
+
+	bManualOpen = !bManualOpen;
+	ManualDialog->SetVisibility(bManualOpen ? ESlateVisibility::Visible : ESlateVisibility::Collapsed);
+	if (Panel)
+	{
+		// Hide the auto-fire panel while the dialog is open; restore it (children stay clickable) when closed.
+		Panel->SetVisibility(bManualOpen ? ESlateVisibility::Collapsed : ESlateVisibility::SelfHitTestInvisible);
 	}
 }
 
@@ -310,11 +391,15 @@ void AGolfRangeHUD::OnShotOutcome(const FGolfEvent& Event)
 		}
 	}
 
+	const double CarryYd   = Out.CarryM         * 1.0936132983;   // m -> yd
+	const double OfflineYd = Out.LateralOffsetM * 1.0936132983;   // signed; + = right
 	if (Panel)
 	{
-		const double CarryYd   = Out.CarryM         * 1.0936132983;   // m -> yd
-		const double OfflineYd = Out.LateralOffsetM * 1.0936132983;   // signed; + = right
 		Panel->UpdateMetrics(LastClubName, LastSpeedMph, LastLaunchDeg, LastSpinRpm, CarryYd, OfflineYd);
+	}
+	if (ManualDialog && bManualOpen)
+	{
+		ManualDialog->SetResult(CarryYd, OfflineYd);   // live "dial in a shot" feedback
 	}
 	UE_LOG(LogTemp, Display,
 		TEXT("golfsim range: shot.outcome carry=%.1fm lateral=%.1fm -> ball played, panel updated"),

@@ -12,6 +12,8 @@
 #include "GolfBallActor.h"
 #include "GolfRangeEnvironment.h"
 #include "Events/EventBusSubsystem.h"
+#include "Drivers/LaunchMonitorManager.h"
+#include "Drivers/LaunchMonitorDriver.h"
 
 namespace
 {
@@ -198,6 +200,96 @@ namespace
 		UE_LOG(LogTemp, Display,
 			TEXT("golfsim.PublishTestShot: published shot.taken through the bus (see outcome above)"));
 	}
+
+	// --- Launch-monitor framework (GOL-11) -----------------------------------------------------
+
+	void LMSelectCmd(const TArray<FString>& Args, UWorld* World)
+	{
+		ULaunchMonitorManager* Mgr = ULaunchMonitorManager::Get(World);
+		if (!Mgr)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("golfsim.LMSelect: no LM manager (need a running game/PIE world)"));
+			return;
+		}
+		if (Args.Num() < 1)
+		{
+			UE_LOG(LogTemp, Display, TEXT("golfsim.LMSelect: active=%s. Available drivers:"), *Mgr->GetActiveDriverId());
+			for (const FLaunchMonitorDriverInfo& Info : Mgr->GetAvailableDrivers())
+			{
+				UE_LOG(LogTemp, Display, TEXT("  %s (%s)%s"),
+					*Info.Id, *Info.DisplayName.ToString(), Info.bConnected ? TEXT(" [connected]") : TEXT(""));
+			}
+			return;
+		}
+		Mgr->SetActiveDriver(Args[0], /*bConnectNow=*/true);
+	}
+
+	void LMConnectCmd(const TArray<FString>& /*Args*/, UWorld* World)
+	{
+		if (ULaunchMonitorManager* Mgr = ULaunchMonitorManager::Get(World)) { Mgr->ConnectActive(); }
+		else { UE_LOG(LogTemp, Warning, TEXT("golfsim.LMConnect: no LM manager")); }
+	}
+
+	void LMDisconnectCmd(const TArray<FString>& /*Args*/, UWorld* World)
+	{
+		if (ULaunchMonitorManager* Mgr = ULaunchMonitorManager::Get(World)) { Mgr->DisconnectActive(); }
+		else { UE_LOG(LogTemp, Warning, TEXT("golfsim.LMDisconnect: no LM manager")); }
+	}
+
+	// Feed the active driver a payload through its parse->publish path (no socket): proves
+	// parse -> bus -> solver -> panel in PIE without a server. "nospin" exercises the est heuristic.
+	void LMSimulateCmd(const TArray<FString>& Args, UWorld* World)
+	{
+		ULaunchMonitorManager* Mgr = ULaunchMonitorManager::Get(World);
+		if (!Mgr)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("golfsim.LMSimulate: no LM manager"));
+			return;
+		}
+		ULaunchMonitorDriver* Driver = Mgr->GetActiveDriver();
+		if (!Driver)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("golfsim.LMSimulate: no active driver (try golfsim.LMSelect openflight)"));
+			return;
+		}
+		FString Payload;
+		if (Args.Num() == 0)
+		{
+			// OpenFlight's real shot shape (the {shot,stats} wrapper; spin tilt -> draw).
+			Payload = TEXT("{\"shot\":{\"ball_speed_mph\":167.0,\"launch_angle_vertical\":10.9,")
+				TEXT("\"launch_angle_horizontal\":-1.8,\"spin_rpm\":2686,\"spin_axis_deg\":-4.0,")
+				TEXT("\"club\":\"driver\",\"smash_factor\":1.48}}");
+		}
+		else if (Args[0].Equals(TEXT("nospin"), ESearchCase::IgnoreCase))
+		{
+			Payload = TEXT("{\"shot\":{\"ball_speed_mph\":120.0,\"launch_angle_vertical\":24.0,\"club\":\"pw\"}}");   // no spin -> heuristic -> est
+		}
+		else
+		{
+			Payload = FString::Join(Args, TEXT(" "));
+		}
+		Driver->InjectTestMessage(Payload);
+	}
+
+	// Ask the active driver's connected device to emit a simulated shot (OpenFlight mock mode):
+	// a real round-trip over the wire, vs LMSimulate which parses locally with no server.
+	void LMTriggerCmd(const TArray<FString>& /*Args*/, UWorld* World)
+	{
+		ULaunchMonitorManager* Mgr = ULaunchMonitorManager::Get(World);
+		if (!Mgr)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("golfsim.LMTrigger: no LM manager"));
+			return;
+		}
+		if (ULaunchMonitorDriver* Driver = Mgr->GetActiveDriver())
+		{
+			Driver->RequestSimulatedShot();
+		}
+		else
+		{
+			UE_LOG(LogTemp, Warning, TEXT("golfsim.LMTrigger: no active driver"));
+		}
+	}
 }
 
 static FAutoConsoleCommandWithWorldAndArgs GFireShotCmd(
@@ -224,3 +316,28 @@ static FAutoConsoleCommandWithWorldAndArgs GPublishTestShotCmd(
 	TEXT("golfsim.PublishTestShot"),
 	TEXT("EventBus round-trip: publish shot.taken; logs the session.shot_outcome the integrator returns. [ballspeed_mps launch_deg backspin_rpm]"),
 	FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&PublishTestShotCmd));
+
+static FAutoConsoleCommandWithWorldAndArgs GLMSelectCmd(
+	TEXT("golfsim.LMSelect"),
+	TEXT("List launch-monitor drivers, or select+connect one: golfsim.LMSelect [driverId]  (e.g. openflight)"),
+	FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&LMSelectCmd));
+
+static FAutoConsoleCommandWithWorldAndArgs GLMConnectCmd(
+	TEXT("golfsim.LMConnect"),
+	TEXT("Connect the active launch-monitor driver."),
+	FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&LMConnectCmd));
+
+static FAutoConsoleCommandWithWorldAndArgs GLMDisconnectCmd(
+	TEXT("golfsim.LMDisconnect"),
+	TEXT("Disconnect the active launch-monitor driver."),
+	FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&LMDisconnectCmd));
+
+static FAutoConsoleCommandWithWorldAndArgs GLMSimulateCmd(
+	TEXT("golfsim.LMSimulate"),
+	TEXT("Feed the active driver a test payload (no socket): golfsim.LMSimulate [nospin | <json>]. Proves parse->bus->solver->panel."),
+	FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&LMSimulateCmd));
+
+static FAutoConsoleCommandWithWorldAndArgs GLMTriggerCmd(
+	TEXT("golfsim.LMTrigger"),
+	TEXT("Ask the active driver's connected device to emit a simulated shot (OpenFlight mock mode) -- a real round-trip."),
+	FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&LMTriggerCmd));

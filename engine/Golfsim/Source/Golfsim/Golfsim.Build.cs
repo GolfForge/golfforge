@@ -13,7 +13,9 @@ public class Golfsim : ModuleRules
 
 		PublicDependencyModuleNames.AddRange(new string[] { "Core", "CoreUObject", "Engine", "InputCore", "EnhancedInput", "UMG", "Slate", "SlateCore" });
 
-		PrivateDependencyModuleNames.AddRange(new string[] {  });
+		// WebSockets + Json: the OpenFlight launch-monitor driver (GOL-11) talks to OpenFlight's
+		// WebSocket and parses its shot JSON. Both are engine runtime modules (no uproject plugin).
+		PrivateDependencyModuleNames.AddRange(new string[] { "WebSockets", "Json" });
 
 		// Uncomment if you are using online features
 		// PrivateDependencyModuleNames.Add("OnlineSubsystem");

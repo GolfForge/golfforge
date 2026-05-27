@@ -87,6 +87,7 @@ struct FShotTakenEvent : public FGolfEvent
 
 	UPROPERTY() FString Club;                // e.g. "7-Iron"
 	UPROPERTY() FString Lie = TEXT("tee");   // tee/fairway/rough/bunker/green/...
+	UPROPERTY() bool bSpinEstimated = false; // true if backspin was computed (not measured by the LM)
 
 	FShotTakenEvent() { Kind = EEventKind::ShotTaken; }
 };

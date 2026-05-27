@@ -24,9 +24,14 @@ public:
 	// names never drift from the firing presets. Call once after creation, before SetSelectedClubIndex.
 	void SetClubOptions(const TArray<FString>& Names);
 
-	// Refresh the metrics grid with the last shot's display-unit values.
+	// Refresh the metrics grid with the last shot's display-unit values. bSpinEstimated marks the
+	// spin as computed (not measured by the LM) -- shown as "5600 est".
 	void UpdateMetrics(const FString& Club, double SpeedMph, double LaunchDeg,
-		double SpinRpm, double CarryYd, double OfflineYd);
+		double SpinRpm, double CarryYd, double OfflineYd, bool bSpinEstimated = false);
+
+	// Set the launch-monitor connection indicator (green/red dot + detail). Driven by the HUD from
+	// the active driver's status.
+	void SetConnectionStatus(bool bConnected, const FString& Detail);
 
 	// Populate the Time-of-day / Sky dropdowns from the environment director's preset names.
 	void SetTimeOptions(const TArray<FString>& Names);
@@ -71,6 +76,7 @@ private:
 	UPROPERTY(Transient) TObjectPtr<UTextBlock> ValSpin;
 	UPROPERTY(Transient) TObjectPtr<UTextBlock> ValCarry;
 	UPROPERTY(Transient) TObjectPtr<UTextBlock> ValOffline;
+	UPROPERTY(Transient) TObjectPtr<UTextBlock> StatusText;   // launch-monitor connection dot + detail
 
 	// True while we programmatically set the ComboBox selection, so the resulting
 	// OnSelectionChanged broadcast doesn't loop back into gameplay.

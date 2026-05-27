@@ -4,6 +4,8 @@
 #include "GolfRangeEnvironment.h"
 #include "ManualShotDialog.h"              // manual-shot dialog (GOL-8)
 #include "Events/EventBusSubsystem.h"      // publish shot.taken / subscribe shot.outcome (GOL-7)
+#include "Drivers/LaunchMonitorManager.h"  // active-driver status -> panel dot (GOL-11)
+#include "Drivers/LaunchMonitorDriver.h"
 #include "Physics/BallFlightTypes.h"       // FBallTrajectory (carried on the outcome event)
 
 #include "EngineUtils.h"
@@ -78,8 +80,10 @@ void AGolfRangeHUD::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
 	if (UEventBusSubsystem* EBus = EventBusWeak.Get())
 	{
-		EBus->Unsubscribe(OutcomeSub);   // weak-captured anyway, but don't leave a dead entry
+		EBus->Unsubscribe(TakenSub);     // weak-captured anyway, but don't leave dead entries
+		EBus->Unsubscribe(OutcomeSub);
 	}
+	TakenSub = FGolfEventSubscription{};
 	OutcomeSub = FGolfEventSubscription{};
 	EventBusWeak = nullptr;
 	Super::EndPlay(EndPlayReason);
@@ -193,23 +197,49 @@ void AGolfRangeHUD::EnsureInputBound()
 			}
 		}
 	}
-	// Subscribe once to shot outcomes: the integrator (UEventBusSubsystem) runs the solver and
-	// publishes the resolved flight; OnShotOutcome plays the ball + refreshes the panel. Weak
-	// capture so a late dispatch during PIE teardown can never call into a destroyed HUD.
+	// Subscribe once to the bus: shot.taken (any producer -- random / manual / LM driver) stashes the
+	// panel's input metrics; shot.outcome plays the ball + refreshes the panel. Weak capture so a
+	// late dispatch during PIE teardown can never call into a destroyed HUD.
 	if (!OutcomeSub.IsValid())
 	{
 		if (UEventBusSubsystem* EBus = UEventBusSubsystem::Get(this))
 		{
 			TWeakObjectPtr<AGolfRangeHUD> WeakThis(this);
+			TakenSub = EBus->Subscribe(EEventKind::ShotTaken,
+				[WeakThis](const FGolfEvent& Event)
+				{
+					if (AGolfRangeHUD* HUD = WeakThis.Get()) { HUD->OnShotTaken(Event); }
+				});
 			OutcomeSub = EBus->Subscribe(EEventKind::ShotOutcome,
 				[WeakThis](const FGolfEvent& Event)
 				{
-					if (AGolfRangeHUD* HUD = WeakThis.Get())
-					{
-						HUD->OnShotOutcome(Event);
-					}
+					if (AGolfRangeHUD* HUD = WeakThis.Get()) { HUD->OnShotOutcome(Event); }
 				});
 			EventBusWeak = EBus;   // cache for a reliable Unsubscribe in EndPlay
+
+			// Launch-monitor connection status -> panel dot (the active driver). Weak-captured panel
+			// so a status change after PIE teardown is a no-op.
+			if (ULaunchMonitorManager* LM = ULaunchMonitorManager::Get(this))
+			{
+				TWeakObjectPtr<UGolfRangePanel> WeakPanel(Panel);
+				LM->OnActiveStatusChanged = [WeakPanel](bool bConnected, const FString& Detail)
+				{
+					if (UGolfRangePanel* P = WeakPanel.Get()) { P->SetConnectionStatus(bConnected, Detail); }
+				};
+				if (Panel)
+				{
+					if (ULaunchMonitorDriver* D = LM->GetActiveDriver())
+					{
+						const FString Name = D->GetDisplayName().ToString();
+						Panel->SetConnectionStatus(D->IsConnected(), FString::Printf(TEXT("%s: %s"),
+							*Name, D->IsConnected() ? TEXT("connected") : TEXT("disconnected")));
+					}
+					else
+					{
+						Panel->SetConnectionStatus(false, TEXT("No launch monitor"));
+					}
+				}
+			}
 		}
 	}
 	if (!InputComponent)
@@ -264,26 +294,10 @@ void AGolfRangeHUD::FireManualShot(const FManualShotValues& Values)
 void AGolfRangeHUD::PublishShotTaken(double BallMps, double LaunchDeg, double AzDeg, double BackRpm,
 	double SideRpm, const FString& Club, const FString& Source)
 {
-	APlayerController* PC = GetOwningPlayerController();
-	if (!PC)
-	{
-		return;
-	}
-
-	FRotator Rot = PC->GetControlRotation();   // aim = where the camera points
-	Rot.Pitch = 0.f;
-	Rot.Roll = 0.f;
-	FVector Loc = FVector::ZeroVector;
-	if (APawn* Pawn = PC->GetPawn())
-	{
-		Loc = Pawn->GetActorLocation();        // launch from the tee
-	}
-	LastLaunchLoc = Loc;                        // OnShotOutcome plays the ball from here
-	LastLaunchRot = Rot;
-
 	// Build the shot.taken envelope and publish it. The integrator subscriber runs the solver and
-	// publishes shot.outcome; the HUD no longer calls GolfBallFlight::Simulate (GOL-7: fires through
-	// the bus). Both the randomized and manual fire paths funnel through here.
+	// publishes shot.outcome (GOL-7: the HUD fires through the bus, not the solver). The panel's
+	// input metrics are stashed by OnShotTaken (works for any producer), and the ball launches from
+	// the live tee + aim in OnShotOutcome -- so this just builds + publishes.
 	FShotTakenEvent Shot;
 	Shot.Source         = Source;
 	Shot.PlayerId       = GolfsimEvents::LocalPlayerId();
@@ -295,14 +309,7 @@ void AGolfRangeHUD::PublishShotTaken(double BallMps, double LaunchDeg, double Az
 	Shot.BackspinRpm    = BackRpm;
 	Shot.SidespinRpm    = SideRpm;
 
-	// Stash the input-derived panel fields; carry/offline are filled when the outcome returns.
-	LastClubName  = Club;
-	LastSpeedMph  = BallMps * 2.2369362921;   // m/s -> mph
-	LastLaunchDeg = LaunchDeg;
-	LastSpinRpm   = BackRpm;
-
-	UE_LOG(LogTemp, Display, TEXT("golfsim range: %s aim=%.1fdeg -> shot.taken published (%s)"),
-		*Club, Rot.Yaw, *Source);
+	UE_LOG(LogTemp, Display, TEXT("golfsim range: %s -> shot.taken published (%s)"), *Club, *Source);
 
 	if (UEventBusSubsystem* EBus = UEventBusSubsystem::Get(this))
 	{
@@ -374,6 +381,23 @@ void AGolfRangeHUD::ToggleManualDialog()
 	}
 }
 
+void AGolfRangeHUD::OnShotTaken(const FGolfEvent& Event)
+{
+	if (Event.Kind != EEventKind::ShotTaken)
+	{
+		return;
+	}
+	const FShotTakenEvent& Shot = static_cast<const FShotTakenEvent&>(Event);
+
+	// Stash the input-display metrics for the panel. Works for ANY producer (random / manual dialog /
+	// LM driver). Carry/offline arrive with the outcome. OpenFlight reports no club -> show "-".
+	LastClubName       = Shot.Club.IsEmpty() ? TEXT("-") : Shot.Club;
+	LastSpeedMph       = Shot.BallSpeedMps * 2.2369362921;   // m/s -> mph
+	LastLaunchDeg      = Shot.LaunchAngleDeg;
+	LastSpinRpm        = Shot.BackspinRpm;
+	bLastSpinEstimated = Shot.bSpinEstimated;
+}
+
 void AGolfRangeHUD::OnShotOutcome(const FGolfEvent& Event)
 {
 	if (Event.Kind != EEventKind::ShotOutcome)
@@ -382,10 +406,22 @@ void AGolfRangeHUD::OnShotOutcome(const FGolfEvent& Event)
 	}
 	const FShotOutcomeEvent& Out = static_cast<const FShotOutcomeEvent&>(Event);
 
-	// Play the resolved flight on the ball, launched from the tee + aim recorded at fire time.
+	// Launch the ball from the live tee + current aim, so any producer's shot flies from the player.
 	if (UWorld* World = GetWorld())
 	{
-		if (AGolfBallActor* Ball = GetOrSpawnBallAt(World, LastLaunchLoc, LastLaunchRot))
+		FVector Loc = FVector::ZeroVector;
+		FRotator Rot = FRotator::ZeroRotator;
+		if (APlayerController* PC = GetOwningPlayerController())
+		{
+			Rot = PC->GetControlRotation();
+			Rot.Pitch = 0.f;
+			Rot.Roll = 0.f;
+			if (APawn* Pawn = PC->GetPawn())
+			{
+				Loc = Pawn->GetActorLocation();
+			}
+		}
+		if (AGolfBallActor* Ball = GetOrSpawnBallAt(World, Loc, Rot))
 		{
 			Ball->PlayTrajectory(Out.Trajectory);
 		}
@@ -395,7 +431,8 @@ void AGolfRangeHUD::OnShotOutcome(const FGolfEvent& Event)
 	const double OfflineYd = Out.LateralOffsetM * 1.0936132983;   // signed; + = right
 	if (Panel)
 	{
-		Panel->UpdateMetrics(LastClubName, LastSpeedMph, LastLaunchDeg, LastSpinRpm, CarryYd, OfflineYd);
+		Panel->UpdateMetrics(LastClubName, LastSpeedMph, LastLaunchDeg, LastSpinRpm,
+			CarryYd, OfflineYd, bLastSpinEstimated);
 	}
 	if (ManualDialog && bManualOpen)
 	{

@@ -41,8 +41,9 @@ private:
 	void ToggleManualDialog();
 	void FireManualShot(const FManualShotValues& Values);
 
-	// EventBus subscriber: the integrator publishes the resolved flight; we play the ball + refresh
-	// the panel here. (GOL-7: the HUD publishes shot.taken instead of running the solver itself.)
+	// EventBus subscribers. ShotTaken (any producer: random / manual dialog / LM driver) stashes the
+	// input-display metrics for the panel; ShotOutcome plays the ball + refreshes the panel.
+	void OnShotTaken(const FGolfEvent& Event);
 	void OnShotOutcome(const FGolfEvent& Event);
 
 	// BindKey needs parameterless members; thin shims onto SelectClub(i).
@@ -65,19 +66,19 @@ private:
 	bool bTurnLeft = false;
 	bool bTurnRight = false;
 
-	// Last shot's launch transform (tee + aim) and input-derived panel metrics, stashed at fire
-	// time. The carry/offline arrive later with the outcome event, where the ball is played and the
-	// panel refreshed in one update. One shot in flight at a time on the range, so "last" is exact.
-	FVector LastLaunchLoc = FVector::ZeroVector;
-	FRotator LastLaunchRot = FRotator::ZeroRotator;
+	// Input-display metrics for the panel, stashed from each shot.taken (any producer: random /
+	// manual dialog / LM driver). Carry/offline arrive with the outcome event, where the ball is
+	// played and the panel refreshed. One shot in flight at a time on the range, so "last" is exact.
 	FString LastClubName;
 	double LastSpeedMph = 0.0;
 	double LastLaunchDeg = 0.0;
 	double LastSpinRpm = 0.0;
+	bool bLastSpinEstimated = false;     // last shot's spin was computed (LM driver), not measured
 
 	// Cached at subscribe time so EndPlay can Unsubscribe reliably -- resolving the subsystem via
 	// world-context at teardown can return null, which would leave the dead subscriber in the bus.
 	TWeakObjectPtr<UEventBusSubsystem> EventBusWeak;
+	FGolfEventSubscription TakenSub;     // shot.taken subscription; released in EndPlay
 	FGolfEventSubscription OutcomeSub;   // shot.outcome subscription; released in EndPlay
 
 	bool bManualOpen = false;            // is the manual-shot dialog showing (auto-fire panel hidden)

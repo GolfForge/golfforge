@@ -101,6 +101,19 @@ void UGolfRangePanel::BuildTree()
 	TimeCombo->OnSelectionChanged.AddDynamic(this, &UGolfRangePanel::HandleTimeSelectionChanged);
 	SkyCombo = AddLabeledCombo(TEXT("Sky"));
 	SkyCombo->OnSelectionChanged.AddDynamic(this, &UGolfRangePanel::HandleSkySelectionChanged);
+
+	// Launch-monitor connection indicator (bottom of the panel). Gray until the HUD wires the active
+	// driver's status; green/red thereafter.
+	StatusText = WidgetTree->ConstructWidget<UTextBlock>();
+	StatusText->SetText(FText::FromString(TEXT("● No launch monitor")));
+	StatusText->SetColorAndOpacity(FSlateColor(FLinearColor(0.6f, 0.6f, 0.6f)));
+	{
+		FSlateFontInfo F = StatusText->GetFont();
+		F.Size = 10;
+		StatusText->SetFont(F);
+	}
+	UVerticalBoxSlot* StatusSlot = Col->AddChildToVerticalBox(StatusText);
+	StatusSlot->SetPadding(FMargin(0.f, 8.f, 0.f, 0.f));
 }
 
 namespace
@@ -191,16 +204,34 @@ void UGolfRangePanel::ReturnFocusToGameViewport()
 }
 
 void UGolfRangePanel::UpdateMetrics(const FString& Club, double SpeedMph, double LaunchDeg,
-	double SpinRpm, double CarryYd, double OfflineYd)
+	double SpinRpm, double CarryYd, double OfflineYd, bool bSpinEstimated)
 {
 	if (ValClub)   { ValClub->SetText(FText::FromString(Club)); }
 	if (ValSpeed)  { ValSpeed->SetText(FText::FromString(FString::Printf(TEXT("%.0f"), SpeedMph))); }
 	if (ValLaunch) { ValLaunch->SetText(FText::FromString(FString::Printf(TEXT("%.1f"), LaunchDeg))); }
-	if (ValSpin)   { ValSpin->SetText(FText::FromString(FString::Printf(TEXT("%.0f"), SpinRpm))); }
+	if (ValSpin)
+	{
+		// Mark estimated spin so it's clearly computed, not measured by the LM.
+		ValSpin->SetText(FText::FromString(bSpinEstimated
+			? FString::Printf(TEXT("%.0f est"), SpinRpm)
+			: FString::Printf(TEXT("%.0f"), SpinRpm)));
+	}
 	if (ValCarry)  { ValCarry->SetText(FText::FromString(FString::Printf(TEXT("%.0f"), CarryYd))); }
 	if (ValOffline)
 	{
 		const TCHAR* Side = (OfflineYd >= 0.0) ? TEXT("R") : TEXT("L");
 		ValOffline->SetText(FText::FromString(FString::Printf(TEXT("%s %.0f"), Side, FMath::Abs(OfflineYd))));
 	}
+}
+
+void UGolfRangePanel::SetConnectionStatus(bool bConnected, const FString& Detail)
+{
+	if (!StatusText)
+	{
+		return;
+	}
+	StatusText->SetText(FText::FromString(FString::Printf(TEXT("● %s"), *Detail)));
+	StatusText->SetColorAndOpacity(FSlateColor(bConnected
+		? FLinearColor(0.2f, 0.85f, 0.2f)    // green
+		: FLinearColor(0.85f, 0.25f, 0.25f))); // red
 }

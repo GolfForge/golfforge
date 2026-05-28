@@ -9,6 +9,7 @@
 #include "GameFramework/Pawn.h"
 
 #include "Physics/BallFlightSolver.h"
+#include "Physics/GroundRoll.h"
 #include "GolfBallActor.h"
 #include "GolfRangeEnvironment.h"
 #include "Events/EventBusSubsystem.h"
@@ -66,10 +67,22 @@ namespace
 		Shot.BackspinRpm = FCString::Atod(*Args[3]);
 		Shot.SidespinRpm = FCString::Atod(*Args[4]);
 
-		const FBallTrajectory T = GolfBallFlight::Simulate(Shot);
+		FBallTrajectory T = GolfBallFlight::Simulate(Shot);
+
+		// Roll it out on fairway by default so a console-fired ball visibly rolls past the landing
+		// marker (the bus integrator does the real per-surface lie; this is just the no-world path).
+		double TotalM = T.CarryM;
+		const FGroundRollResult Roll =
+			GolfBallFlight::SimulateGroundRoll(T, EGolfLie::Fairway, GolfBallFlight::SurfaceRollFor(EGolfLie::Fairway));
+		if (Roll.bValid)
+		{
+			TotalM = Roll.TotalDistanceM;
+			T.Samples.Append(Roll.RollSamples);
+		}
+
 		UE_LOG(LogTemp, Display,
-			TEXT("golfsim.FireShot: carry=%.1fm apex=%.1fm descent=%.1fdeg lateral=%.1fm flight=%.2fs samples=%d valid=%d"),
-			T.CarryM, T.ApexM, T.DescentAngleDeg, T.LateralOffsetM, T.FlightTimeS, T.Samples.Num(), T.bValid ? 1 : 0);
+			TEXT("golfsim.FireShot: carry=%.1fm total=%.1fm(fairway) apex=%.1fm descent=%.1fdeg lateral=%.1fm flight=%.2fs samples=%d valid=%d"),
+			T.CarryM, TotalM, T.ApexM, T.DescentAngleDeg, T.LateralOffsetM, T.FlightTimeS, T.Samples.Num(), T.bValid ? 1 : 0);
 
 		if (AGolfBallActor* Ball = GetOrSpawnBall(World))
 		{
@@ -111,6 +124,38 @@ namespace
 		{
 			Ball->PlayTrajectory(T);
 		}
+	}
+
+	// Ground-roll bench (GOL-9): synthesize a landing state and roll it out on a chosen surface, no
+	// flight needed. Use it to compare surfaces headlessly: fairway > rough >> bunker (~0).
+	void TestGroundRollCmd(const TArray<FString>& Args, UWorld* /*World*/)
+	{
+		if (Args.Num() < 3)
+		{
+			UE_LOG(LogTemp, Warning,
+				TEXT("Usage: golfsim.TestGroundRoll <landing_speed_mps> <descent_deg> <lie> [spin_rpm]  (lie: fairway/rough/bunker/green/tee)"));
+			return;
+		}
+		const double Speed = FCString::Atod(*Args[0]);
+		const double DescentDeg = FCString::Atod(*Args[1]);
+		const EGolfLie Lie = LieFromProtocol(Args[2]);
+		const double SpinRpm = Args.Num() > 3 ? FCString::Atod(*Args[3]) : 0.0;
+
+		const double Descent = FMath::DegreesToRadians(DescentDeg);
+		FBallTrajectory Flight;
+		Flight.Samples.Add({ 0.0, FVector::ZeroVector,
+			FVector(Speed * FMath::Cos(Descent), 0.0, -Speed * FMath::Sin(Descent)) });
+		Flight.LandingSampleIndex = 0;
+		Flight.LandingSpeedMps = Speed;
+		Flight.LandingSpinRpm = SpinRpm;
+		Flight.DescentAngleDeg = DescentDeg;
+		Flight.bValid = true;
+
+		const FGroundRollResult R =
+			GolfBallFlight::SimulateGroundRoll(Flight, Lie, GolfBallFlight::SurfaceRollFor(Lie));
+		UE_LOG(LogTemp, Display,
+			TEXT("golfsim.TestGroundRoll: speed=%.1f m/s descent=%.1f deg spin=%.0f rpm lie=%s -> roll=%.1f m (%.1f yd)"),
+			Speed, DescentDeg, SpinRpm, *LieToProtocol(Lie), R.RollDistanceM, R.RollDistanceM * 1.0936132983);
 	}
 
 	// The range's time-of-day/weather director, if present. Range-only -- BethPage has none.
@@ -301,6 +346,11 @@ static FAutoConsoleCommandWithWorldAndArgs GTraceShotCmd(
 	TEXT("golfsim.TraceShot"),
 	TEXT("Fly a launch-monitor-resolved shot: golfsim.TraceShot <ballspeed_mps> <launch_deg> <azimuth_deg> <backspin_rpm> <sidespin_rpm> <carry_m> <apex_m> <descent_deg>"),
 	FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&TraceShotCmd));
+
+static FAutoConsoleCommandWithWorldAndArgs GTestGroundRollCmd(
+	TEXT("golfsim.TestGroundRoll"),
+	TEXT("Roll a synthetic landing out on a surface: golfsim.TestGroundRoll <landing_speed_mps> <descent_deg> <lie> [spin_rpm]. Compare fairway/rough/bunker."),
+	FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&TestGroundRollCmd));
 
 static FAutoConsoleCommandWithWorldAndArgs GSetTimeCmd(
 	TEXT("golfsim.SetTime"),

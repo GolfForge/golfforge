@@ -72,7 +72,8 @@ void UGolfRangePanel::BuildTree()
 	ValLaunch  = AddRow(2, TEXT("Launch (deg)"));
 	ValSpin    = AddRow(3, TEXT("Spin (rpm)"));
 	ValCarry   = AddRow(4, TEXT("Carry (yd)"));
-	ValOffline = AddRow(5, TEXT("Offline (yd)"));
+	ValTotal   = AddRow(5, TEXT("Total (yd)"));
+	ValOffline = AddRow(6, TEXT("Offline (yd)"));
 	UVerticalBoxSlot* GridSlot = Col->AddChildToVerticalBox(Grid);
 	GridSlot->SetPadding(FMargin(0.f, 6.f, 0.f, 6.f));
 
@@ -102,6 +103,8 @@ void UGolfRangePanel::BuildTree()
 	TimeCombo->OnSelectionChanged.AddDynamic(this, &UGolfRangePanel::HandleTimeSelectionChanged);
 	SkyCombo = AddLabeledCombo(TEXT("Sky"));
 	SkyCombo->OnSelectionChanged.AddDynamic(this, &UGolfRangePanel::HandleSkySelectionChanged);
+	CameraCombo = AddLabeledCombo(TEXT("Camera"));
+	CameraCombo->OnSelectionChanged.AddDynamic(this, &UGolfRangePanel::HandleCameraSelectionChanged);
 	LMCombo = AddLabeledCombo(TEXT("Launch Monitor"));
 	LMCombo->OnSelectionChanged.AddDynamic(this, &UGolfRangePanel::HandleLaunchMonitorSelectionChanged);
 
@@ -153,6 +156,7 @@ namespace
 void UGolfRangePanel::SetClubOptions(const TArray<FString>& Names) { FillCombo(ClubCombo, Names); }
 void UGolfRangePanel::SetTimeOptions(const TArray<FString>& Names) { FillCombo(TimeCombo, Names); }
 void UGolfRangePanel::SetSkyOptions(const TArray<FString>& Names)  { FillCombo(SkyCombo, Names); }
+void UGolfRangePanel::SetCameraOptions(const TArray<FString>& Names) { FillCombo(CameraCombo, Names); }
 void UGolfRangePanel::SetLaunchMonitorOptions(const TArray<FString>& Names) { FillCombo(LMCombo, Names); }
 
 void UGolfRangePanel::SetComboIndexGuarded(UComboBoxString* Combo, int32 Index)
@@ -170,6 +174,7 @@ void UGolfRangePanel::SetComboIndexGuarded(UComboBoxString* Combo, int32 Index)
 void UGolfRangePanel::SetSelectedClubIndex(int32 Index) { SetComboIndexGuarded(ClubCombo, Index); }
 void UGolfRangePanel::SetSelectedTimeIndex(int32 Index) { SetComboIndexGuarded(TimeCombo, Index); }
 void UGolfRangePanel::SetSelectedSkyIndex(int32 Index)  { SetComboIndexGuarded(SkyCombo, Index); }
+void UGolfRangePanel::SetSelectedCameraIndex(int32 Index) { SetComboIndexGuarded(CameraCombo, Index); }
 void UGolfRangePanel::SetSelectedLaunchMonitorIndex(int32 Index) { SetComboIndexGuarded(LMCombo, Index); }
 
 void UGolfRangePanel::HandleClubSelectionChanged(FString, ESelectInfo::Type SelectionType)
@@ -190,6 +195,11 @@ void UGolfRangePanel::HandleSkySelectionChanged(FString, ESelectInfo::Type Selec
 void UGolfRangePanel::HandleLaunchMonitorSelectionChanged(FString, ESelectInfo::Type SelectionType)
 {
 	HandleComboPick(LMCombo, OnLaunchMonitorChosen, SelectionType);
+}
+
+void UGolfRangePanel::HandleCameraSelectionChanged(FString, ESelectInfo::Type SelectionType)
+{
+	HandleComboPick(CameraCombo, OnCameraChosen, SelectionType);
 }
 
 void UGolfRangePanel::HandleSimulateClicked()
@@ -237,7 +247,7 @@ void UGolfRangePanel::ReturnFocusToGameViewport()
 }
 
 void UGolfRangePanel::UpdateMetrics(const FString& Club, double SpeedMph, double LaunchDeg,
-	double SpinRpm, double CarryYd, double OfflineYd, bool bSpinEstimated)
+	double SpinRpm, double CarryYd, double TotalYd, double OfflineYd, bool bSpinEstimated)
 {
 	if (ValClub)   { ValClub->SetText(FText::FromString(Club)); }
 	if (ValSpeed)  { ValSpeed->SetText(FText::FromString(FString::Printf(TEXT("%.0f"), SpeedMph))); }
@@ -250,6 +260,7 @@ void UGolfRangePanel::UpdateMetrics(const FString& Club, double SpeedMph, double
 			: FString::Printf(TEXT("%.0f"), SpinRpm)));
 	}
 	if (ValCarry)  { ValCarry->SetText(FText::FromString(FString::Printf(TEXT("%.0f"), CarryYd))); }
+	if (ValTotal)  { ValTotal->SetText(FText::FromString(FString::Printf(TEXT("%.0f"), TotalYd))); }
 	if (ValOffline)
 	{
 		const TCHAR* Side = (OfflineYd >= 0.0) ? TEXT("R") : TEXT("L");

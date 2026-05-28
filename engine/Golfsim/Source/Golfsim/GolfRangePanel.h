@@ -26,9 +26,9 @@ public:
 	void SetClubOptions(const TArray<FString>& Names);
 
 	// Refresh the metrics grid with the last shot's display-unit values. bSpinEstimated marks the
-	// spin as computed (not measured by the LM) -- shown as "5600 est".
+	// spin as computed (not measured by the LM) -- shown as "5600 est". TotalYd is carry + ground roll.
 	void UpdateMetrics(const FString& Club, double SpeedMph, double LaunchDeg,
-		double SpinRpm, double CarryYd, double OfflineYd, bool bSpinEstimated = false);
+		double SpinRpm, double CarryYd, double TotalYd, double OfflineYd, bool bSpinEstimated = false);
 
 	// Set the launch-monitor connection indicator (green/red dot + detail). Driven by the HUD from
 	// the active driver's status.
@@ -37,6 +37,9 @@ public:
 	// Populate the Time-of-day / Sky dropdowns from the environment director's preset names.
 	void SetTimeOptions(const TArray<FString>& Names);
 	void SetSkyOptions(const TArray<FString>& Names);
+
+	// Populate the Camera dropdown (e.g. "Tee" / "Follow"). The HUD owns the modes.
+	void SetCameraOptions(const TArray<FString>& Names);
 
 	// Populate the launch-monitor dropdown. The HUD passes "Off" first, then each available driver's
 	// display name -- so index 0 = Off (disconnect), index i = the (i-1)th driver (select + connect).
@@ -48,12 +51,14 @@ public:
 	void SetSelectedTimeIndex(int32 Index);
 	void SetSelectedSkyIndex(int32 Index);
 	void SetSelectedLaunchMonitorIndex(int32 Index);
+	void SetSelectedCameraIndex(int32 Index);
 
 	// Set by the owning HUD; each ComboBox pushes the user's pick back through its delegate.
 	TFunction<void(int32)> OnClubChosen;
 	TFunction<void(int32)> OnTimeChosen;
 	TFunction<void(int32)> OnSkyChosen;
 	TFunction<void(int32)> OnLaunchMonitorChosen;
+	TFunction<void(int32)> OnCameraChosen;
 
 	// Fired by the "Simulate Shot" button (only shown while a launch monitor is connected). The HUD
 	// asks the active driver to emit a shot (OpenFlight mock mode -> Socket.IO simulate_shot).
@@ -66,6 +71,7 @@ protected:
 	UFUNCTION() void HandleTimeSelectionChanged(FString SelectedItem, ESelectInfo::Type SelectionType);
 	UFUNCTION() void HandleSkySelectionChanged(FString SelectedItem, ESelectInfo::Type SelectionType);
 	UFUNCTION() void HandleLaunchMonitorSelectionChanged(FString SelectedItem, ESelectInfo::Type SelectionType);
+	UFUNCTION() void HandleCameraSelectionChanged(FString SelectedItem, ESelectInfo::Type SelectionType);
 	UFUNCTION() void HandleSimulateClicked();
 
 private:
@@ -83,6 +89,7 @@ private:
 	UPROPERTY(Transient) TObjectPtr<UComboBoxString> ClubCombo;
 	UPROPERTY(Transient) TObjectPtr<UComboBoxString> TimeCombo;
 	UPROPERTY(Transient) TObjectPtr<UComboBoxString> SkyCombo;
+	UPROPERTY(Transient) TObjectPtr<UComboBoxString> CameraCombo;
 	UPROPERTY(Transient) TObjectPtr<UComboBoxString> LMCombo;
 	UPROPERTY(Transient) TObjectPtr<UButton> SimulateButton;   // shown only while an LM is connected
 	UPROPERTY(Transient) TObjectPtr<UTextBlock> ValClub;
@@ -90,6 +97,7 @@ private:
 	UPROPERTY(Transient) TObjectPtr<UTextBlock> ValLaunch;
 	UPROPERTY(Transient) TObjectPtr<UTextBlock> ValSpin;
 	UPROPERTY(Transient) TObjectPtr<UTextBlock> ValCarry;
+	UPROPERTY(Transient) TObjectPtr<UTextBlock> ValTotal;
 	UPROPERTY(Transient) TObjectPtr<UTextBlock> ValOffline;
 	UPROPERTY(Transient) TObjectPtr<UTextBlock> StatusText;   // launch-monitor connection dot + detail
 

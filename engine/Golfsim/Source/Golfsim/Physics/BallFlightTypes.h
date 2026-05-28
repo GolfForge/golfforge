@@ -71,7 +71,12 @@ struct FBallTrajectory
 	double LateralOffsetM = 0.0;         // signed Y at landing (+ = right) -- the curve
 	FVector LandingPositionM = FVector::ZeroVector;
 	double LandingSpeedMps = 0.0;
+	double LandingSpinRpm = 0.0;         // |spin| at landing (decayed from launch) -- ground roll uses it
 	double LaunchSpeedMps = 0.0;
+
+	// Index of the landing sample in Samples (z=0 touchdown). The ground-roll pass appends post-bounce
+	// samples after this point, so the visualizer/HUD can tell flight (<= here) from roll (> here).
+	int32 LandingSampleIndex = INDEX_NONE;
 
 	EBallTrajectorySource Source = EBallTrajectorySource::Simulated;
 	bool bValid = false;                 // false if the solver bailed (e.g. degenerate input)

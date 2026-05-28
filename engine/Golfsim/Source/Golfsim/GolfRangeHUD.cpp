@@ -7,8 +7,11 @@
 #include "Drivers/LaunchMonitorManager.h"  // active-driver status -> panel dot (GOL-11)
 #include "Drivers/LaunchMonitorDriver.h"
 #include "Physics/BallFlightTypes.h"       // FBallTrajectory (carried on the outcome event)
+#include "Physics/RangeSurface.h"          // ClassifyRangeLie -> the integrator's surface provider (GOL-9)
 
 #include "EngineUtils.h"
+#include "Camera/CameraActor.h"     // follow camera (Camera dropdown: Tee / Follow)
+#include "Camera/CameraComponent.h" // disable the follow cam's aspect-ratio constraint
 #include "Components/InputComponent.h"
 #include "Engine/Canvas.h"          // UCanvas (SizeX/SizeY) for the DrawHUD resolution readout
 #include "Engine/GameViewportClient.h"
@@ -49,6 +52,24 @@ namespace
 		return World->SpawnActor<AGolfBallActor>(AGolfBallActor::StaticClass(), Loc, Rot, Params);
 	}
 
+	// Follow-cam framing (Unreal units = cm). Tunable; the chase sits behind + above the ball along the
+	// captured launch direction and always looks at the ball, so it stays centered even when lagging.
+	static constexpr float FollowBackUU = 900.f;     // behind the ball
+	static constexpr float FollowUpUU = 500.f;       // above the ball
+	static constexpr float FollowInterpSpeed = 4.f;  // position smoothing (VInterpTo)
+	static constexpr float FollowViewBlend = 0.25f;  // SetViewTargetWithBlend time, s
+
+	// Ball-center launch height above the traced ground (so the ~6 cm-radius sphere sits on the turf
+	// rather than half-buried). The solver's z=0 maps to this world Z, so flight + roll ride the ground.
+	static constexpr float BallRestHeightUU = 6.f;
+
+	// Ideal chase pose for a ball at BallPos, given the (flattened) downrange direction.
+	void ComputeFollowPose(const FVector& BallPos, const FVector& DownrangeDir, FVector& OutLoc, FRotator& OutRot)
+	{
+		OutLoc = BallPos - DownrangeDir * FollowBackUU + FVector::UpVector * FollowUpUU;
+		OutRot = (BallPos - OutLoc).Rotation();
+	}
+
 	// Find the range's environment director, or spawn one if absent. Logic-only + PIE-only, so
 	// nothing is persisted into the umap. Mirrors GetOrSpawnBallAt / GolfsimConsole's helpers.
 	AGolfRangeEnvironment* GetOrSpawnRangeEnv(UWorld* World)
@@ -81,6 +102,7 @@ void AGolfRangeHUD::EndPlay(const EEndPlayReason::Type EndPlayReason)
 	if (UEventBusSubsystem* EBus = EventBusWeak.Get())
 	{
 		EBus->Unsubscribe(OutcomeSub);   // weak-captured anyway, but don't leave a dead entry
+		EBus->SurfaceProvider = nullptr; // the subsystem outlives this HUD; drop the lie source (GOL-9)
 	}
 	OutcomeSub = FGolfEventSubscription{};
 	EventBusWeak = nullptr;
@@ -91,6 +113,8 @@ void AGolfRangeHUD::Tick(float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
 
+	UpdateFollowCam(DeltaSeconds);
+
 	// Count the Carry readout up while the ball is in the air, then snap to the exact final once it
 	// lands (or if the trajectory was invalid, the first tick just sets the final immediately).
 	if (bCarryAnimating && Panel)
@@ -98,14 +122,17 @@ void AGolfRangeHUD::Tick(float DeltaSeconds)
 		AGolfBallActor* Ball = AnimBall.Get();
 		if (Ball && Ball->IsPlaying())
 		{
-			const double LiveCarryYd = Ball->GetCurrentCarryMeters() * 1.0936132983;   // m -> yd
+			// Live downrange grows from ~0 to carry in flight, then on past carry during the rollout.
+			// Carry freezes at its landing value; Total keeps counting up through the roll.
+			const double LiveYd = Ball->GetCurrentCarryMeters() * 1.0936132983;   // m -> yd
 			Panel->UpdateMetrics(AnimClub, AnimSpeedMph, AnimLaunchDeg, AnimSpinRpm,
-				LiveCarryYd, AnimOfflineYd, bAnimSpinEstimated);
+				FMath::Min(LiveYd, AnimTargetCarryYd), FMath::Min(LiveYd, AnimTargetTotalYd),
+				AnimOfflineYd, bAnimSpinEstimated);
 		}
 		else
 		{
 			Panel->UpdateMetrics(AnimClub, AnimSpeedMph, AnimLaunchDeg, AnimSpinRpm,
-				AnimTargetCarryYd, AnimOfflineYd, bAnimSpinEstimated);   // landed: exact final
+				AnimTargetCarryYd, AnimTargetTotalYd, AnimOfflineYd, bAnimSpinEstimated);   // landed + rolled: exact finals
 			bCarryAnimating = false;
 		}
 	}
@@ -188,7 +215,16 @@ void AGolfRangeHUD::EnsureInputBound()
 			Panel->SetClubOptions(ClubNames);
 			Panel->AddToViewport();
 			Panel->SetSelectedClubIndex(ActiveClub);
-			Panel->UpdateMetrics(GBag[ActiveClub].Name, 0.0, 0.0, 0.0, 0.0, 0.0);   // "-" until first shot
+			Panel->UpdateMetrics(GBag[ActiveClub].Name, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0);   // "-" until first shot
+
+			// Camera dropdown: Tee (fixed pawn view) / Follow (chase cam). Defaults to Tee so the
+			// current view is unchanged unless the user opts in.
+			Panel->SetCameraOptions({ TEXT("Tee"), TEXT("Follow") });
+			Panel->SetSelectedCameraIndex(0);
+			Panel->OnCameraChosen = [WeakThis](int32 Idx)
+			{
+				if (AGolfRangeHUD* HUD = WeakThis.Get()) { HUD->SetCameraMode(Idx); }
+			};
 
 			// Environment director: find-or-spawn the range's time-of-day/weather actor and wire the
 			// Time + Sky dropdowns to it. Names come from the director (single source of truth, like
@@ -228,6 +264,24 @@ void AGolfRangeHUD::EnsureInputBound()
 					if (AGolfRangeHUD* HUD = WeakThis.Get()) { HUD->OnShotOutcome(Event); }
 				});
 			EventBusWeak = EBus;   // cache for a reliable Unsubscribe in EndPlay
+
+			// Ground-roll lie source (GOL-9): map a launch-local SI landing position to the painted
+			// surface. Mirrors AGolfBallActor::SampleToWorld (tee + flattened aim), then world cm -> m;
+			// the range landscape is centered at the world origin, so world meters == the splatmap's
+			// frame. Read live -- the integrator runs synchronously during a fire, so the pawn + aim are
+			// this shot's. Weak-captured: a stale call after teardown returns Unknown (-> no roll).
+			EBus->SurfaceProvider = [WeakThis](const FVector& LandingLocalSIm) -> EGolfLie
+			{
+				AGolfRangeHUD* HUD = WeakThis.Get();
+				APlayerController* PC = HUD ? HUD->GetOwningPlayerController() : nullptr;
+				APawn* Pawn = PC ? PC->GetPawn() : nullptr;
+				if (!Pawn) { return EGolfLie::Unknown; }
+				FRotator Aim = PC->GetControlRotation();
+				Aim.Pitch = 0.f;
+				Aim.Roll = 0.f;
+				const FVector WorldCm = Pawn->GetActorLocation() + Aim.RotateVector(LandingLocalSIm * 100.0);
+				return GolfRangeSurface::ClassifyLie(WorldCm.X / 100.0, WorldCm.Y / 100.0);
+			};
 
 			// Launch-monitor connection status -> panel dot (the active driver). Weak-captured panel
 			// so a status change after PIE teardown is a no-op.
@@ -335,6 +389,11 @@ void AGolfRangeHUD::EnsureInputBound()
 	InputComponent->BindKey(EKeys::Right,    IE_Pressed,  this, &AGolfRangeHUD::TurnRightPressed);
 	InputComponent->BindKey(EKeys::Right,    IE_Released, this, &AGolfRangeHUD::TurnRightReleased);
 	InputComponent->BindKey(EKeys::M,        IE_Pressed,  this, &AGolfRangeHUD::ToggleManualDialog);
+	// Follow-cam orbit: right mouse + drag to circle the resting ball (Follow mode).
+	InputComponent->BindKey(EKeys::RightMouseButton, IE_Pressed,  this, &AGolfRangeHUD::OrbitPressed);
+	InputComponent->BindKey(EKeys::RightMouseButton, IE_Released, this, &AGolfRangeHUD::OrbitReleased);
+	InputComponent->BindAxisKey(EKeys::MouseX, this, &AGolfRangeHUD::OnOrbitYaw);
+	InputComponent->BindAxisKey(EKeys::MouseY, this, &AGolfRangeHUD::OnOrbitPitch);
 	bInputBound = true;
 }
 
@@ -486,9 +545,18 @@ void AGolfRangeHUD::OnShotOutcome(const FGolfEvent& Event)
 			Rot = PC->GetControlRotation();
 			Rot.Pitch = 0.f;
 			Rot.Roll = 0.f;
+			FollowDownrangeDir = Rot.Vector();   // capture the aim now so a curving ball doesn't swing the chase
 			if (APawn* Pawn = PC->GetPawn())
 			{
 				Loc = Pawn->GetActorLocation();
+				// Launch from the floor (the tee surface), not the pawn's elevated capsule center, so the
+				// ball flies, lands, and rolls on the ground instead of floating at eye height. Trace down
+				// against world static (the landscape); the ball has collision disabled so it can't self-hit.
+				FHitResult Ground;
+				if (World->LineTraceSingleByChannel(Ground, Loc, Loc - FVector(0.f, 0.f, 100000.f), ECC_WorldStatic))
+				{
+					Loc.Z = Ground.ImpactPoint.Z + BallRestHeightUU;
+				}
 			}
 		}
 		Ball = GetOrSpawnBallAt(World, Loc, Rot);
@@ -499,7 +567,8 @@ void AGolfRangeHUD::OnShotOutcome(const FGolfEvent& Event)
 	}
 
 	const double CarryYd   = Out.CarryM         * 1.0936132983;   // m -> yd
-	const double OfflineYd = Out.LateralOffsetM * 1.0936132983;   // signed; + = right
+	const double TotalYd   = Out.TotalM         * 1.0936132983;   // carry + ground roll (GOL-9)
+	const double OfflineYd = Out.LateralOffsetM * 1.0936132983;   // signed; + = right (at the rest position)
 
 	// The outcome carries this shot's source metrics, so they're the current shot's -- no one-shot lag.
 	// OpenFlight may report no club -> show "-".
@@ -518,15 +587,37 @@ void AGolfRangeHUD::OnShotOutcome(const FGolfEvent& Event)
 	bAnimSpinEstimated = Out.bSpinEstimated;
 	AnimOfflineYd      = OfflineYd;
 	AnimTargetCarryYd  = CarryYd;
+	AnimTargetTotalYd  = TotalYd;
 	bCarryAnimating    = true;
+
+	// Follow cam: a new shot re-chases from the tee (even if we were parked on the last ball). Snap the
+	// cam to the tee framing first so the view blends from there, not in a long pan across the range.
+	if (bFollowCam && Ball && Ball->IsPlaying())
+	{
+		if (APlayerController* PC = GetOwningPlayerController())
+		{
+			if (ACameraActor* Cam = GetOrSpawnFollowCam())
+			{
+				FVector CamLoc;
+				FRotator CamRot;
+				ComputeFollowPose(Ball->GetActorLocation(), FollowDownrangeDir, CamLoc, CamRot);
+				Cam->SetActorLocationAndRotation(CamLoc, CamRot);
+				PC->SetViewTargetWithBlend(Cam, FollowViewBlend);
+			}
+		}
+		bFollowChasing = true;
+		bFollowParked = false;
+	}
 
 	if (Panel)
 	{
-		// First frame: static metrics now, carry starting at the ball's live downrange (~0 at launch).
+		// First frame: static metrics now, carry + total starting at the ball's live downrange (~0 at
+		// launch). If the trajectory was invalid (not playing), show the exact finals immediately.
 		const double StartCarryYd = (Ball && Ball->IsPlaying())
 			? Ball->GetCurrentCarryMeters() * 1.0936132983 : CarryYd;
+		const double StartTotalYd = (Ball && Ball->IsPlaying()) ? StartCarryYd : TotalYd;
 		Panel->UpdateMetrics(ClubName, SpeedMph, LaunchDeg, SpinRpm,
-			StartCarryYd, OfflineYd, Out.bSpinEstimated);
+			StartCarryYd, StartTotalYd, OfflineYd, Out.bSpinEstimated);
 	}
 	if (ManualDialog && bManualOpen)
 	{
@@ -535,6 +626,171 @@ void AGolfRangeHUD::OnShotOutcome(const FGolfEvent& Event)
 	UE_LOG(LogTemp, Display,
 		TEXT("golfsim range: shot.outcome carry=%.1fm lateral=%.1fm -> ball played, panel updated"),
 		Out.CarryM, Out.LateralOffsetM);
+}
+
+ACameraActor* AGolfRangeHUD::GetOrSpawnFollowCam()
+{
+	if (ACameraActor* Existing = FollowCam.Get())
+	{
+		return Existing;
+	}
+	UWorld* World = GetWorld();
+	if (!World)
+	{
+		return nullptr;
+	}
+	FActorSpawnParameters Params;
+	Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+	ACameraActor* Cam = World->SpawnActor<ACameraActor>(ACameraActor::StaticClass(),
+		FVector::ZeroVector, FRotator::ZeroRotator, Params);
+	if (Cam)
+	{
+		if (UCameraComponent* CamComp = Cam->GetCameraComponent())
+		{
+			CamComp->SetConstraintAspectRatio(false);   // fill the viewport (no 16:9 letterbox)
+		}
+	}
+	FollowCam = Cam;
+	return Cam;
+}
+
+void AGolfRangeHUD::SetCameraMode(int32 Index)
+{
+	bFollowCam = (Index == 1);
+	APlayerController* PC = GetOwningPlayerController();
+	if (!PC)
+	{
+		return;
+	}
+
+	if (!bFollowCam)
+	{
+		// Tee: blend back to the pawn's view (the current fixed-tee camera).
+		bFollowChasing = false;
+		bFollowParked = false;
+		if (APawn* Pawn = PC->GetPawn())
+		{
+			PC->SetViewTargetWithBlend(Pawn, FollowViewBlend);
+		}
+		return;
+	}
+
+	// Follow: frame the existing ball now (chase if mid-flight, park if resting); else wait for a shot.
+	AGolfBallActor* Ball = AnimBall.Get();
+	if (!Ball)
+	{
+		return;
+	}
+	if (ACameraActor* Cam = GetOrSpawnFollowCam())
+	{
+		FVector CamLoc;
+		FRotator CamRot;
+		ComputeFollowPose(Ball->GetActorLocation(), FollowDownrangeDir, CamLoc, CamRot);
+		Cam->SetActorLocationAndRotation(CamLoc, CamRot);
+		PC->SetViewTargetWithBlend(Cam, FollowViewBlend);
+	}
+	bFollowChasing = Ball->IsPlaying();
+	bFollowParked = !Ball->IsPlaying();
+}
+
+void AGolfRangeHUD::OrbitPressed()
+{
+	if (!bFollowCam)
+	{
+		return;   // orbit only applies to the follow cam
+	}
+	ACameraActor* Cam = FollowCam.Get();
+	AGolfBallActor* Ball = AnimBall.Get();
+	if (!Cam || !Ball)
+	{
+		return;
+	}
+	// Seed the orbit from the camera's current offset so the drag starts where we're already looking.
+	const FVector Offset = Cam->GetActorLocation() - Ball->GetActorLocation();
+	OrbitDistUU = FMath::Max((float)Offset.Size(), 100.f);
+	OrbitYawDeg = (float)FMath::RadiansToDegrees(FMath::Atan2(Offset.Y, Offset.X));
+	OrbitPitchDeg = (float)FMath::RadiansToDegrees(FMath::Asin(FMath::Clamp(Offset.Z / OrbitDistUU, -1.0, 1.0)));
+	PendingOrbitDX = 0.f;
+	PendingOrbitDY = 0.f;
+	bOrbiting = true;
+}
+
+void AGolfRangeHUD::OrbitReleased()
+{
+	bOrbiting = false;
+	PendingOrbitDX = 0.f;
+	PendingOrbitDY = 0.f;
+}
+
+void AGolfRangeHUD::OnOrbitYaw(float Value)
+{
+	if (bOrbiting) { PendingOrbitDX += Value; }
+}
+
+void AGolfRangeHUD::OnOrbitPitch(float Value)
+{
+	if (bOrbiting) { PendingOrbitDY += Value; }
+}
+
+void AGolfRangeHUD::UpdateFollowCam(float DeltaSeconds)
+{
+	if (!bFollowCam)
+	{
+		return;   // Tee mode -> the pawn is the view target
+	}
+	ACameraActor* Cam = FollowCam.Get();
+	AGolfBallActor* Ball = AnimBall.Get();
+
+	// Orbit (right-mouse drag) takes over when active, around the current ball -- works while parked or
+	// mid-flight. Overrides the chase framing for this frame.
+	if (bOrbiting && Cam && Ball)
+	{
+		constexpr float OrbitSens = 0.4f;   // deg per mouse unit
+		OrbitYawDeg += PendingOrbitDX * OrbitSens;
+		OrbitPitchDeg = FMath::Clamp(OrbitPitchDeg - PendingOrbitDY * OrbitSens, 3.f, 85.f);
+		PendingOrbitDX = 0.f;
+		PendingOrbitDY = 0.f;
+
+		const float YawR = FMath::DegreesToRadians(OrbitYawDeg);
+		const float PitchR = FMath::DegreesToRadians(OrbitPitchDeg);
+		const float Horiz = OrbitDistUU * FMath::Cos(PitchR);
+		const FVector BallPos = Ball->GetActorLocation();
+		const FVector CamPos = BallPos + FVector(Horiz * FMath::Cos(YawR), Horiz * FMath::Sin(YawR),
+			OrbitDistUU * FMath::Sin(PitchR));
+		Cam->SetActorLocationAndRotation(CamPos, (BallPos - CamPos).Rotation());
+		return;
+	}
+
+	if (!bFollowChasing)
+	{
+		return;   // parked / idle and not orbiting -> leave the camera where it is
+	}
+	if (!Cam || !Ball)
+	{
+		bFollowChasing = false;
+		return;
+	}
+
+	const FVector BallPos = Ball->GetActorLocation();
+	if (!Ball->IsPlaying())
+	{
+		// Came to rest: frame the final position and park (frozen until the next shot or a switch to Tee).
+		FVector CamLoc;
+		FRotator CamRot;
+		ComputeFollowPose(BallPos, FollowDownrangeDir, CamLoc, CamRot);
+		Cam->SetActorLocationAndRotation(CamLoc, CamRot);
+		bFollowChasing = false;
+		bFollowParked = true;
+		return;
+	}
+
+	// Chase: smooth the position toward the ideal pose, but always look straight at the ball so it stays
+	// centered even when the cam lags during fast flight.
+	FVector DesiredLoc;
+	FRotator UnusedRot;
+	ComputeFollowPose(BallPos, FollowDownrangeDir, DesiredLoc, UnusedRot);
+	const FVector NewLoc = FMath::VInterpTo(Cam->GetActorLocation(), DesiredLoc, DeltaSeconds, FollowInterpSpeed);
+	Cam->SetActorLocationAndRotation(NewLoc, (BallPos - NewLoc).Rotation());
 }
 
 void AGolfRangeHUD::DrawHUD()

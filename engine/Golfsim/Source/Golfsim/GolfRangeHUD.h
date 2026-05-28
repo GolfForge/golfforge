@@ -14,6 +14,7 @@
 
 class UManualShotDialog;
 class AGolfBallActor;
+class ACameraActor;
 struct FManualShotValues;
 
 UCLASS()
@@ -41,6 +42,19 @@ private:
 	// Manual-shot dialog (GOL-8): M toggles it (hiding the auto-fire panel); Fire routes here.
 	void ToggleManualDialog();
 	void FireManualShot(const FManualShotValues& Values);
+
+	// Follow camera: the "Camera" dropdown picks Tee (0, fixed pawn view) or Follow (1, chase cam).
+	// SetCameraMode switches the view target; UpdateFollowCam (from Tick) chases the active ball and
+	// parks on the resting ball until the next shot or a switch back to Tee.
+	void SetCameraMode(int32 Index);
+	void UpdateFollowCam(float DeltaSeconds);
+	ACameraActor* GetOrSpawnFollowCam();
+
+	// Follow-cam orbit: hold right mouse + drag to circle the camera around the ball (Follow mode only).
+	void OrbitPressed();
+	void OrbitReleased();
+	void OnOrbitYaw(float Value);    // MouseX axis delta (accumulated while orbiting)
+	void OnOrbitPitch(float Value);  // MouseY axis delta
 
 	// EventBus subscriber: ShotOutcome plays the ball + refreshes the panel. The outcome carries the
 	// source shot's launch metrics (club/speed/launch/spin), so the panel reads everything from it --
@@ -86,6 +100,25 @@ private:
 	double AnimSpinRpm = 0.0;
 	double AnimOfflineYd = 0.0;
 	double AnimTargetCarryYd = 0.0;
+	double AnimTargetTotalYd = 0.0;   // carry + ground roll; Total counts up through the rollout
+
+	// Follow-cam state. FollowCam is a find-or-spawned ACameraActor used as the view target while in
+	// Follow mode; FollowDownrangeDir is the launch aim captured at fire time (so a curving ball doesn't
+	// swing the chase around). bFollowChasing = tracking a live ball; bFollowParked = frozen on the rest.
+	bool bFollowCam = false;
+	bool bFollowChasing = false;
+	bool bFollowParked = false;
+	FVector FollowDownrangeDir = FVector::ForwardVector;
+	TWeakObjectPtr<ACameraActor> FollowCam;
+
+	// Orbit state (right-mouse drag around the ball). Angles are spherical about the ball; pending
+	// deltas accumulate from the mouse axes between Tick consumes.
+	bool bOrbiting = false;
+	float OrbitYawDeg = 0.f;
+	float OrbitPitchDeg = 20.f;
+	float OrbitDistUU = 1000.f;
+	float PendingOrbitDX = 0.f;
+	float PendingOrbitDY = 0.f;
 
 	UPROPERTY(Transient) TObjectPtr<UGolfRangePanel> Panel;
 	UPROPERTY(Transient) TObjectPtr<UManualShotDialog> ManualDialog;

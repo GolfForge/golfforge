@@ -2,6 +2,7 @@
 
 #include "Physics/BallFlightSolver.h"
 #include "Physics/BallFlightTypes.h"
+#include "Physics/GroundRoll.h"
 
 #include "Engine/Engine.h"          // GEngine->GetWorldFromContextObject
 #include "Engine/GameInstance.h"
@@ -105,17 +106,35 @@ void UEventBusSubsystem::OnShotTaken(const FGolfEvent& Event)
 	In.SidespinRpm    = Shot.SidespinRpm;
 	In.SmashFactor    = Shot.SmashFactor;
 
-	const FBallTrajectory T = GolfBallFlight::Simulate(In);
+	FBallTrajectory T = GolfBallFlight::Simulate(In);
 
 	FShotOutcomeEvent Out;
 	Out.Source         = TEXT("sim");
 	Out.PlayerId       = Shot.PlayerId;
-	Out.Trajectory     = T;                  // in-process render payload for the view
 	Out.CarryM         = T.CarryM;
-	Out.TotalM         = T.CarryM;           // no ground roll yet (GOL-9)
+	Out.TotalM         = T.CarryM;           // default (no surface provider): total == carry
 	Out.LateralOffsetM = T.LateralOffsetM;
-	Out.FinalLie       = TEXT("unknown");    // course collision not wired on the range
+	Out.FinalLie       = TEXT("unknown");    // default: surface unknown without a provider
 	Out.bInHole        = false;
+
+	// Ground interaction (GOL-9): if a surface provider is wired (the range registers one), classify
+	// the landing lie, roll the ball out, and report total distance + the resting lie. The roll is
+	// appended to the trajectory so the view replays the rollout. Pure hand-off at the landing instant.
+	if (T.bValid && SurfaceProvider)
+	{
+		const EGolfLie LandingLie = SurfaceProvider(T.LandingPositionM);
+		const FGroundRollResult Roll =
+			GolfBallFlight::SimulateGroundRoll(T, LandingLie, GolfBallFlight::SurfaceRollFor(LandingLie));
+		if (Roll.bValid)
+		{
+			Out.TotalM         = Roll.TotalDistanceM;
+			Out.LateralOffsetM = Roll.RestPositionM.Y;
+			Out.FinalLie       = LieToProtocol(SurfaceProvider(Roll.RestPositionM));
+			T.Samples.Append(Roll.RollSamples);   // ball rolls out past the landing marker
+		}
+	}
+
+	Out.Trajectory = T;                      // in-process render payload for the view (flight + roll)
 
 	// Carry the source shot's launch metrics so the UI shows the current shot's club/speed/launch/spin
 	// from the outcome alone (not a separately-stashed shot.taken, which would lag a shot behind).
@@ -126,8 +145,8 @@ void UEventBusSubsystem::OnShotTaken(const FGolfEvent& Event)
 	Out.bSpinEstimated = Shot.bSpinEstimated;
 
 	UE_LOG(LogTemp, Display,
-		TEXT("golfsim EventBus: shot.taken(%s) -> session.shot_outcome carry=%.1fm lateral=%.1fm valid=%d"),
-		*Shot.Club, Out.CarryM, Out.LateralOffsetM, T.bValid ? 1 : 0);
+		TEXT("golfsim EventBus: shot.taken(%s) -> session.shot_outcome carry=%.1fm total=%.1fm lie=%s valid=%d"),
+		*Shot.Club, Out.CarryM, Out.TotalM, *Out.FinalLie, T.bValid ? 1 : 0);
 
 	EventBus.Publish(Out);
 }

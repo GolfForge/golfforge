@@ -15,6 +15,7 @@
 #include "CoreMinimal.h"
 #include "Subsystems/GameInstanceSubsystem.h"
 #include "Events/EventTypes.h"
+#include "Physics/GroundRoll.h"   // EGolfLie (the SurfaceProvider return type)
 
 #include <type_traits>   // std::is_base_of (Publish<> payload guard); after the UE includes
 
@@ -96,6 +97,14 @@ public:
 
 	/** Resolve the subsystem from any UObject with a world. Null outside a running game/PIE world. */
 	static UEventBusSubsystem* Get(const UObject* WorldContext);
+
+	/**
+	 * Maps a solver-frame landing position (SI meters, launch-local: +X downrange, +Y right) to the
+	 * surface there. Injected by whatever owns the world geometry (the range HUD registers one that
+	 * maps launch-local -> world -> ClassifyRangeLie). Keeps the integrator world-agnostic: unset
+	 * (headless / non-range) means no ground roll (total stays == carry, final lie "unknown").
+	 */
+	TFunction<EGolfLie(const FVector& /*LandingLocalSIm*/)> SurfaceProvider;
 
 private:
 	/** Built-in subscriber: shot.taken -> GolfBallFlight::Simulate -> publish session.shot_outcome. */

@@ -105,10 +105,6 @@ void AGolfBallActor::Tick(float DeltaSeconds)
 		{
 			DrawDebugLine(World, PrevDrawPos, NewPos, FColor::Yellow, /*bPersistentLines=*/true,
 				/*LifeTime=*/-1.f, /*DepthPriority=*/0, /*Thickness=*/2.f);
-			if (bReachedEnd)
-			{
-				DrawDebugSphere(World, NewPos, 30.f, 12, FColor::Red, true, -1.f, 0, 2.f);
-			}
 		}
 	}
 	PrevDrawPos = NewPos;

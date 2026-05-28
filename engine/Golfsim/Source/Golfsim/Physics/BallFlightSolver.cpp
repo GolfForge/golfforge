@@ -16,6 +16,7 @@ namespace
 	constexpr double Tiny = 1e-9;
 
 	double RpmToRadPerSec(double Rpm) { return Rpm * 2.0 * Pi / 60.0; }
+	double RadPerSecToRpm(double Rad) { return Rad * 60.0 / (2.0 * Pi); }
 }
 
 namespace GolfBallFlight
@@ -91,6 +92,7 @@ namespace GolfBallFlight
 		{
 			const FVector PrevPos = Pos;
 			const FVector PrevVel = Vel;
+			const FVector PrevOmega = Omega;
 			const double PrevTime = Time;
 
 			// RK4 over (Pos, Vel, Omega): dPos/dt = Vel, dVel/dt = Accel(V,W), dOmega/dt = -Omega/tau.
@@ -125,11 +127,14 @@ namespace GolfBallFlight
 				const double Alpha = (Denom > Tiny) ? PrevPos.Z / Denom : 1.0;
 				const FVector LandPos = FMath::Lerp(PrevPos, Pos, Alpha);
 				const FVector LandVel = FMath::Lerp(PrevVel, Vel, Alpha);
+				const double LandSpin = FMath::Lerp(PrevOmega.Size(), Omega.Size(), Alpha);
 				const double LandTime = PrevTime + Alpha * StepDt;
+				Out.LandingSampleIndex = Out.Samples.Num();   // the landing sample we're about to add
 				Out.Samples.Add({ LandTime, LandPos, LandVel });
 
 				Out.LandingPositionM = LandPos;
 				Out.LandingSpeedMps = LandVel.Size();
+				Out.LandingSpinRpm = RadPerSecToRpm(LandSpin);
 				Out.FlightTimeS = LandTime;
 				Out.CarryM = FMath::Sqrt(LandPos.X * LandPos.X + LandPos.Y * LandPos.Y);
 				Out.LateralOffsetM = LandPos.Y;
@@ -185,6 +190,7 @@ namespace GolfBallFlight
 		}
 
 		const FTrajectorySample& Land = Out.Samples.Last();
+		Out.LandingSampleIndex = Out.Samples.Num() - 1;   // trace mode tracks no spin (LandingSpinRpm stays 0)
 		Out.LandingPositionM = Land.PositionMeters;
 		Out.LandingSpeedMps = Land.VelocityMps.Size();
 		Out.FlightTimeS = Land.TimeSeconds;

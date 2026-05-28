@@ -31,6 +31,7 @@ public:
 	virtual void Disconnect() override;
 	virtual void InjectTestMessage(const FString& Payload) override;
 	virtual void RequestSimulatedShot() override;   // sends Socket.IO 42["simulate_shot"] when connected
+	virtual void SetSelectedClub(const FString& ClubDisplayName) override;   // sends 42["set_club",{club}]
 
 	/**
 	 * Parse an OpenFlight shot payload (JSON string) into our envelope. Pure + defensive: tolerant of

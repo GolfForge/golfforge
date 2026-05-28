@@ -26,6 +26,14 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Golfsim")
 	void ResetAndReplay();
 
+	// True while the ball is mid-flight (animating along the trajectory). Lets the HUD tick the
+	// carry readout up in sync, then snap to the exact final once this goes false.
+	bool IsPlaying() const { return bPlaying; }
+
+	// Live downrange distance (launch-local +X), SI meters, at the current playback time -- grows from
+	// ~0 at launch to the final carry. Source for the panel's counting-up carry number.
+	float GetCurrentCarryMeters() const { return CurrentCarryMeters; }
+
 	// SI meters -> Unreal units (cm).
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Golfsim")
 	float MetersToUU = 100.f;
@@ -49,6 +57,7 @@ private:
 	FRotator LaunchRotation = FRotator::ZeroRotator;
 	float ElapsedSeconds = 0.f;
 	bool bPlaying = false;
+	float CurrentCarryMeters = 0.f;              // live downrange distance, updated each Tick
 	FVector PrevDrawPos = FVector::ZeroVector;   // last point of the growing tracer trail
 
 	// Map a sample (SI, launch-local: +X downrange, +Y right, +Z up) into world space.

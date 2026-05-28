@@ -13,6 +13,7 @@
 #include "GolfRangeHUD.generated.h"
 
 class UManualShotDialog;
+class AGolfBallActor;
 struct FManualShotValues;
 
 UCLASS()
@@ -41,9 +42,9 @@ private:
 	void ToggleManualDialog();
 	void FireManualShot(const FManualShotValues& Values);
 
-	// EventBus subscribers. ShotTaken (any producer: random / manual dialog / LM driver) stashes the
-	// input-display metrics for the panel; ShotOutcome plays the ball + refreshes the panel.
-	void OnShotTaken(const FGolfEvent& Event);
+	// EventBus subscriber: ShotOutcome plays the ball + refreshes the panel. The outcome carries the
+	// source shot's launch metrics (club/speed/launch/spin), so the panel reads everything from it --
+	// no separate shot.taken stash, which would lag a shot behind (integrator publishes mid-dispatch).
 	void OnShotOutcome(const FGolfEvent& Event);
 
 	// BindKey needs parameterless members; thin shims onto SelectClub(i).
@@ -66,22 +67,25 @@ private:
 	bool bTurnLeft = false;
 	bool bTurnRight = false;
 
-	// Input-display metrics for the panel, stashed from each shot.taken (any producer: random /
-	// manual dialog / LM driver). Carry/offline arrive with the outcome event, where the ball is
-	// played and the panel refreshed. One shot in flight at a time on the range, so "last" is exact.
-	FString LastClubName;
-	double LastSpeedMph = 0.0;
-	double LastLaunchDeg = 0.0;
-	double LastSpinRpm = 0.0;
-	bool bLastSpinEstimated = false;     // last shot's spin was computed (LM driver), not measured
-
 	// Cached at subscribe time so EndPlay can Unsubscribe reliably -- resolving the subsystem via
 	// world-context at teardown can return null, which would leave the dead subscriber in the bus.
 	TWeakObjectPtr<UEventBusSubsystem> EventBusWeak;
-	FGolfEventSubscription TakenSub;     // shot.taken subscription; released in EndPlay
 	FGolfEventSubscription OutcomeSub;   // shot.outcome subscription; released in EndPlay
 
 	bool bManualOpen = false;            // is the manual-shot dialog showing (auto-fire panel hidden)
+
+	// Carry counts up during flight. On shot.outcome the static metrics + final carry/offline are
+	// cached; Tick then pushes the in-flight ball's live downrange distance into the panel's Carry
+	// each frame until the ball lands, then snaps to the exact AnimTargetCarryYd.
+	bool bCarryAnimating = false;
+	bool bAnimSpinEstimated = false;
+	TWeakObjectPtr<AGolfBallActor> AnimBall;
+	FString AnimClub;
+	double AnimSpeedMph = 0.0;
+	double AnimLaunchDeg = 0.0;
+	double AnimSpinRpm = 0.0;
+	double AnimOfflineYd = 0.0;
+	double AnimTargetCarryYd = 0.0;
 
 	UPROPERTY(Transient) TObjectPtr<UGolfRangePanel> Panel;
 	UPROPERTY(Transient) TObjectPtr<UManualShotDialog> ManualDialog;

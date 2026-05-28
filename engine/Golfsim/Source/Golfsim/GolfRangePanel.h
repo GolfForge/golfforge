@@ -13,6 +13,7 @@
 
 class UComboBoxString;
 class UTextBlock;
+class UButton;
 
 UCLASS()
 class GOLFSIM_API UGolfRangePanel : public UUserWidget
@@ -37,16 +38,26 @@ public:
 	void SetTimeOptions(const TArray<FString>& Names);
 	void SetSkyOptions(const TArray<FString>& Names);
 
+	// Populate the launch-monitor dropdown. The HUD passes "Off" first, then each available driver's
+	// display name -- so index 0 = Off (disconnect), index i = the (i-1)th driver (select + connect).
+	void SetLaunchMonitorOptions(const TArray<FString>& Names);
+
 	// Sync a dropdown to the active index (e.g. after a 1-6 key press, or to the director's
 	// startup defaults). Guarded so it does not re-enter the selection callback.
 	void SetSelectedClubIndex(int32 Index);
 	void SetSelectedTimeIndex(int32 Index);
 	void SetSelectedSkyIndex(int32 Index);
+	void SetSelectedLaunchMonitorIndex(int32 Index);
 
 	// Set by the owning HUD; each ComboBox pushes the user's pick back through its delegate.
 	TFunction<void(int32)> OnClubChosen;
 	TFunction<void(int32)> OnTimeChosen;
 	TFunction<void(int32)> OnSkyChosen;
+	TFunction<void(int32)> OnLaunchMonitorChosen;
+
+	// Fired by the "Simulate Shot" button (only shown while a launch monitor is connected). The HUD
+	// asks the active driver to emit a shot (OpenFlight mock mode -> Socket.IO simulate_shot).
+	TFunction<void()> OnSimulateShot;
 
 protected:
 	virtual void NativeOnInitialized() override;
@@ -54,6 +65,8 @@ protected:
 	UFUNCTION() void HandleClubSelectionChanged(FString SelectedItem, ESelectInfo::Type SelectionType);
 	UFUNCTION() void HandleTimeSelectionChanged(FString SelectedItem, ESelectInfo::Type SelectionType);
 	UFUNCTION() void HandleSkySelectionChanged(FString SelectedItem, ESelectInfo::Type SelectionType);
+	UFUNCTION() void HandleLaunchMonitorSelectionChanged(FString SelectedItem, ESelectInfo::Type SelectionType);
+	UFUNCTION() void HandleSimulateClicked();
 
 private:
 	void BuildTree();
@@ -70,6 +83,8 @@ private:
 	UPROPERTY(Transient) TObjectPtr<UComboBoxString> ClubCombo;
 	UPROPERTY(Transient) TObjectPtr<UComboBoxString> TimeCombo;
 	UPROPERTY(Transient) TObjectPtr<UComboBoxString> SkyCombo;
+	UPROPERTY(Transient) TObjectPtr<UComboBoxString> LMCombo;
+	UPROPERTY(Transient) TObjectPtr<UButton> SimulateButton;   // shown only while an LM is connected
 	UPROPERTY(Transient) TObjectPtr<UTextBlock> ValClub;
 	UPROPERTY(Transient) TObjectPtr<UTextBlock> ValSpeed;
 	UPROPERTY(Transient) TObjectPtr<UTextBlock> ValLaunch;

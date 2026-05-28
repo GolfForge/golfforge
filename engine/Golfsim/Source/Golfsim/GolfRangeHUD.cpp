@@ -80,10 +80,8 @@ void AGolfRangeHUD::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
 	if (UEventBusSubsystem* EBus = EventBusWeak.Get())
 	{
-		EBus->Unsubscribe(TakenSub);     // weak-captured anyway, but don't leave dead entries
-		EBus->Unsubscribe(OutcomeSub);
+		EBus->Unsubscribe(OutcomeSub);   // weak-captured anyway, but don't leave a dead entry
 	}
-	TakenSub = FGolfEventSubscription{};
 	OutcomeSub = FGolfEventSubscription{};
 	EventBusWeak = nullptr;
 	Super::EndPlay(EndPlayReason);
@@ -92,6 +90,25 @@ void AGolfRangeHUD::EndPlay(const EEndPlayReason::Type EndPlayReason)
 void AGolfRangeHUD::Tick(float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
+
+	// Count the Carry readout up while the ball is in the air, then snap to the exact final once it
+	// lands (or if the trajectory was invalid, the first tick just sets the final immediately).
+	if (bCarryAnimating && Panel)
+	{
+		AGolfBallActor* Ball = AnimBall.Get();
+		if (Ball && Ball->IsPlaying())
+		{
+			const double LiveCarryYd = Ball->GetCurrentCarryMeters() * 1.0936132983;   // m -> yd
+			Panel->UpdateMetrics(AnimClub, AnimSpeedMph, AnimLaunchDeg, AnimSpinRpm,
+				LiveCarryYd, AnimOfflineYd, bAnimSpinEstimated);
+		}
+		else
+		{
+			Panel->UpdateMetrics(AnimClub, AnimSpeedMph, AnimLaunchDeg, AnimSpinRpm,
+				AnimTargetCarryYd, AnimOfflineYd, bAnimSpinEstimated);   // landed: exact final
+			bCarryAnimating = false;
+		}
+	}
 
 	const float Dir = (bTurnRight ? 1.0f : 0.0f) - (bTurnLeft ? 1.0f : 0.0f);
 	if (Dir == 0.0f)
@@ -197,19 +214,14 @@ void AGolfRangeHUD::EnsureInputBound()
 			}
 		}
 	}
-	// Subscribe once to the bus: shot.taken (any producer -- random / manual / LM driver) stashes the
-	// panel's input metrics; shot.outcome plays the ball + refreshes the panel. Weak capture so a
+	// Subscribe once to the bus: shot.outcome plays the ball + refreshes the panel (it carries the
+	// source shot's launch metrics, so no separate shot.taken stash is needed). Weak capture so a
 	// late dispatch during PIE teardown can never call into a destroyed HUD.
 	if (!OutcomeSub.IsValid())
 	{
 		if (UEventBusSubsystem* EBus = UEventBusSubsystem::Get(this))
 		{
 			TWeakObjectPtr<AGolfRangeHUD> WeakThis(this);
-			TakenSub = EBus->Subscribe(EEventKind::ShotTaken,
-				[WeakThis](const FGolfEvent& Event)
-				{
-					if (AGolfRangeHUD* HUD = WeakThis.Get()) { HUD->OnShotTaken(Event); }
-				});
 			OutcomeSub = EBus->Subscribe(EEventKind::ShotOutcome,
 				[WeakThis](const FGolfEvent& Event)
 				{
@@ -222,21 +234,86 @@ void AGolfRangeHUD::EnsureInputBound()
 			if (ULaunchMonitorManager* LM = ULaunchMonitorManager::Get(this))
 			{
 				TWeakObjectPtr<UGolfRangePanel> WeakPanel(Panel);
-				LM->OnActiveStatusChanged = [WeakPanel](bool bConnected, const FString& Detail)
+				LM->OnActiveStatusChanged = [WeakPanel, WeakThis](bool bConnected, const FString& Detail)
 				{
 					if (UGolfRangePanel* P = WeakPanel.Get()) { P->SetConnectionStatus(bConnected, Detail); }
+						// On connect, sync the device to our current club (re-picking the same dropdown
+						// entry wouldn't fire OnClubChosen, so push it here too).
+						if (bConnected)
+						{
+							if (AGolfRangeHUD* HUD = WeakThis.Get())
+							{
+								if (ULaunchMonitorManager* M = ULaunchMonitorManager::Get(HUD))
+								{
+									if (ULaunchMonitorDriver* D = M->GetActiveDriver())
+									{
+										D->SetSelectedClub(GBag[FMath::Clamp(HUD->ActiveClub, 0, GBagNum - 1)].Name);
+									}
+								}
+							}
+						}
 				};
 				if (Panel)
 				{
-					if (ULaunchMonitorDriver* D = LM->GetActiveDriver())
+					// Launch-monitor dropdown: "Off" + each available driver (today just OpenFlight;
+					// Square Omni etc. appear automatically once registered). Picking a driver connects
+					// it; "Off" disconnects. Defaults to "Off" unless one is already connected.
+					const TArray<FLaunchMonitorDriverInfo> Drivers = LM->GetAvailableDrivers();
+					ULaunchMonitorDriver* Active = LM->GetActiveDriver();
+					const bool bActiveConnected = Active && Active->IsConnected();
+					TArray<FString> LMNames;
+					LMNames.Reserve(Drivers.Num() + 1);
+					LMNames.Add(TEXT("Off"));
+					int32 SelectedLM = 0;
+					for (int32 i = 0; i < Drivers.Num(); ++i)
 					{
-						const FString Name = D->GetDisplayName().ToString();
-						Panel->SetConnectionStatus(D->IsConnected(), FString::Printf(TEXT("%s: %s"),
-							*Name, D->IsConnected() ? TEXT("connected") : TEXT("disconnected")));
+						LMNames.Add(Drivers[i].DisplayName.ToString());
+						if (bActiveConnected && Drivers[i].Id == LM->GetActiveDriverId())
+						{
+							SelectedLM = i + 1;
+						}
 					}
-					else
+					Panel->SetLaunchMonitorOptions(LMNames);
+					Panel->SetSelectedLaunchMonitorIndex(SelectedLM);
+
+					Panel->OnLaunchMonitorChosen = [WeakThis](int32 Idx)
 					{
-						Panel->SetConnectionStatus(false, TEXT("No launch monitor"));
+						AGolfRangeHUD* HUD = WeakThis.Get();
+						if (!HUD) { return; }
+						ULaunchMonitorManager* Mgr = ULaunchMonitorManager::Get(HUD);
+						if (!Mgr) { return; }
+						if (Idx <= 0)
+						{
+							Mgr->DisconnectActive();   // "Off"
+							return;
+						}
+						const TArray<FLaunchMonitorDriverInfo> Avail = Mgr->GetAvailableDrivers();
+						if (Avail.IsValidIndex(Idx - 1))
+						{
+							Mgr->SetActiveDriver(Avail[Idx - 1].Id, /*bConnectNow=*/true);
+						}
+					};
+
+					// "Simulate Shot" button (shown by the panel only while connected) -> ask the active
+					// driver to emit a shot (OpenFlight mock mode round-trips it back over the socket).
+					Panel->OnSimulateShot = [WeakThis]()
+					{
+						AGolfRangeHUD* HUD = WeakThis.Get();
+						if (!HUD) { return; }
+						ULaunchMonitorManager* Mgr = ULaunchMonitorManager::Get(HUD);
+						if (!Mgr) { return; }
+						if (ULaunchMonitorDriver* D = Mgr->GetActiveDriver())
+						{
+							D->RequestSimulatedShot();
+						}
+					};
+
+					// Only override the panel's default ("No launch monitor", gray) when something is
+					// actually connected -- so a disconnected startup reads consistently with "Off".
+					if (bActiveConnected && Active)
+					{
+						Panel->SetConnectionStatus(true, FString::Printf(TEXT("%s: connected"),
+							*Active->GetDisplayName().ToString()));
 					}
 				}
 			}
@@ -269,6 +346,15 @@ void AGolfRangeHUD::SelectClub(int32 Index)
 	{
 		Panel->SetSelectedClubIndex(ActiveClub);   // keep the dropdown in step with 1-6 keys (guarded)
 	}
+	// Push our selection to the connected launch monitor so it uses our club (OpenFlight set_club ->
+	// mock distributions / hardware estimates). Harmless no-op when nothing is connected.
+	if (ULaunchMonitorManager* LM = ULaunchMonitorManager::Get(this))
+	{
+		if (ULaunchMonitorDriver* D = LM->GetActiveDriver())
+		{
+			D->SetSelectedClub(GBag[ActiveClub].Name);
+		}
+	}
 }
 
 void AGolfRangeHUD::FireRandom()
@@ -295,9 +381,9 @@ void AGolfRangeHUD::PublishShotTaken(double BallMps, double LaunchDeg, double Az
 	double SideRpm, const FString& Club, const FString& Source)
 {
 	// Build the shot.taken envelope and publish it. The integrator subscriber runs the solver and
-	// publishes shot.outcome (GOL-7: the HUD fires through the bus, not the solver). The panel's
-	// input metrics are stashed by OnShotTaken (works for any producer), and the ball launches from
-	// the live tee + aim in OnShotOutcome -- so this just builds + publishes.
+	// publishes shot.outcome (GOL-7: the HUD fires through the bus, not the solver), carrying this
+	// shot's launch metrics; OnShotOutcome reads them + the ball launches from the live tee + aim --
+	// so this just builds + publishes.
 	FShotTakenEvent Shot;
 	Shot.Source         = Source;
 	Shot.PlayerId       = GolfsimEvents::LocalPlayerId();
@@ -381,23 +467,6 @@ void AGolfRangeHUD::ToggleManualDialog()
 	}
 }
 
-void AGolfRangeHUD::OnShotTaken(const FGolfEvent& Event)
-{
-	if (Event.Kind != EEventKind::ShotTaken)
-	{
-		return;
-	}
-	const FShotTakenEvent& Shot = static_cast<const FShotTakenEvent&>(Event);
-
-	// Stash the input-display metrics for the panel. Works for ANY producer (random / manual dialog /
-	// LM driver). Carry/offline arrive with the outcome. OpenFlight reports no club -> show "-".
-	LastClubName       = Shot.Club.IsEmpty() ? TEXT("-") : Shot.Club;
-	LastSpeedMph       = Shot.BallSpeedMps * 2.2369362921;   // m/s -> mph
-	LastLaunchDeg      = Shot.LaunchAngleDeg;
-	LastSpinRpm        = Shot.BackspinRpm;
-	bLastSpinEstimated = Shot.bSpinEstimated;
-}
-
 void AGolfRangeHUD::OnShotOutcome(const FGolfEvent& Event)
 {
 	if (Event.Kind != EEventKind::ShotOutcome)
@@ -407,6 +476,7 @@ void AGolfRangeHUD::OnShotOutcome(const FGolfEvent& Event)
 	const FShotOutcomeEvent& Out = static_cast<const FShotOutcomeEvent&>(Event);
 
 	// Launch the ball from the live tee + current aim, so any producer's shot flies from the player.
+	AGolfBallActor* Ball = nullptr;
 	if (UWorld* World = GetWorld())
 	{
 		FVector Loc = FVector::ZeroVector;
@@ -421,7 +491,8 @@ void AGolfRangeHUD::OnShotOutcome(const FGolfEvent& Event)
 				Loc = Pawn->GetActorLocation();
 			}
 		}
-		if (AGolfBallActor* Ball = GetOrSpawnBallAt(World, Loc, Rot))
+		Ball = GetOrSpawnBallAt(World, Loc, Rot);
+		if (Ball)
 		{
 			Ball->PlayTrajectory(Out.Trajectory);
 		}
@@ -429,14 +500,37 @@ void AGolfRangeHUD::OnShotOutcome(const FGolfEvent& Event)
 
 	const double CarryYd   = Out.CarryM         * 1.0936132983;   // m -> yd
 	const double OfflineYd = Out.LateralOffsetM * 1.0936132983;   // signed; + = right
+
+	// The outcome carries this shot's source metrics, so they're the current shot's -- no one-shot lag.
+	// OpenFlight may report no club -> show "-".
+	const FString ClubName = Out.Club.IsEmpty() ? FString(TEXT("-")) : Out.Club;
+	const double SpeedMph   = Out.BallSpeedMps * 2.2369362921;    // m/s -> mph
+	const double LaunchDeg  = Out.LaunchAngleDeg;
+	const double SpinRpm    = Out.BackspinRpm;
+
+	// Carry counts up as the ball flies (Tick reads the ball's live downrange), then snaps to CarryYd
+	// on landing. The other metrics are known now, so show them immediately.
+	AnimBall           = Ball;
+	AnimClub           = ClubName;
+	AnimSpeedMph       = SpeedMph;
+	AnimLaunchDeg      = LaunchDeg;
+	AnimSpinRpm        = SpinRpm;
+	bAnimSpinEstimated = Out.bSpinEstimated;
+	AnimOfflineYd      = OfflineYd;
+	AnimTargetCarryYd  = CarryYd;
+	bCarryAnimating    = true;
+
 	if (Panel)
 	{
-		Panel->UpdateMetrics(LastClubName, LastSpeedMph, LastLaunchDeg, LastSpinRpm,
-			CarryYd, OfflineYd, bLastSpinEstimated);
+		// First frame: static metrics now, carry starting at the ball's live downrange (~0 at launch).
+		const double StartCarryYd = (Ball && Ball->IsPlaying())
+			? Ball->GetCurrentCarryMeters() * 1.0936132983 : CarryYd;
+		Panel->UpdateMetrics(ClubName, SpeedMph, LaunchDeg, SpinRpm,
+			StartCarryYd, OfflineYd, Out.bSpinEstimated);
 	}
 	if (ManualDialog && bManualOpen)
 	{
-		ManualDialog->SetResult(CarryYd, OfflineYd);   // live "dial in a shot" feedback
+		ManualDialog->SetResult(CarryYd, OfflineYd);   // live "dial in a shot" feedback (final)
 	}
 	UE_LOG(LogTemp, Display,
 		TEXT("golfsim range: shot.outcome carry=%.1fm lateral=%.1fm -> ball played, panel updated"),

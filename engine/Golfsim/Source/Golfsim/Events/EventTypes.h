@@ -109,6 +109,16 @@ struct FShotOutcomeEvent : public FGolfEvent
 	UPROPERTY() double TotalM = 0.0;          // == CarryM until ground roll (GOL-9) lands
 	UPROPERTY() double LateralOffsetM = 0.0;  // signed; + = right (the range "offline" metric)
 
+	// The originating shot's launch metrics, copied by the integrator from shot.taken. Lets a
+	// consumer (the range panel) show "what produced this outcome" from the outcome event alone --
+	// without depending on the order shot.taken subscribers run in (the integrator publishes the
+	// outcome mid-dispatch, so a separate shot.taken stash would lag a shot behind).
+	UPROPERTY() FString Club;
+	UPROPERTY() double BallSpeedMps = 0.0;
+	UPROPERTY() double LaunchAngleDeg = 0.0;
+	UPROPERTY() double BackspinRpm = 0.0;
+	UPROPERTY() bool bSpinEstimated = false;
+
 	// In-process render payload: the sampled flight path the view replays. Deliberately NOT a
 	// UPROPERTY -- it never serializes (shot_outcome is local/non-replicated), it only carries the
 	// solver's result from the integrator to whatever animates the ball this frame.

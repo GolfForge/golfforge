@@ -37,6 +37,11 @@ public:
 	 *  (e.g. OpenFlight's mock mode). No-op by default. */
 	virtual void RequestSimulatedShot() {}
 
+	/** Tell the device which club is selected, in OUR display convention (e.g. "7-Iron"); the driver
+	 *  maps it to the device's own naming. Lets the LM use the club (mock distributions / hardware
+	 *  estimates). No-op by default / when not connected. */
+	virtual void SetSelectedClub(const FString& /*ClubDisplayName*/) {}
+
 	/** Fired on connect/disconnect/error. The manager forwards the active driver's status to the UI. */
 	TFunction<void(bool /*bConnected*/, const FString& /*Detail*/)> OnStatusChanged;
 

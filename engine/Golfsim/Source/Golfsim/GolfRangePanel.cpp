@@ -6,6 +6,7 @@
 
 #include "Blueprint/WidgetTree.h"
 #include "Components/Border.h"
+#include "Components/Button.h"
 #include "Components/CanvasPanel.h"
 #include "Components/CanvasPanelSlot.h"
 #include "Components/ComboBoxString.h"
@@ -101,6 +102,22 @@ void UGolfRangePanel::BuildTree()
 	TimeCombo->OnSelectionChanged.AddDynamic(this, &UGolfRangePanel::HandleTimeSelectionChanged);
 	SkyCombo = AddLabeledCombo(TEXT("Sky"));
 	SkyCombo->OnSelectionChanged.AddDynamic(this, &UGolfRangePanel::HandleSkySelectionChanged);
+	LMCombo = AddLabeledCombo(TEXT("Launch Monitor"));
+	LMCombo->OnSelectionChanged.AddDynamic(this, &UGolfRangePanel::HandleLaunchMonitorSelectionChanged);
+
+	// "Simulate Shot" button -- asks the connected device to emit a shot (OpenFlight mock mode ->
+	// Socket.IO simulate_shot). Hidden until SetConnectionStatus reports a connection. Default UButton
+	// is light, so the label is black.
+	SimulateButton = WidgetTree->ConstructWidget<UButton>();
+	UTextBlock* SimLabel = WidgetTree->ConstructWidget<UTextBlock>();
+	SimLabel->SetText(FText::FromString(TEXT("Simulate Shot")));
+	SimLabel->SetColorAndOpacity(FSlateColor(FLinearColor::Black));
+	SimLabel->SetJustification(ETextJustify::Center);
+	SimulateButton->SetContent(SimLabel);
+	SimulateButton->OnClicked.AddDynamic(this, &UGolfRangePanel::HandleSimulateClicked);
+	SimulateButton->SetVisibility(ESlateVisibility::Collapsed);
+	UVerticalBoxSlot* SimSlot = Col->AddChildToVerticalBox(SimulateButton);
+	SimSlot->SetPadding(FMargin(0.f, 6.f, 0.f, 0.f));
 
 	// Launch-monitor connection indicator (bottom of the panel). Gray until the HUD wires the active
 	// driver's status; green/red thereafter.
@@ -136,6 +153,7 @@ namespace
 void UGolfRangePanel::SetClubOptions(const TArray<FString>& Names) { FillCombo(ClubCombo, Names); }
 void UGolfRangePanel::SetTimeOptions(const TArray<FString>& Names) { FillCombo(TimeCombo, Names); }
 void UGolfRangePanel::SetSkyOptions(const TArray<FString>& Names)  { FillCombo(SkyCombo, Names); }
+void UGolfRangePanel::SetLaunchMonitorOptions(const TArray<FString>& Names) { FillCombo(LMCombo, Names); }
 
 void UGolfRangePanel::SetComboIndexGuarded(UComboBoxString* Combo, int32 Index)
 {
@@ -152,6 +170,7 @@ void UGolfRangePanel::SetComboIndexGuarded(UComboBoxString* Combo, int32 Index)
 void UGolfRangePanel::SetSelectedClubIndex(int32 Index) { SetComboIndexGuarded(ClubCombo, Index); }
 void UGolfRangePanel::SetSelectedTimeIndex(int32 Index) { SetComboIndexGuarded(TimeCombo, Index); }
 void UGolfRangePanel::SetSelectedSkyIndex(int32 Index)  { SetComboIndexGuarded(SkyCombo, Index); }
+void UGolfRangePanel::SetSelectedLaunchMonitorIndex(int32 Index) { SetComboIndexGuarded(LMCombo, Index); }
 
 void UGolfRangePanel::HandleClubSelectionChanged(FString, ESelectInfo::Type SelectionType)
 {
@@ -166,6 +185,20 @@ void UGolfRangePanel::HandleTimeSelectionChanged(FString, ESelectInfo::Type Sele
 void UGolfRangePanel::HandleSkySelectionChanged(FString, ESelectInfo::Type SelectionType)
 {
 	HandleComboPick(SkyCombo, OnSkyChosen, SelectionType);
+}
+
+void UGolfRangePanel::HandleLaunchMonitorSelectionChanged(FString, ESelectInfo::Type SelectionType)
+{
+	HandleComboPick(LMCombo, OnLaunchMonitorChosen, SelectionType);
+}
+
+void UGolfRangePanel::HandleSimulateClicked()
+{
+	if (OnSimulateShot)
+	{
+		OnSimulateShot();
+	}
+	ReturnFocusToGameViewport();   // so Space/1-6/arrows still reach gameplay after the click
 }
 
 void UGolfRangePanel::HandleComboPick(UComboBoxString* Combo, const TFunction<void(int32)>& OnChosen,
@@ -226,6 +259,11 @@ void UGolfRangePanel::UpdateMetrics(const FString& Club, double SpeedMph, double
 
 void UGolfRangePanel::SetConnectionStatus(bool bConnected, const FString& Detail)
 {
+	// The Simulate Shot button is only useful while connected (it triggers a server-side mock shot).
+	if (SimulateButton)
+	{
+		SimulateButton->SetVisibility(bConnected ? ESlateVisibility::Visible : ESlateVisibility::Collapsed);
+	}
 	if (!StatusText)
 	{
 		return;

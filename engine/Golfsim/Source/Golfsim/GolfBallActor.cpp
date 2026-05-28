@@ -33,6 +33,7 @@ void AGolfBallActor::PlayTrajectory(const FBallTrajectory& InTrajectory)
 	LaunchOriginUU = GetActorLocation();
 	LaunchRotation = GetActorRotation();
 	ElapsedSeconds = 0.f;
+	CurrentCarryMeters = 0.f;
 	bPlaying = Trajectory.bValid && Trajectory.Samples.Num() >= 2;
 
 	if (UWorld* World = GetWorld())
@@ -74,6 +75,7 @@ void AGolfBallActor::Tick(float DeltaSeconds)
 	if (ElapsedSeconds >= EndTime)
 	{
 		NewPos = SampleToWorld(S.Last());
+		CurrentCarryMeters = static_cast<float>(S.Last().PositionMeters.X);   // downrange = carry
 		bReachedEnd = true;
 	}
 	else
@@ -89,6 +91,8 @@ void AGolfBallActor::Tick(float DeltaSeconds)
 		const float T1 = static_cast<float>(S[Hi].TimeSeconds);
 		const float Alpha = (T1 > T0) ? (ElapsedSeconds - T0) / (T1 - T0) : 0.f;
 		NewPos = FMath::Lerp(SampleToWorld(S[Lo]), SampleToWorld(S[Hi]), Alpha);
+		CurrentCarryMeters = FMath::Lerp(static_cast<float>(S[Lo].PositionMeters.X),
+			static_cast<float>(S[Hi].PositionMeters.X), Alpha);
 	}
 
 	SetActorLocation(NewPos);

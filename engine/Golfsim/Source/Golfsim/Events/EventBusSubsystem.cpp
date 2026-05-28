@@ -117,6 +117,14 @@ void UEventBusSubsystem::OnShotTaken(const FGolfEvent& Event)
 	Out.FinalLie       = TEXT("unknown");    // course collision not wired on the range
 	Out.bInHole        = false;
 
+	// Carry the source shot's launch metrics so the UI shows the current shot's club/speed/launch/spin
+	// from the outcome alone (not a separately-stashed shot.taken, which would lag a shot behind).
+	Out.Club           = Shot.Club;
+	Out.BallSpeedMps   = Shot.BallSpeedMps;
+	Out.LaunchAngleDeg = Shot.LaunchAngleDeg;
+	Out.BackspinRpm    = Shot.BackspinRpm;
+	Out.bSpinEstimated = Shot.bSpinEstimated;
+
 	UE_LOG(LogTemp, Display,
 		TEXT("golfsim EventBus: shot.taken(%s) -> session.shot_outcome carry=%.1fm lateral=%.1fm valid=%d"),
 		*Shot.Club, Out.CarryM, Out.LateralOffsetM, T.bValid ? 1 : 0);

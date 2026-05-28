@@ -14,6 +14,46 @@
 namespace
 {
 	constexpr double GMphToMps = 0.44704;   // miles/hour -> meters/second
+
+	// OpenFlight's club ids are lowercase/hyphenated (driver, 3-wood, 7-iron, pw, ..., unknown).
+	// We normalize an incoming id to our display convention so the sim is LM-agnostic: wedges go
+	// UPPER (pw->PW), everything else title-cases each hyphen segment (7-iron->7-Iron, driver->Driver);
+	// unknown/empty -> empty (the panel then shows "-").
+	FString OpenFlightClubToDisplay(const FString& Id)
+	{
+		const FString Lower = Id.ToLower();
+		if (Lower.IsEmpty() || Lower == TEXT("unknown"))
+		{
+			return FString();
+		}
+		if (Lower == TEXT("pw") || Lower == TEXT("gw") || Lower == TEXT("sw") || Lower == TEXT("lw"))
+		{
+			return Lower.ToUpper();
+		}
+		TArray<FString> Parts;
+		Lower.ParseIntoArray(Parts, TEXT("-"));
+		for (FString& P : Parts)
+		{
+			if (P.Len() > 0)
+			{
+				P = P.Left(1).ToUpper() + P.Mid(1);
+			}
+		}
+		return FString::Join(Parts, TEXT("-"));
+	}
+
+	// Inverse: our display name -> OpenFlight's exact accepted id (server silently drops anything that
+	// isn't an exact ClubType match). Named wedges map to their codes; everything else lowercases
+	// (Driver->driver, 7-Iron->7-iron). Our 6-club bag all map to valid ids.
+	FString DisplayClubToOpenFlight(const FString& Display)
+	{
+		const FString D = Display.TrimStartAndEnd();
+		if (D.Equals(TEXT("Pitching Wedge"), ESearchCase::IgnoreCase)) return TEXT("pw");
+		if (D.Equals(TEXT("Gap Wedge"), ESearchCase::IgnoreCase))      return TEXT("gw");
+		if (D.Equals(TEXT("Sand Wedge"), ESearchCase::IgnoreCase))     return TEXT("sw");
+		if (D.Equals(TEXT("Lob Wedge"), ESearchCase::IgnoreCase))      return TEXT("lw");
+		return D.ToLower();
+	}
 }
 
 FString UOpenFlightDriver::ResolveUrl() const
@@ -25,6 +65,13 @@ FString UOpenFlightDriver::ResolveUrl() const
 	int32 Port = 8080;
 	GConfig->GetString(TEXT("OpenFlight"), TEXT("Host"), Host, GGameIni);
 	GConfig->GetInt(TEXT("OpenFlight"), TEXT("Port"), Port, GGameIni);
+	// Windows resolves "localhost" to IPv6 ::1 first, but OpenFlight's Flask dev server binds IPv4
+	// 0.0.0.0 only -- UE's lws dials the dead ::1 and fails with a misleading WSAENOTSOCK (GOL-36)
+	// without falling back. Dial 127.0.0.1 explicitly. (.NET/browsers work via dual-stack fallback.)
+	if (Host.Equals(TEXT("localhost"), ESearchCase::IgnoreCase))
+	{
+		Host = TEXT("127.0.0.1");
+	}
 	return FString::Printf(TEXT("ws://%s:%d/socket.io/?EIO=4&transport=websocket"), *Host, Port);
 }
 
@@ -97,6 +144,23 @@ void UOpenFlightDriver::RequestSimulatedShot()
 	{
 		UE_LOG(LogTemp, Warning, TEXT("golfsim OpenFlight: not connected; cannot request a shot"));
 	}
+}
+
+void UOpenFlightDriver::SetSelectedClub(const FString& ClubDisplayName)
+{
+	// Push our club selection so OpenFlight uses it (mock distributions / hardware estimates). The
+	// server requires an exact ClubType string and silently drops anything else, so map first.
+	if (!Socket.IsValid() || !Socket->IsConnected())
+	{
+		return;   // nothing to talk to; harmless no-op
+	}
+	const FString Id = DisplayClubToOpenFlight(ClubDisplayName);
+	if (Id.IsEmpty())
+	{
+		return;
+	}
+	Socket->Send(FString::Printf(TEXT("42[\"set_club\",{\"club\":\"%s\"}]"), *Id));
+	UE_LOG(LogTemp, Display, TEXT("golfsim OpenFlight: set_club -> %s"), *Id);
 }
 
 void UOpenFlightDriver::HandleConnected()
@@ -304,9 +368,10 @@ bool UOpenFlightDriver::ParseShotObject(const TSharedPtr<FJsonObject>& Payload, 
 	Out.AzimuthDeg = AzimuthDeg;
 
 	FString Club;
-	if (Shot->TryGetStringField(TEXT("club"), Club) && !Club.IsEmpty() && Club != TEXT("unknown"))
+	if (Shot->TryGetStringField(TEXT("club"), Club))
 	{
-		Out.Club = Club;
+		// Normalize OpenFlight's id (7-iron / pw / ...) to our display convention; unknown/empty -> "-".
+		Out.Club = OpenFlightClubToDisplay(Club);
 	}
 
 	double Smash = 0.0;

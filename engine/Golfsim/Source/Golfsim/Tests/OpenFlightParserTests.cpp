@@ -30,11 +30,36 @@ bool FGolfsimOpenFlightFullPayloadTest::RunTest(const FString& /*Parameters*/)
 	TestTrue(TEXT("launch_angle_horizontal -> azimuth (deg)"), FMath::IsNearlyEqual(Out.AzimuthDeg, -1.8));
 	TestTrue(TEXT("axis 0 -> all backspin"), FMath::IsNearlyEqual(Out.BackspinRpm, 2680.0, 0.5));
 	TestTrue(TEXT("axis 0 -> no sidespin"), FMath::IsNearlyEqual(Out.SidespinRpm, 0.0, 0.5));
-	TestTrue(TEXT("club preserved"), Out.Club == TEXT("driver"));
+	TestTrue(TEXT("club normalized to our display convention"), Out.Club == TEXT("Driver"));
 	TestTrue(TEXT("smash preserved"), FMath::IsNearlyEqual(Out.SmashFactor, 1.35));
 	TestFalse(TEXT("measured spin not flagged estimated"), bSpinEstimated);
 	TestTrue(TEXT("source tagged openflight"), Out.Source == TEXT("openflight"));
 	TestEqual(TEXT("kind is shot.taken"), (int32)Out.Kind, (int32)EEventKind::ShotTaken);
+	return true;
+}
+
+// --- OpenFlight club ids normalize to our display convention -----------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FGolfsimOpenFlightClubNormalizeTest, "Golfsim.OpenFlight.ClubNormalizedToDisplay",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FGolfsimOpenFlightClubNormalizeTest::RunTest(const FString& /*Parameters*/)
+{
+	auto ClubFor = [](const TCHAR* Id) -> FString
+	{
+		const FString Json = FString::Printf(TEXT("{\"shot\":{\"ball_speed_mph\":150.0,\"club\":\"%s\"}}"), Id);
+		FShotTakenEvent Out;
+		bool bEst = false;
+		UOpenFlightDriver::ParseShot(Json, Out, bEst);
+		return Out.Club;
+	};
+
+	TestEqual(TEXT("driver -> Driver"),    ClubFor(TEXT("driver")),   FString(TEXT("Driver")));
+	TestEqual(TEXT("3-wood -> 3-Wood"),    ClubFor(TEXT("3-wood")),   FString(TEXT("3-Wood")));
+	TestEqual(TEXT("7-iron -> 7-Iron"),    ClubFor(TEXT("7-iron")),   FString(TEXT("7-Iron")));
+	TestEqual(TEXT("9-hybrid -> 9-Hybrid"),ClubFor(TEXT("9-hybrid")), FString(TEXT("9-Hybrid")));
+	TestEqual(TEXT("pw -> PW"),            ClubFor(TEXT("pw")),       FString(TEXT("PW")));
+	TestEqual(TEXT("unknown -> empty"),    ClubFor(TEXT("unknown")),  FString());
 	return true;
 }
 

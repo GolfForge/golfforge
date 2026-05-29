@@ -61,4 +61,9 @@ This repo is being built across two machines (Mac for pipeline + docs, Windows f
 
 ## License
 
-MIT. See `LICENSE`.
+This project is dual-licensed:
+
+- **[GNU AGPL-3.0](LICENSE)** — free and open source. Use, modify, and distribute under the AGPL, including its network-use/copyleft terms (derivatives and networked deployments must make their source available).
+- **Commercial license** — for closed-source/proprietary use that can't comply with the AGPL. See [`COMMERCIAL.md`](COMMERCIAL.md).
+
+Copyright (c) 2026 Francisco Mazzoni and contributors.

@@ -1,25 +1,32 @@
 # Launch-monitor drivers
 
 Connectors that turn a real launch monitor's shot data into our `shot.taken` event on the EventBus.
-Each driver lives in our (MIT) binary and talks to its device/service over a socket or BLE — the sim
+Each driver lives in our binary and talks to its device/service over a socket or BLE — the sim
 only ever sees the normalized `FShotTakenEvent`, never the hardware.
 
-## ⚠️ License boundary — read before touching `OpenFlightDriver`
+## ⚠️ License note — read before touching `OpenFlightDriver`
 
-**OpenFlight is AGPL-3.0. This project is MIT.** We treat OpenFlight as a **network service we talk
-to**, never as code we link or copy into our binary. The AGPL only "infects" our code if we
-incorporate theirs into one program; talking to it over a localhost WebSocket is the standard
-non-infringing boundary.
+**OpenFlight and this project are both AGPL-3.0**, so there is no MIT-vs-AGPL "firewall" to police
+here. But the separate-process socket boundary still matters, for a different reason:
+
+**This project is dual-licensed — AGPL-3.0 plus a paid commercial exception (`COMMERCIAL.md`).** To
+sell a commercial (closed-source) license we must own or hold permissive rights to *everything in
+our binary*. If we vendor or copy OpenFlight's AGPL source into our process, the binary then
+contains third-party copyleft we can't relicense — which would break the commercial-exception
+model. So we keep OpenFlight as a **separate process we talk to over a socket**, never code we
+absorb. (This also lines up with architecture invariants #1/#2: OpenFlight runs on the user's Pi or
+a localhost process and just publishes shots that our driver normalizes into `FShotTakenEvent`.)
 
 Rules:
 
-1. Do **not** vendor any OpenFlight source files, even "for reference."
-2. Do **not** copy code snippets from their repo into our driver.
-3. Document their WebSocket protocol from their README/docs only — a schema is facts, not code.
-4. Our driver (MIT) runs in our binary; OpenFlight runs as a **separate process** (the user's Pi, or
+1. Do **not** vendor or copy OpenFlight source into our driver (it would taint our ability to offer
+   commercial licenses). Document their WebSocket protocol from their README/docs only — a schema is
+   facts, not code.
+2. Our driver runs in our binary; OpenFlight runs as a **separate process** (the user's Pi, or
    `localhost` via its `--mock` mode). They communicate only over the socket.
 
-The same boundary applies to any future third-party-protocol driver: talk to it, don't absorb it.
+The same separate-process boundary applies to any future third-party-protocol driver: talk to it,
+don't absorb it.
 
 ## Framework
 

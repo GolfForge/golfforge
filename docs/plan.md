@@ -107,7 +107,7 @@ Walking integration deliberately lands before launch monitor — it's a bigger d
 
 ## Open decisions
 
-- **License.** Lean MIT or Apache 2.0. Maximum contribution surface.
+- **License — DECIDED (2026-05-28):** AGPL-3.0 + a paid commercial-exception dual-license (sell closed-source licenses; external contributions under a CLA). See `LICENSE`, `COMMERCIAL.md`, Linear GOL-43. Public name: **GolfForge**.
 - **Course IP.** Real course names vs. generic "Coastal Links" style. GSPro plays this carefully. Probably real names with disclaimers and clear takedown process.
 - **Walking mode default.** Compressed (~3:1) is recommended default; strict 1:1 opt-in.
 - **Multiplayer host model.** PC-authoritative is the cleanest; needs decision on whether iPad-only households can host.

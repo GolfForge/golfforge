@@ -1,7 +1,9 @@
 // Launch-monitor driver for OpenFlight (open-source DIY Doppler-radar LM). GOL-11.
 //
-// ⚠️ LICENSE BOUNDARY: OpenFlight is AGPL-3.0; this project is MIT. We talk to it ONLY as a network
-// service over its socket -- we never vendor, copy, or link its source. See Drivers/README.md.
+// ⚠️ LICENSE NOTE: OpenFlight and this project are both AGPL-3.0, but this project is also offered
+// under a paid commercial license -- so to keep that option we must NOT vendor, copy, or link
+// OpenFlight's source into our binary. We talk to it ONLY as a network service over its socket.
+// See Drivers/README.md.
 //
 // OpenFlight's realtime API is Socket.IO (Engine.IO v4) over Flask-SocketIO -- NOT a raw WebSocket.
 // So this driver speaks a minimal Socket.IO/EIO4 layer on top of UE's IWebSocket: it connects to

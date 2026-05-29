@@ -12,6 +12,8 @@
 #include "Physics/GroundRoll.h"
 #include "GolfBallActor.h"
 #include "GolfRangeEnvironment.h"
+#include "GolfRangeHUD.h"
+#include "GolfDisplaySettings.h"
 #include "Events/EventBusSubsystem.h"
 #include "Drivers/LaunchMonitorManager.h"
 #include "Drivers/LaunchMonitorDriver.h"
@@ -335,6 +337,67 @@ namespace
 			UE_LOG(LogTemp, Warning, TEXT("golfsim.LMTrigger: no active driver"));
 		}
 	}
+
+	// --- Display settings + credits (GOL-52/GOL-59) ---------------------------------------------
+
+	void SetResolutionCmd(const TArray<FString>& Args, UWorld* /*World*/)
+	{
+		if (Args.Num() < 1)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("Usage: golfsim.SetResolution <W>x<H>  (e.g. 1920x1080)"));
+			return;
+		}
+		const TOptional<FIntPoint> Res = GolfDisplay::ParseResolution(Args[0]);
+		if (!Res.IsSet())
+		{
+			UE_LOG(LogTemp, Warning, TEXT("golfsim.SetResolution: could not parse '%s' (expected WxH)"), *Args[0]);
+			return;
+		}
+		FGolfDisplaySettings S = GolfDisplay::ReadCurrent();
+		S.Resolution = Res.GetValue();
+		GolfDisplay::Apply(S);
+		UE_LOG(LogTemp, Display, TEXT("golfsim.SetResolution: %dx%d"), Res.GetValue().X, Res.GetValue().Y);
+	}
+
+	void SetQualityCmd(const TArray<FString>& Args, UWorld* /*World*/)
+	{
+		if (Args.Num() < 1)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("Usage: golfsim.SetQuality <0-3>  (0=Low 1=Medium 2=High 3=Epic)"));
+			return;
+		}
+		FGolfDisplaySettings S = GolfDisplay::ReadCurrent();
+		S.QualityLevel = GolfDisplay::ClampQualityLevel(FCString::Atoi(*Args[0]));
+		GolfDisplay::Apply(S);
+		UE_LOG(LogTemp, Display, TEXT("golfsim.SetQuality: %d"), S.QualityLevel);
+	}
+
+	void SetUpscalerCmd(const TArray<FString>& Args, UWorld* /*World*/)
+	{
+		if (Args.Num() < 1)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("Usage: golfsim.SetUpscaler <0-2>  (0=TSR 1=DLSS 2=XeSS; vendor needs its plugin)"));
+			return;
+		}
+		FGolfDisplaySettings S = GolfDisplay::ReadCurrent();
+		S.UpscalerIndex = GolfDisplay::ClampUpscalerIndex(FCString::Atoi(*Args[0]));
+		GolfDisplay::Apply(S);
+		UE_LOG(LogTemp, Display, TEXT("golfsim.SetUpscaler: %s"), *GolfDisplay::UpscalerName(S.UpscalerIndex));
+	}
+
+	void CreditsCmd(const TArray<FString>& /*Args*/, UWorld* World)
+	{
+		if (!World) { return; }
+		if (APlayerController* PC = World->GetFirstPlayerController())
+		{
+			if (AGolfRangeHUD* HUD = Cast<AGolfRangeHUD>(PC->GetHUD()))
+			{
+				HUD->OpenCreditsSection();
+				return;
+			}
+		}
+		UE_LOG(LogTemp, Warning, TEXT("golfsim.Credits: no AGolfRangeHUD in this level"));
+	}
 }
 
 static FAutoConsoleCommandWithWorldAndArgs GFireShotCmd(
@@ -391,3 +454,23 @@ static FAutoConsoleCommandWithWorldAndArgs GLMTriggerCmd(
 	TEXT("golfsim.LMTrigger"),
 	TEXT("Ask the active driver's connected device to emit a simulated shot (OpenFlight mock mode) -- a real round-trip."),
 	FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&LMTriggerCmd));
+
+static FAutoConsoleCommandWithWorldAndArgs GSetResolutionCmd(
+	TEXT("golfsim.SetResolution"),
+	TEXT("Set the window resolution: golfsim.SetResolution <W>x<H> (persists)."),
+	FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&SetResolutionCmd));
+
+static FAutoConsoleCommandWithWorldAndArgs GSetQualityCmd(
+	TEXT("golfsim.SetQuality"),
+	TEXT("Set the overall scalability level: golfsim.SetQuality <0-3> (persists)."),
+	FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&SetQualityCmd));
+
+static FAutoConsoleCommandWithWorldAndArgs GSetUpscalerCmd(
+	TEXT("golfsim.SetUpscaler"),
+	TEXT("Select the temporal upscaler: golfsim.SetUpscaler <0-2> (0=TSR 1=DLSS 2=XeSS; vendor ones need their plugin). Quality = Upscale Mode preset."),
+	FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&SetUpscalerCmd));
+
+static FAutoConsoleCommandWithWorldAndArgs GCreditsCmd(
+	TEXT("golfsim.Credits"),
+	TEXT("Open the settings menu to the Credits/Attributions section."),
+	FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&CreditsCmd));

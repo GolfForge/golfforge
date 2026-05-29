@@ -15,7 +15,7 @@ public class Golfsim : ModuleRules
 
 		// WebSockets + Json: the OpenFlight launch-monitor driver (GOL-11) talks to OpenFlight's
 		// WebSocket and parses its shot JSON. Both are engine runtime modules (no uproject plugin).
-		PrivateDependencyModuleNames.AddRange(new string[] { "WebSockets", "Json" });
+		PrivateDependencyModuleNames.AddRange(new string[] { "WebSockets", "Json", "RHI" });
 
 		// Uncomment if you are using online features
 		// PrivateDependencyModuleNames.Add("OnlineSubsystem");

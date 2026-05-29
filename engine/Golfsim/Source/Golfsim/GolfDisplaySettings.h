@@ -1,0 +1,37 @@
+// Display-settings data + logic, split from the UI widget so the parse/clamp helpers are unit-testable
+// (no UObject, no UMG, no world). Apply/ReadCurrent touch UGameUserSettings (PIE-verified). GOL-52.
+#pragma once
+
+#include "CoreMinimal.h"
+#include "Misc/Optional.h"
+
+// WindowModeIndex: 0 = Windowed, 1 = Borderless (WindowedFullscreen), 2 = Fullscreen. Kept as an int
+// index (not EWindowMode) so this header stays engine-enum-free and POD; mapped in Apply/ReadCurrent.
+struct FGolfDisplaySettings
+{
+	FIntPoint Resolution = FIntPoint(1920, 1080);
+	int32 WindowModeIndex = 0;
+	int32 QualityLevel = 3;       // 0=Low 1=Medium 2=High 3=Epic
+	float ScreenPercentage = 100.f;
+	int32 UpscalerIndex = 0;      // 0=TSR (built-in) 1=DLSS 2=XeSS  (FSR deferred)
+};
+
+namespace GolfDisplay
+{
+	// Pure (unit-tested):
+	TOptional<FIntPoint> ParseResolution(const FString& In);   // "1920x1080" -> (1920,1080); else unset
+	int32 ClampQualityLevel(int32 Level);                      // -> [0,3]
+	int32 ClampWindowModeIndex(int32 Index);                   // -> [0,2]
+	int32 ClampUpscalerIndex(int32 Index);                     // -> [0,2]
+	FString UpscalerName(int32 Index);                         // 0=TSR 1=DLSS 2=XeSS
+	TArray<int32> AvailableUpscalerIndices();                  // TSR always; DLSS if NVIDIA + plugin; XeSS if plugin
+	TArray<FString> UpscaleModeNames(int32 UpscalerIndex);          // per-upscaler tier names, high->low quality
+	float ScreenPctForMode(int32 UpscalerIndex, int32 ModeIndex);   // tier -> render-scale %
+	int32 ModeForScreenPct(int32 UpscalerIndex, float Pct);         // render-scale % -> nearest tier
+	FString CreditsText();                                     // attribution block (sync w/ ATTRIBUTION.md)
+
+	// Engine-touching (PIE-verified):
+	FGolfDisplaySettings ReadCurrent();                        // from UGameUserSettings + r.ScreenPercentage
+	void Apply(const FGolfDisplaySettings& S);                 // write + ApplyResolutionSettings + SaveSettings
+	TArray<FIntPoint> SupportedResolutions();                  // monitor modes, or a sane fallback list
+}

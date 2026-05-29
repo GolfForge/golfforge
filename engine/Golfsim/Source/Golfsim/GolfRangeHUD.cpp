@@ -13,6 +13,8 @@
 #include "Camera/CameraActor.h"     // follow camera (Camera dropdown: Tee / Follow)
 #include "Camera/CameraComponent.h" // disable the follow cam's aspect-ratio constraint
 #include "Components/InputComponent.h"
+#include "SettingsMenu.h"
+#include "Framework/Application/SlateApplication.h"
 #include "Engine/Canvas.h"          // UCanvas (SizeX/SizeY) for the DrawHUD resolution readout
 #include "Engine/GameViewportClient.h"
 #include "GameFramework/PlayerController.h"
@@ -389,6 +391,10 @@ void AGolfRangeHUD::EnsureInputBound()
 	InputComponent->BindKey(EKeys::Right,    IE_Pressed,  this, &AGolfRangeHUD::TurnRightPressed);
 	InputComponent->BindKey(EKeys::Right,    IE_Released, this, &AGolfRangeHUD::TurnRightReleased);
 	InputComponent->BindKey(EKeys::M,        IE_Pressed,  this, &AGolfRangeHUD::ToggleManualDialog);
+	// Settings/credits menu. Escape works in packaged builds; in PIE the editor may grab Escape to stop
+	// play, so also bind Tab for reliable in-editor toggling (golfsim.Credits also opens it).
+	InputComponent->BindKey(EKeys::Escape,   IE_Pressed,  this, &AGolfRangeHUD::ToggleSettingsMenu);
+	InputComponent->BindKey(EKeys::Tab,      IE_Pressed,  this, &AGolfRangeHUD::ToggleSettingsMenu);
 	// Follow-cam orbit: right mouse + drag to circle the resting ball (Follow mode).
 	InputComponent->BindKey(EKeys::RightMouseButton, IE_Pressed,  this, &AGolfRangeHUD::OrbitPressed);
 	InputComponent->BindKey(EKeys::RightMouseButton, IE_Released, this, &AGolfRangeHUD::OrbitReleased);
@@ -399,6 +405,7 @@ void AGolfRangeHUD::EnsureInputBound()
 
 void AGolfRangeHUD::SelectClub(int32 Index)
 {
+	if (bSettingsOpen) { return; }
 	ActiveClub = FMath::Clamp(Index, 0, GBagNum - 1);
 	UE_LOG(LogTemp, Display, TEXT("golfsim range: club -> %s"), GBag[ActiveClub].Name);
 	if (Panel)
@@ -418,6 +425,7 @@ void AGolfRangeHUD::SelectClub(int32 Index)
 
 void AGolfRangeHUD::FireRandom()
 {
+	if (bSettingsOpen) { return; }
 	const FClubPreset& C = GBag[FMath::Clamp(ActiveClub, 0, GBagNum - 1)];
 	// Club-typical values + per-shot dispersion (so no two shots are identical).
 	const double BallMps = C.SpeedMps  * FMath::FRandRange(0.97, 1.03);
@@ -524,6 +532,80 @@ void AGolfRangeHUD::ToggleManualDialog()
 		// Hide the auto-fire panel while the dialog is open; restore it (children stay clickable) when closed.
 		Panel->SetVisibility(bManualOpen ? ESlateVisibility::Collapsed : ESlateVisibility::SelfHitTestInvisible);
 	}
+}
+
+void AGolfRangeHUD::EnsureSettingsMenu()
+{
+	if (SettingsMenu)
+	{
+		return;
+	}
+	APlayerController* PC = GetOwningPlayerController();
+	if (!PC)
+	{
+		return;
+	}
+	SettingsMenu = CreateWidget<USettingsMenu>(PC, USettingsMenu::StaticClass());
+	if (!SettingsMenu)
+	{
+		return;
+	}
+	SettingsMenu->SetResolutionOptions(GolfDisplay::SupportedResolutions());
+	SettingsMenu->SetUpscalerOptions(GolfDisplay::AvailableUpscalerIndices());
+	SettingsMenu->SetCreditsText(GolfDisplay::CreditsText());
+	SettingsMenu->SetCurrent(GolfDisplay::ReadCurrent());
+
+	TWeakObjectPtr<AGolfRangeHUD> WeakThis(this);
+	SettingsMenu->OnApplyDisplay = [WeakThis](const FGolfDisplaySettings& S)
+	{
+		if (AGolfRangeHUD* HUD = WeakThis.Get()) { HUD->ApplyDisplaySettings(S); }
+	};
+	SettingsMenu->OnClose = [WeakThis]()
+	{
+		if (AGolfRangeHUD* HUD = WeakThis.Get()) { HUD->ToggleSettingsMenu(); }
+	};
+	SettingsMenu->AddToViewport(20);   // above the range panel + manual dialog
+	SettingsMenu->SetVisibility(ESlateVisibility::Collapsed);
+}
+
+void AGolfRangeHUD::ToggleSettingsMenu()
+{
+	EnsureSettingsMenu();
+	if (!SettingsMenu)
+	{
+		return;
+	}
+	bSettingsOpen = !bSettingsOpen;
+	SettingsMenu->SetVisibility(bSettingsOpen ? ESlateVisibility::Visible : ESlateVisibility::Collapsed);
+	if (bSettingsOpen)
+	{
+		SettingsMenu->SetCurrent(GolfDisplay::ReadCurrent());   // reseed in case values changed elsewhere
+	}
+	else if (FSlateApplication::IsInitialized())
+	{
+		FSlateApplication::Get().SetAllUserFocusToGameViewport();   // hand keys back to gameplay
+	}
+}
+
+void AGolfRangeHUD::ApplyDisplaySettings(const FGolfDisplaySettings& S)
+{
+	GolfDisplay::Apply(S);
+	UE_LOG(LogTemp, Display, TEXT("golfsim settings: applied %dx%d windowMode=%d quality=%d screen%%=%.0f"),
+		S.Resolution.X, S.Resolution.Y, S.WindowModeIndex, S.QualityLevel, S.ScreenPercentage);
+}
+
+void AGolfRangeHUD::OpenCreditsSection()
+{
+	EnsureSettingsMenu();
+	if (!SettingsMenu)
+	{
+		return;
+	}
+	if (!bSettingsOpen)
+	{
+		ToggleSettingsMenu();
+	}
+	SettingsMenu->ShowSection(1);
 }
 
 void AGolfRangeHUD::OnShotOutcome(const FGolfEvent& Event)

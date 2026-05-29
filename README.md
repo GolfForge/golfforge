@@ -1,73 +1,97 @@
-# golfsim
+# GolfForge
 
-Open-source, cross-platform golf simulator with AI-assisted course building, walking/treadmill integration, and a clean BLE-based hardware story for launch monitors.
+Open-source, cross-platform golf simulator with AI-assisted course building, walking/treadmill
+integration, and a clean BLE-based hardware story for launch monitors.
+
+> **Status:** early, pre-1.0, and moving fast. The practice range runs and a real launch monitor
+> (OpenFlight) can drive it; full courses are being brought up. Expect rough edges.
+>
+> _The repository is still named `golfsim` while the rename to GolfForge is in progress._
 
 ## Why
 
-GSPro and the rest of the closed-source sim-golf market are good products gated by three structural weaknesses any OSS project can attack:
+GSPro and the rest of the closed-source sim-golf market are good products gated by three structural
+weaknesses an open-source project can attack:
 
-1. **Course pipeline lock-in.** The community builds the courses; the platform charges for access. Make the pipeline 10x cheaper using open LIDAR + OSM + AI-assisted UE5 import.
-2. **No walking integration.** Sim golf sits you on a couch. Wire it to a treadmill via Bluetooth FTMS and you compete with Zwift, not couch-golf.
-3. **Closed platforms.** Build on UE5 with proper cross-platform targets (Windows / Mac / Linux desktop, iPad mobile tier) and don't gate hardware behind a single OS.
-
-See `docs/plan.md` for the current full plan.
+1. **Course pipeline lock-in.** The community builds the courses; the platform charges for access.
+   GolfForge makes the pipeline ~10x cheaper using open LIDAR + OpenStreetMap + AI-assisted UE5 import.
+2. **No walking integration.** Sim golf sits you on a couch. Wire it to a treadmill over Bluetooth
+   FTMS and you compete with Zwift, not couch-golf.
+3. **Closed platforms.** Built on Unreal Engine 5 with real cross-platform targets (Windows / Mac /
+   Linux desktop, iPad as a future tier) and no hardware gated behind a single OS.
 
 ## Architecture in one paragraph
 
-Each platform target (Windows / Mac / Linux / iPad) ships as a **single monolithic binary** containing the sim, the renderer, and the platform-appropriate hardware drivers (CoreBluetooth on Apple, Windows.Devices.Bluetooth on Windows, BlueZ on Linux). Drivers and sim communicate via an **in-process normalized event bus** — every hardware source publishes events of the same shape, the sim subscribes. Multiplayer is the same event shape over the network between peers running the same binary. See `docs/event-protocol.md`.
+Each platform target ships as a **single monolithic binary** containing the sim, the renderer, and
+the platform-appropriate hardware drivers (CoreBluetooth on Apple, Windows.Devices.Bluetooth on
+Windows, BlueZ on Linux). Drivers and sim communicate via an **in-process normalized event bus** —
+every hardware source (launch monitor, walking sensor, manual input) publishes events of the same
+shape, and the sim subscribes. Multiplayer is that same event shape over the network between peers
+running the same binary. See [`docs/event-protocol.md`](docs/event-protocol.md).
+
+## Hardware
+
+GolfForge talks to launch monitors through a pluggable driver framework; the sim only ever sees a
+normalized shot event, never the device. The first supported monitor is the open-source **OpenFlight**
+DIY Doppler-radar launch monitor (over a local socket). A built-in manual-shot dialog lets you play
+with no hardware at all. Walking/treadmill support over BLE FTMS is on the roadmap.
 
 ## Repo layout
 
 ```
 .
-├── README.md                  # you are here
-├── docs/
-│   ├── plan.md                # current full project plan, MVP ladder, decisions
-│   └── event-protocol.md      # event envelope spec — read before writing any driver
-├── pipeline/                  # Python data pipeline (runs on Mac/Linux)
-│   ├── README.md
-│   ├── build_heightmap.py     # bbox + LIDAR → 16-bit UE5 heightmap
-│   ├── build_splatmap.py      # OSM golf features → 4-channel splatmap PNG
-│   ├── example.sh
-│   └── requirements.txt
-├── engine/                    # UE5 project lives here (developed on Windows)
-└── courses/                   # processed heightmap/splatmap outputs per course (LFS-tracked)
+├── docs/         # plan, event protocol, data contract, setup, engine cookbook
+├── pipeline/     # Python course-building pipeline (LIDAR + OSM -> UE5 import PNGs)
+├── engine/       # the Unreal Engine 5 project
+└── courses/      # processed heightmap/splatmap outputs per course (LFS-tracked)
 ```
-
-## Where work happens
-
-- **Mac (this machine):** the Python data pipeline, all docs, future BLE driver prototypes (using `bleak`), Mac/iOS UE5 builds (eventually).
-- **Windows PC:** primary UE5 development for the Windows/Linux build targets. Pulls from this repo over Git.
-- **All platforms at runtime:** one binary per platform. No services, no IPC, no paired machines for the end user.
 
 ## Getting started
 
-### Pipeline (Mac/Linux)
+**Requirements:** the engine builds against **Unreal Engine 5.7**, which requires an Epic Games
+account and acceptance of the [Unreal Engine EULA](https://www.unrealengine.com/eula). Some
+ground/tree assets are fetched per-machine from Fab — see [`docs/ue5-cookbook.md`](docs/ue5-cookbook.md).
 
-```bash
+### Engine (Windows)
+
+See [`docs/windows-setup.md`](docs/windows-setup.md) for the full setup — prerequisites, clone, UE5
+project, and first run.
+
+### Course pipeline (Python)
+
+```
 cd pipeline
-./setup.sh
+./setup.sh           # Mac/Linux today; Windows support in progress
 source .venv/bin/activate
 ./example.sh
 ```
 
-### Engine (Windows)
+See [`pipeline/README.md`](pipeline/README.md). Architecture and design notes live in
+[`docs/`](docs/) and [`CLAUDE.md`](CLAUDE.md).
 
-See [`docs/windows-setup.md`](docs/windows-setup.md) for the full Windows-side setup checklist — prerequisites, clone steps, UE5 project creation, MCP wiring, and Milestone 0.
+## Contributing
 
-## For Claude / AI agents
-
-This repo is being built across two machines (Mac for pipeline + docs, Windows for UE5). Sessions don't sync across desktop installations, so we use [`CLAUDE.md`](CLAUDE.md) at the repo root as the shared session-handoff document. If you are an AI assistant landing here, read `CLAUDE.md` first.
+Bug reports and feature requests are very welcome via [Issues](../../issues). **We are not accepting
+external pull requests yet** — a Contributor License Agreement needs to land first so the project can
+keep its dual license. See [`CONTRIBUTING.md`](CONTRIBUTING.md) and the
+[Code of Conduct](CODE_OF_CONDUCT.md). Please report security issues privately per
+[`SECURITY.md`](SECURITY.md).
 
 ## License
 
-This project is dual-licensed:
+GolfForge is dual-licensed:
 
-- **[GNU AGPL-3.0](LICENSE)** — free and open source. Use, modify, and distribute under the AGPL, including its network-use/copyleft terms (derivatives and networked deployments must make their source available).
-- **Commercial license** — for closed-source/proprietary use that can't comply with the AGPL. See [`COMMERCIAL.md`](COMMERCIAL.md).
+- **[GNU AGPL-3.0](LICENSE)** — free and open source. Use, modify, and distribute under the AGPL,
+  including its network-use/copyleft terms (derivatives and networked deployments must make their
+  source available).
+- **Commercial license** — for closed-source/proprietary use that can't comply with the AGPL. See
+  [`COMMERCIAL.md`](COMMERCIAL.md).
 
-Copyright (c) 2026 Francisco Mazzoni and contributors.
+Copyright (c) 2026 Francisco Mazzoni and contributors. The "GolfForge" name and logo are not covered
+by the AGPL grant. The Unreal Engine is © Epic Games and used under the Unreal Engine EULA — it is
+not part of this project's license.
 
 ## Data attribution
 
-Course data is derived from open sources — **© OpenStreetMap contributors** (ODbL) and public-domain USGS/SRTM elevation. Full details and obligations: [`ATTRIBUTION.md`](ATTRIBUTION.md).
+Course data is derived from open sources — **© OpenStreetMap contributors** (ODbL) and public-domain
+USGS / SRTM elevation. Full details and obligations: [`ATTRIBUTION.md`](ATTRIBUTION.md).

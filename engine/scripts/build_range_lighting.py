@@ -7,7 +7,7 @@
 # warm sky for free), a warm colour temperature, and a touch more fog. Run with
 # PracticeRange.umap open:
 #
-#   exec(compile(open(r"C:\Users\pucho\code\golfsim\engine\scripts"
+#   exec(compile(open(r"<repo>\engine\scripts"
 #     r"\build_range_lighting.py",encoding="utf-8").read(),
 #     "build_range_lighting.py","exec"))
 #

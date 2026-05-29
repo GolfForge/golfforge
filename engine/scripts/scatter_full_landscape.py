@@ -13,15 +13,15 @@
 # `execute_unreal_python` tool. TWO modes:
 #
 #   MODE A - setup + fire generation (one call):
-#     exec(compile(open(r"C:\Users\pucho\code\golfsim\engine\scripts"
+#     exec(compile(open(r"<repo>\engine\scripts"
 #                        r"\scatter_full_landscape.py",encoding="utf-8")
 #                  .read(),"scatter_full_landscape.py","exec"))
 #
 #   MODE B - read the gate metrics (a SEPARATE, LATER call, because
 #            PCGComponent.generate() is async - counts are NOT valid in
 #            the same call that fired it):
-#     SCATTER_MODE="report"; exec(compile(open(r"C:\Users\pucho\code"
-#                  r"\golfsim\engine\scripts\scatter_full_landscape.py",
+#     SCATTER_MODE="report"; exec(compile(open(r"<repo>\engine\scripts"
+#                  r"\scatter_full_landscape.py",
 #                  encoding="utf-8").read(),
 #                  "scatter_full_landscape.py","exec"))
 #

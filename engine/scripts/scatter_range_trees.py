@@ -19,15 +19,15 @@
 # `execute_unreal_python` tool. TWO modes:
 #
 #   MODE A - setup volume + fire generation (one call):
-#     exec(compile(open(r"C:\Users\pucho\code\golfsim\engine\scripts"
+#     exec(compile(open(r"<repo>\engine\scripts"
 #                        r"\scatter_range_trees.py",encoding="utf-8")
 #                  .read(),"scatter_range_trees.py","exec"))
 #
 #   MODE B - read the count + spread (a SEPARATE, LATER call, because
 #            PCGComponent.generate() is async - counts are NOT valid in the
 #            same call that fired it):
-#     SCATTER_MODE="report"; exec(compile(open(r"C:\Users\pucho\code"
-#                  r"\golfsim\engine\scripts\scatter_range_trees.py",
+#     SCATTER_MODE="report"; exec(compile(open(r"<repo>\engine\scripts"
+#                  r"\scatter_range_trees.py",
 #                  encoding="utf-8").read(),
 #                  "scatter_range_trees.py","exec"))
 #

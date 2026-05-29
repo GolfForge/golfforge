@@ -4,7 +4,7 @@
 # (Milestone 0.8.5). Run inside the UE5.7 editor's Python interpreter, e.g.
 # via the UnrealClaudeMCP `execute_unreal_python` tool:
 #
-#   exec(compile(open(r"C:\Users\pucho\code\golfsim\engine\scripts"
+#   exec(compile(open(r"<repo>\engine\scripts"
 #                     r"\build_pcg_treescatter.py").read(),
 #                "build_pcg_treescatter.py", "exec"))
 #
@@ -20,7 +20,7 @@
 # graph (the shared graph stays at the BethPage value):
 #
 #   DENSITY_PPSM=0.35; GRAPH_PATH="/Game/PCG/PCG_TreeScatter_Range"
-#   exec(compile(open(r"C:\Users\pucho\code\golfsim\engine\scripts"
+#   exec(compile(open(r"<repo>\engine\scripts"
 #                     r"\build_pcg_treescatter.py").read(),
 #                "build_pcg_treescatter.py", "exec"))
 #

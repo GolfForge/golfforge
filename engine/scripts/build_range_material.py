@@ -12,12 +12,12 @@
 # (canonical name + landscape soft-path binding preserved; reversible).
 #
 #   MODE PROBE - resolve class availability, mutate nothing persistent:
-#     MATERIAL_MODE="probe"; exec(compile(open(r"C:\Users\pucho\code"
-#       r"\golfsim\engine\scripts\build_range_material.py",
+#     MATERIAL_MODE="probe"; exec(compile(open(r"<repo>\engine\scripts"
+#       r"\build_range_material.py",
 #       encoding="utf-8").read(),"build_range_material.py","exec"))
 #
 #   MODE A - backup + rebuild + save (default):
-#     exec(compile(open(r"C:\Users\pucho\code\golfsim\engine\scripts"
+#     exec(compile(open(r"<repo>\engine\scripts"
 #       r"\build_range_material.py",encoding="utf-8").read(),
 #       "build_range_material.py","exec"))
 #

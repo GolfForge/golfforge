@@ -16,12 +16,12 @@
 # (built by build_landscape_grass.py).
 #
 #   MODE PROBE - resolve UNKNOWNS, mutate nothing persistent (run FIRST):
-#     MATERIAL_MODE="probe"; exec(compile(open(r"C:\Users\pucho\code"
-#       r"\golfsim\engine\scripts\build_course_material.py",
+#     MATERIAL_MODE="probe"; exec(compile(open(r"<repo>\engine\scripts"
+#       r"\build_course_material.py",
 #       encoding="utf-8").read(),"build_course_material.py","exec"))
 #
 #   MODE A - backup + rebuild + save (default):
-#     exec(compile(open(r"C:\Users\pucho\code\golfsim\engine\scripts"
+#     exec(compile(open(r"<repo>\engine\scripts"
 #       r"\build_course_material.py",encoding="utf-8").read(),
 #       "build_course_material.py","exec"))
 #

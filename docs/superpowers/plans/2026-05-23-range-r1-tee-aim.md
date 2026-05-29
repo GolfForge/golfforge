@@ -197,7 +197,7 @@ In `DrawHUD`, change the `L2` line so the player sees the aim keys:
 Close the UE editor (this changes the `AGolfRangeHUD` class layout — Live Coding can't be trusted for it). Then run:
 
 ```
-D:\ue57\UE_5.7\Engine\Build\BatchFiles\Build.bat GolfsimEditor Win64 Development -Project=C:\Users\pucho\code\golfsim\engine\Golfsim\Golfsim.uproject -WaitMutex -FromMsBuild
+<UE_ROOT>\Engine\Build\BatchFiles\Build.bat GolfsimEditor Win64 Development -Project=<repo>\engine\Golfsim\Golfsim.uproject -WaitMutex -FromMsBuild
 ```
 
 Expected: `Build succeeded` and a nonzero `UnrealEditor-Golfsim.dll` rebuilt. If it fails to compile, fix the error before continuing (do not reopen the editor on a broken build).

@@ -20,7 +20,7 @@
 # afterward or the water is lost.
 #
 #   Run in the UE5.7 editor Python interpreter via execute_unreal_python:
-#     exec(compile(open(r"C:\Users\pucho\code\golfsim\engine\scripts"
+#     exec(compile(open(r"<repo>\engine\scripts"
 #       r"\build_water_actors.py",encoding="utf-8").read(),
 #       "build_water_actors.py","exec"))
 #
@@ -30,13 +30,19 @@
 
 import json
 import math
+import os
 
 import unreal
 
 # ---------------------------------------------------------------- parameters
 COURSE_ID        = "bethpage-black"
-GEOJSON_PATH     = (r"C:\Users\pucho\code\golfsim\courses"
-                    r"\bethpage-black\water.geojson")
+# Repo root from the UE project location (repo/engine/Golfsim -> repo) so this
+# runs for any contributor / checkout. Set GEOJSON_PATH before exec to override.
+_REPO_ROOT       = os.path.normpath(os.path.join(
+    unreal.Paths.convert_relative_path_to_full(unreal.Paths.project_dir()),
+    "..", ".."))
+GEOJSON_PATH     = globals().get("GEOJSON_PATH") or os.path.join(
+    _REPO_ROOT, "courses", COURSE_ID, "water.geojson")
 LEVEL_HINT       = "BethPageBlack"
 LANDSCAPE_LABEL_HINT = "Landscape"
 

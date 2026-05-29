@@ -10,12 +10,12 @@
 # modes (mirrors scatter_full_landscape.py SCATTER_MODE):
 #
 #   MODE PROBE - resolve UNKNOWNS first, mutate nothing (run FIRST):
-#     GRASS_MODE="probe"; exec(compile(open(r"C:\Users\pucho\code\golfsim"
+#     GRASS_MODE="probe"; exec(compile(open(r"<repo>"
 #       r"\engine\scripts\build_landscape_grass.py",encoding="utf-8")
 #       .read(),"build_landscape_grass.py","exec"))
 #
 #   MODE A - create + configure + save the grass type (default):
-#     exec(compile(open(r"C:\Users\pucho\code\golfsim\engine\scripts"
+#     exec(compile(open(r"<repo>\engine\scripts"
 #       r"\build_landscape_grass.py",encoding="utf-8").read(),
 #       "build_landscape_grass.py","exec"))
 #

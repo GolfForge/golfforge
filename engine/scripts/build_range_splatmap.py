@@ -3,13 +3,14 @@
 # Generates the weight-paint masks for the flat synthetic Practice Range
 # (M_PracticeRange). This is the engine-side analogue of the Mac OSM pipeline's
 # build_splatmap.py, but for a hand-defined rectangular range -- so it is
-# deliberately stdlib-ONLY (zlib + struct + os): no PIL, no numpy, no `unreal`
-# import. The SAME file runs either standalone via the Windows `py` launcher OR
+# stdlib-only for its PNG work (zlib + struct + os): no PIL, no numpy. The only
+# `unreal` use is an optional local import to resolve paths/logging in-editor.
+# The SAME file runs either standalone via the Windows `py` launcher OR
 # inside UE5's embedded Python via execute_unreal_python (the primary path,
 # matching every other engine/scripts/*.py).
 #
 #   In-editor (primary):
-#     exec(compile(open(r"C:\Users\pucho\code\golfsim\engine\scripts"
+#     exec(compile(open(r"<repo>\engine\scripts"
 #       r"\build_range_splatmap.py",encoding="utf-8").read(),
 #       "build_range_splatmap.py","exec"))
 #
@@ -52,21 +53,22 @@ TEE_AT_MIN_X = True      # tee box at the -X (low-column) end; flip if reversed
 
 LAYERS = ("fairway", "rough", "tee", "trees")
 
-# Output dir: derive the repo root from this file when run standalone; fall back
-# to the absolute Windows path when exec'd in UE (no __file__). Override by
-# setting an OUT_DIR global before exec.
+# Output dir: derive the repo root portably. Standalone, this file sits in
+# engine/scripts/ (so ../.. is the repo root). Via execute_unreal_python there is
+# no usable __file__ (it points at a throwaway temp script under Intermediate/),
+# so derive the root from the UE project location (repo/engine/Golfsim -> repo).
+# Override by setting an OUT_DIR global before exec.
 try:
     _here = os.path.dirname(os.path.abspath(__file__))
 except NameError:
     _here = ""
-# Run standalone, this file sits in engine/scripts/ (so ../.. is the repo root).
-# Run via execute_unreal_python, __file__ points at a throwaway temp script
-# under engine/Golfsim/Intermediate/, which would derive the WRONG root -- so
-# only trust __file__ when it's the real engine/scripts/ dir; else hardcode.
 if os.path.basename(_here).lower() == "scripts":
     _ROOT = os.path.normpath(os.path.join(_here, "..", ".."))
 else:
-    _ROOT = r"C:\Users\pucho\code\golfsim"
+    import unreal
+    _ROOT = os.path.normpath(os.path.join(
+        unreal.Paths.convert_relative_path_to_full(unreal.Paths.project_dir()),
+        "..", ".."))
 OUT_DIR = globals().get("OUT_DIR") or os.path.join(_ROOT, "courses", "practice-range")
 
 

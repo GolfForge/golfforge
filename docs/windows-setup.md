@@ -140,7 +140,7 @@ claude --version
 From the repo root:
 
 ```powershell
-cd C:\Users\pucho\code\golfsim
+cd <repo>
 Copy-Item .mcp.json.example .mcp.json
 ```
 
@@ -151,7 +151,7 @@ Copy-Item .mcp.json.example .mcp.json
 With the UE editor running (so the plugin's TCP server is alive on `127.0.0.1:18888`):
 
 ```powershell
-cd C:\Users\pucho\code\golfsim
+cd <repo>
 claude
 ```
 

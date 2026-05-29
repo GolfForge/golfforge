@@ -55,7 +55,7 @@ OVERPASS_MIRRORS = [
 
 # Overpass usage policy requires a descriptive User-Agent on every request.
 HTTP_HEADERS = {
-    "User-Agent": "golfsim/0.1 (https://github.com/pucho/golfsim) python-requests",
+    "User-Agent": "golfforge/0.1 (https://github.com/GolfForge/golfforge) python-requests",
 }
 
 # OSM tag → splatmap channel index (R=0, G=1, B=2, A=3) or "extra" for separate PNG.

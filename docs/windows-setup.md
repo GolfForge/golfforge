@@ -61,12 +61,12 @@ In Git Bash or Windows Terminal:
 
 ```bash
 cd %USERPROFILE%\code   # or wherever you keep code
-git clone git@github.com:pucho/golfsim.git
+git clone git@github.com:GolfForge/golfforge.git
 cd golfsim
 git lfs pull            # ensure binary assets are fetched, not pointer-files
 ```
 
-If you don't have an SSH key wired to GitHub on this machine, either set one up or use the HTTPS URL: `git clone https://github.com/pucho/golfsim.git`.
+If you don't have an SSH key wired to GitHub on this machine, either set one up or use the HTTPS URL: `git clone https://github.com/GolfForge/golfforge.git`.
 
 ## Create the UE5 project in `engine/`
 

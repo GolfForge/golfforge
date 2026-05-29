@@ -67,3 +67,7 @@ This project is dual-licensed:
 - **Commercial license** — for closed-source/proprietary use that can't comply with the AGPL. See [`COMMERCIAL.md`](COMMERCIAL.md).
 
 Copyright (c) 2026 Francisco Mazzoni and contributors.
+
+## Data attribution
+
+Course data is derived from open sources — **© OpenStreetMap contributors** (ODbL) and public-domain USGS/SRTM elevation. Full details and obligations: [`ATTRIBUTION.md`](ATTRIBUTION.md).

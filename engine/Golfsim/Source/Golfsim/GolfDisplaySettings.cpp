@@ -139,7 +139,7 @@ namespace GolfDisplay
 			TEXT(""),
 			TEXT("Course data: © OpenStreetMap contributors (ODbL)."),
 			TEXT("Elevation: USGS 3DEP / SRTM (public domain), via OpenTopography."),
-			TEXT("Made with Unreal® Engine. © Epic Games, Inc."),
+			TEXT("Unreal® Engine, Copyright 1998 - 2026, Epic Games, Inc. All rights reserved."),
 			TEXT(""),
 			TEXT("GolfForge is licensed under AGPL-3.0, plus a commercial option."),
 			TEXT("See LICENSE, COMMERCIAL.md, and ATTRIBUTION.md."),

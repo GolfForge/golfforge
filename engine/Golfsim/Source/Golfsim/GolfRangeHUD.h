@@ -15,6 +15,7 @@
 
 class UManualShotDialog;
 class USettingsMenu;
+class UMainMenu;
 class AGolfBallActor;
 class ACameraActor;
 struct FManualShotValues;
@@ -54,6 +55,15 @@ public:
 	void OpenCreditsSection();   // golfsim.Credits entry point
 private:
 
+	// Startup main menu (Range / Play Course [disabled] / Exit). Shown over the already-loaded range
+	// behind a soft blur, so "Range" is an instant dismiss. Gameplay input is gated while it's up.
+	void EnsureMainMenu();
+	void ShowMainMenu();
+	void DismissMainMenu();
+
+	// Gameplay keys (club select, fire, aim) are dead while either modal is up.
+	bool InputGated() const { return bSettingsOpen || bMenuOpen; }
+
 	// Follow camera: the "Camera" dropdown picks Tee (0, fixed pawn view) or Follow (1, chase cam).
 	// SetCameraMode switches the view target; UpdateFollowCam (from Tick) chases the active ball and
 	// parks on the resting ball until the next shot or a switch back to Tee.
@@ -81,9 +91,9 @@ private:
 	void SelectClub5() { SelectClub(5); }
 
 	// Arrow-key aim: press/release toggle a held flag; Tick integrates the yaw.
-	void TurnLeftPressed()   { if (!bSettingsOpen) { bTurnLeft = true; } }
+	void TurnLeftPressed()   { if (!InputGated()) { bTurnLeft = true; } }
 	void TurnLeftReleased()  { bTurnLeft = false; }
-	void TurnRightPressed()  { if (!bSettingsOpen) { bTurnRight = true; } }
+	void TurnRightPressed()  { if (!InputGated()) { bTurnRight = true; } }
 	void TurnRightReleased() { bTurnRight = false; }
 
 	int32 ActiveClub = 0;
@@ -99,6 +109,7 @@ private:
 
 	bool bManualOpen = false;            // is the manual-shot dialog showing (auto-fire panel hidden)
 	bool bSettingsOpen = false;          // is the settings/credits modal showing (gameplay keys gated)
+	bool bMenuOpen = false;              // is the startup main menu showing (gameplay keys gated)
 
 	// Carry counts up during flight. On shot.outcome the static metrics + final carry/offline are
 	// cached; Tick then pushes the in-flight ball's live downrange distance into the panel's Carry
@@ -135,4 +146,5 @@ private:
 	UPROPERTY(Transient) TObjectPtr<UGolfRangePanel> Panel;
 	UPROPERTY(Transient) TObjectPtr<UManualShotDialog> ManualDialog;
 	UPROPERTY(Transient) TObjectPtr<USettingsMenu> SettingsMenu;
+	UPROPERTY(Transient) TObjectPtr<UMainMenu> MainMenu;
 };

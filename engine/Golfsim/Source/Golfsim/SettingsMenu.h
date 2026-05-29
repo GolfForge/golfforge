@@ -41,11 +41,13 @@ protected:
 	UFUNCTION() void HandleDisplayNavClicked();
 	UFUNCTION() void HandleCreditsNavClicked();
 	UFUNCTION() void HandleUpscalerChanged(FString SelectedItem, ESelectInfo::Type SelectionType);   // refill mode list
+	UFUNCTION() void HandleWindowModeChanged(FString SelectedItem, ESelectInfo::Type SelectionType); // borderless locks res to desktop
 
 private:
 	void BuildTree();
 	UButton* MakeButton(const TCHAR* Label);          // light button + black centered label
 	void RepopulateModeCombo(int32 UpscalerFixedIndex, float TargetPct);   // fill Upscale Mode for an upscaler
+	void UpdateResolutionEnabledForMode(int32 WindowModeIndex);            // disable the picker in Borderless (desktop-locked)
 
 	UPROPERTY(Transient) TObjectPtr<UComboBoxString> ResCombo;
 	UPROPERTY(Transient) TObjectPtr<UComboBoxString> WindowCombo;

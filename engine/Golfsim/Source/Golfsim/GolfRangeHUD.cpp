@@ -14,6 +14,7 @@
 #include "Camera/CameraComponent.h" // disable the follow cam's aspect-ratio constraint
 #include "Components/InputComponent.h"
 #include "SettingsMenu.h"
+#include "MainMenu.h"                          // startup main menu (Range / Play Course / Exit)
 #include "Framework/Application/SlateApplication.h"
 #include "Engine/Canvas.h"          // UCanvas (SizeX/SizeY) for the DrawHUD resolution readout
 #include "Engine/GameViewportClient.h"
@@ -400,12 +401,13 @@ void AGolfRangeHUD::EnsureInputBound()
 	InputComponent->BindKey(EKeys::RightMouseButton, IE_Released, this, &AGolfRangeHUD::OrbitReleased);
 	InputComponent->BindAxisKey(EKeys::MouseX, this, &AGolfRangeHUD::OnOrbitYaw);
 	InputComponent->BindAxisKey(EKeys::MouseY, this, &AGolfRangeHUD::OnOrbitPitch);
+	ShowMainMenu();   // greet on the already-loaded range; gameplay stays gated until "Range"
 	bInputBound = true;
 }
 
 void AGolfRangeHUD::SelectClub(int32 Index)
 {
-	if (bSettingsOpen) { return; }
+	if (InputGated()) { return; }
 	ActiveClub = FMath::Clamp(Index, 0, GBagNum - 1);
 	UE_LOG(LogTemp, Display, TEXT("golfsim range: club -> %s"), GBag[ActiveClub].Name);
 	if (Panel)
@@ -425,7 +427,7 @@ void AGolfRangeHUD::SelectClub(int32 Index)
 
 void AGolfRangeHUD::FireRandom()
 {
-	if (bSettingsOpen) { return; }
+	if (InputGated()) { return; }
 	const FClubPreset& C = GBag[FMath::Clamp(ActiveClub, 0, GBagNum - 1)];
 	// Club-typical values + per-shot dispersion (so no two shots are identical).
 	const double BallMps = C.SpeedMps  * FMath::FRandRange(0.97, 1.03);
@@ -476,6 +478,7 @@ void AGolfRangeHUD::PublishShotTaken(double BallMps, double LaunchDeg, double Az
 
 void AGolfRangeHUD::ToggleManualDialog()
 {
+	if (bMenuOpen) { return; }   // main menu owns the screen until dismissed
 	APlayerController* PC = GetOwningPlayerController();
 	if (!PC)
 	{
@@ -570,6 +573,7 @@ void AGolfRangeHUD::EnsureSettingsMenu()
 
 void AGolfRangeHUD::ToggleSettingsMenu()
 {
+	if (bMenuOpen) { return; }   // settings is reachable from in-range, not over the main menu
 	EnsureSettingsMenu();
 	if (!SettingsMenu)
 	{
@@ -606,6 +610,56 @@ void AGolfRangeHUD::OpenCreditsSection()
 		ToggleSettingsMenu();
 	}
 	SettingsMenu->ShowSection(1);
+}
+
+void AGolfRangeHUD::EnsureMainMenu()
+{
+	if (MainMenu)
+	{
+		return;
+	}
+	APlayerController* PC = GetOwningPlayerController();
+	if (!PC)
+	{
+		return;
+	}
+	MainMenu = CreateWidget<UMainMenu>(PC, UMainMenu::StaticClass());
+	if (!MainMenu)
+	{
+		return;
+	}
+	TWeakObjectPtr<AGolfRangeHUD> WeakThis(this);
+	MainMenu->OnPlayRange = [WeakThis]()
+	{
+		if (AGolfRangeHUD* HUD = WeakThis.Get()) { HUD->DismissMainMenu(); }
+	};
+	MainMenu->AddToViewport(30);   // above the panel, manual dialog, and settings modal
+	MainMenu->SetVisibility(ESlateVisibility::Collapsed);
+}
+
+void AGolfRangeHUD::ShowMainMenu()
+{
+	EnsureMainMenu();
+	if (!MainMenu)
+	{
+		return;
+	}
+	bMenuOpen = true;
+	MainMenu->SetVisibility(ESlateVisibility::Visible);
+}
+
+void AGolfRangeHUD::DismissMainMenu()
+{
+	if (!MainMenu)
+	{
+		return;
+	}
+	bMenuOpen = false;
+	MainMenu->SetVisibility(ESlateVisibility::Collapsed);
+	if (FSlateApplication::IsInitialized())
+	{
+		FSlateApplication::Get().SetAllUserFocusToGameViewport();   // hand keys back to the range
+	}
 }
 
 void AGolfRangeHUD::OnShotOutcome(const FGolfEvent& Event)

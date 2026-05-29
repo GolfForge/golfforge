@@ -96,6 +96,7 @@ void USettingsMenu::BuildTree()
 	WindowCombo->AddOption(TEXT("Windowed"));
 	WindowCombo->AddOption(TEXT("Borderless"));
 	WindowCombo->AddOption(TEXT("Fullscreen"));
+	WindowCombo->OnSelectionChanged.AddDynamic(this, &USettingsMenu::HandleWindowModeChanged);
 	QualityCombo = AddLabeledCombo(TEXT("Quality"));
 	for (const TCHAR* Q : { TEXT("Low"), TEXT("Medium"), TEXT("High"), TEXT("Epic") }) { QualityCombo->AddOption(Q); }
 	UpscalerCombo = AddLabeledCombo(TEXT("Upscaler"));   // options filled later by SetUpscalerOptions
@@ -163,6 +164,20 @@ void USettingsMenu::HandleUpscalerChanged(FString, ESelectInfo::Type SelectionTy
 	RepopulateModeCombo(NewUpscaler, CurPct);
 }
 
+void USettingsMenu::HandleWindowModeChanged(FString, ESelectInfo::Type SelectionType)
+{
+	// Ignore programmatic selection (SetCurrent calls UpdateResolutionEnabledForMode itself).
+	if (SelectionType == ESelectInfo::Direct || !WindowCombo) { return; }
+	UpdateResolutionEnabledForMode(WindowCombo->GetSelectedIndex());
+}
+
+void USettingsMenu::UpdateResolutionEnabledForMode(int32 WindowModeIndex)
+{
+	// Borderless (1) always renders at the OS desktop resolution, so the picker can't take effect there
+	// -- grey it out to avoid the "I picked 4K but it stayed at the desktop res" confusion.
+	if (ResCombo) { ResCombo->SetIsEnabled(WindowModeIndex != 1); }
+}
+
 void USettingsMenu::SetResolutionOptions(const TArray<FIntPoint>& Resolutions)
 {
 	ResOptions = Resolutions;
@@ -198,6 +213,7 @@ void USettingsMenu::SetCurrent(const FGolfDisplaySettings& S)
 		if (Idx != INDEX_NONE) { ResCombo->SetSelectedIndex(Idx); }
 	}
 	if (WindowCombo)  { WindowCombo->SetSelectedIndex(GolfDisplay::ClampWindowModeIndex(S.WindowModeIndex)); }
+	UpdateResolutionEnabledForMode(GolfDisplay::ClampWindowModeIndex(S.WindowModeIndex));
 	if (QualityCombo) { QualityCombo->SetSelectedIndex(GolfDisplay::ClampQualityLevel(S.QualityLevel)); }
 	if (UpscalerCombo)
 	{

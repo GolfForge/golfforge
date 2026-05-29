@@ -19,7 +19,7 @@ Gitignored: `engine/**/Content/Megaplant_Library/`, `Megascans/`, `Fab/`, and `P
 
 (`Thatching_Grass` / `Ribbon_Grass` / `Kikuyu_Grass` / `025_Grass` were trialed but the build references KBG — no need to fetch them.)
 
-**Contributor-availability caveat (follow-up):** Epic changed Megascans terms in 2025 — only *some* Megascans stays free; others are now paid, and `PC3D_Kentucky_Bluegrass_v14` is a marketplace pack. So a new contributor may not be able to acquire every asset for free, which blocks an out-of-the-box build. If we want the public repo to build for anyone, a follow-up should swap the non-free assets for **CC0/CC-BY** equivalents committed to the repo. Add new dependencies here as milestones land.
+**Contributor-availability note:** Each machine fetches these from its own Fab account. Under the Fab Standard License the **Personal tier is free** below the revenue threshold (~$100k lifetime), so most contributors get the free-listed assets at no cost; a couple (`PC3D_Kentucky_Bluegrass_v14`, and some Megascans that went paid in 2025) may need to be purchased. We accept that rather than swapping in CC0 substitutes — the cost is trivial at any real revenue. (A higher tier / purchase covers *use*, not redistribution: raw assets still stay gitignored.) Add new dependencies here as milestones land.
 
 ---
 

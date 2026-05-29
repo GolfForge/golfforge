@@ -77,6 +77,11 @@ engine/**/Content/__ExternalObjects__/
 
 # Per-machine Claude Code MCP config (copy .mcp.json.example to .mcp.json and edit)
 .mcp.json
+
+# Local packaging helper (hardcodes this machine's UE/repo paths) + packaged build output.
+# GOL-49 will add a committed, path-agnostic packaging script for the real release.
+engine/scripts/package-windows.bat
+/Build/
 .claude/
 
 # Crash reports

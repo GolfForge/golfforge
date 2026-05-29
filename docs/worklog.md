@@ -2,6 +2,16 @@
 
 > Dated milestone summaries, newest on top. The durable outcome + the committed artifact, not the blow-by-blow — process detail lives in git history, `docs/ue5-cookbook.md`, and the scripts themselves.
 
+## 2026-05-29 — Settings + credits menu + TSR/DLSS/XeSS upscaler (Windows)
+
+- **GOL-52 graphics settings DONE.** An Esc/Tab-toggled **centered settings modal** on the range HUD (dims the range, gates gameplay keys while open): resolution dropdown, window mode (Windowed/Borderless/Fullscreen), quality preset (Low/Med/High/Epic), all via `UGameUserSettings` and **persisted** across runs. New pure-C++ `SettingsMenu.{h,cpp}` (`UUserWidget`, same idiom as `UGolfRangePanel`) + a pure, unit-tested `GolfDisplaySettings.{h,cpp}` (parse/clamp/apply/read helpers, no UObject/UMG), owned/toggled by `AGolfRangeHUD`; `golfsim.SetResolution`/`SetQuality` console cmds.
+- **GOL-53 upscaler DONE (TSR + DLSS + XeSS).** An **Upscaler** dropdown + a per-upscaler **Upscale Mode** dropdown that repopulates with each scaler's own tier names (DLSS: DLAA/Quality/Balanced/Performance/Ultra Performance; XeSS: Native AA/Ultra Quality Plus/…; TSR: generic). **cvar-driven, no plugin module dependency** (the game module builds with or without the plugins): all live in the **TSR slot** (`r.AntiAliasingMethod 4` + `r.TemporalAA.Upsampling 1`), one vendor enabled at a time (DLSS `r.NGX.DLSS.Enable`; XeSS `r.XeSS.Enabled`+`r.XeSS.Quality`). DLSS gated to NVIDIA (`IsRHIDeviceNVIDIA()`, added `"RHI"` to `Build.cs`); XeSS shown when its plugin's loaded (DP4a fallback). `golfsim.SetUpscaler`. **FSR deferred → GOL-62** (its cvars + frame-gen-default-on recorded there).
+- **GOL-59 in-app credits DONE.** A **Credits** section in the menu (© OpenStreetMap/ODbL, "Made with Unreal® Engine", USGS/SRTM via OpenTopography, GolfForge AGPL) from `GolfDisplay::CreditsText`; `golfsim.Credits`. Satisfies the in-app ODbL + UE-EULA attribution that blocked GOL-49.
+- **Quit Game button** added to the menu (`UKismetSystemLibrary::QuitGame`).
+- **Verification:** clean builds + **28/28 automation tests** (4 new `Golfsim.Settings.*`), PIE-confirmed (toggle, key-gating, persistence, DLSS + XeSS engage, per-upscaler mode lists). Files: `GolfDisplaySettings.*`, `SettingsMenu.*`, `GolfRangeHUD.*`, `GolfsimConsole.cpp`, `Tests/SettingsTests.cpp`, `Golfsim.Build.cs`.
+- **GOL-49 (distribution) started:** first **Win64 Development** package via `BuildCookRun` (`-map=/Game/Maps/PracticeRange`) building; local `engine/scripts/package-windows.bat` (gitignored — hardcodes paths) drives it → `Build/Windows/Golfsim.exe`. A committed, path-agnostic packaging script is still TODO under GOL-49.
+- **Process note:** built this feature **inline** (not the full brainstorm→spec→plan→subagent chain) at Fran's request — much faster for well-understood work.
+
 ## 2026-05-29 — Open-sourcing groundwork (GolfForge): license, repo hygiene, attribution (Windows)
 
 - **Decision: take the repo public as GolfForge under AGPL-3.0 + a paid commercial dual-license.** Issues-on / PRs-closed at launch (a CLA gates code contributions); releases = manual GitHub Releases for macOS + Windows. Prioritized backlog is in Linear (GOL-43..GOL-61). Name **GolfForge** chosen after a web screen rejected "GolfCraft" (existing USPTO mark + a Decentraland golf game + taken GitHub org/domain).

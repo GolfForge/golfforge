@@ -6,9 +6,20 @@ The engine-side knowledge base: hard-won pitfalls, working recipes, and the curr
 
 ## Marketplace / Fab asset dependencies
 
-Quixel/Fab/marketplace assets are NOT in git. Gitignored: `engine/**/Content/Megaplant_Library/`, `Megascans/`, `Fab/`, and `PC3D_Kentucky_Bluegrass_v14/` — re-downloadable free per machine. **UE5.7: Quixel Bridge is deprecated; Megascans now comes via the Fab plugin** (Window → Fab) and imports under `/Game/Fab/...`; some marketplace packs import to their own top-level `/Game/<Pack>/` (gitignore those explicitly). ("Asset not available in UAsset format" = use the Fab plugin's Add-to-project, not the old Bridge.) On a fresh clone, before opening `BethPageBlack.umap`, re-download the referenced assets via Fab or you'll see "missing asset" warnings.
+**License basis (open-source compliance, GOL-44):** Quixel Megascans / Megaplant and marketplace foliage are licensed under the **Fab Standard License**, which lets you ship them *baked into a product* but forbids redistributing the raw assets "on a standalone basis" — so committing the `.uasset` files to this public repo is not allowed. We therefore **gitignore all of them** and each machine re-downloads them from its own Fab account. Nothing here is committed, so there's no redistribution and no attribution obligation in the repo. (Only assets offered under **CC-BY/CC0** on Fab could be committed — CC-BY with attribution in `NOTICE` — but the packs below are Standard-License, not CC.)
 
-**Currently referenced:** `Tree_Silver_Birch` (Megaplant, M0.8.5); Fab Megascans surfaces `Lawn_Grass_tkynejer` / `Uncut_Grass_oilpt20` / `Clover_Patches_on_Grass_sgmkajak` / `Bright_Desert_Sand_sjzkfega` / `Concrete_Floor_virrebs`; and **`PC3D_Kentucky_Bluegrass_v14`** (the fairway 3D grass — Fab/marketplace) (Material polish). `Thatching_Grass` / `Ribbon_Grass` / `Kikuyu_Grass` / `025_Grass` were trialed but the build references KBG. Add new dependencies here as milestones land.
+Gitignored: `engine/**/Content/Megaplant_Library/`, `Megascans/`, `Fab/`, and `PC3D_Kentucky_Bluegrass_v14/`.
+
+**UE5.7:** Quixel Bridge is deprecated; Megascans now comes via the Fab plugin (Window → Fab) and imports under `/Game/Fab/...`; some marketplace packs import to their own top-level `/Game/<Pack>/` (gitignore those explicitly). ("Asset not available in UAsset format" = use the Fab plugin's Add-to-project, not the old Bridge.)
+
+**Fresh clone — fetch these from Fab before opening `PracticeRange` / `BethPageBlack`** (else you'll see "missing asset" warnings):
+- `Tree_Silver_Birch` (Megaplant) → `/Game/Megaplant_Library/...` — range/course trees (PCG scatter).
+- Fab Megascans surfaces `Lawn_Grass_tkynejer` / `Uncut_Grass_oilpt20` / `Clover_Patches_on_Grass_sgmkajak` / `Bright_Desert_Sand_sjzkfega` / `Concrete_Floor_virrebs` → `/Game/Fab/...` — ground materials.
+- `PC3D_Kentucky_Bluegrass_v14` → `/Game/PC3D_Kentucky_Bluegrass_v14/...` — fairway 3D grass.
+
+(`Thatching_Grass` / `Ribbon_Grass` / `Kikuyu_Grass` / `025_Grass` were trialed but the build references KBG — no need to fetch them.)
+
+**Contributor-availability caveat (follow-up):** Epic changed Megascans terms in 2025 — only *some* Megascans stays free; others are now paid, and `PC3D_Kentucky_Bluegrass_v14` is a marketplace pack. So a new contributor may not be able to acquire every asset for free, which blocks an out-of-the-box build. If we want the public repo to build for anyone, a follow-up should swap the non-free assets for **CC0/CC-BY** equivalents committed to the repo. Add new dependencies here as milestones land.
 
 ---
 

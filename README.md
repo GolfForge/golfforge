@@ -88,7 +88,7 @@ GolfForge is dual-licensed:
   [`COMMERCIAL.md`](COMMERCIAL.md).
 
 Copyright (c) 2026 Francisco Mazzoni and contributors. The "GolfForge" name and logo are not covered
-by the AGPL grant. The Unreal Engine is © Epic Games and used under the Unreal Engine EULA — it is
+by the AGPL grant (see [`TRADEMARK.md`](TRADEMARK.md)). The Unreal Engine is © Epic Games and used under the Unreal Engine EULA — it is
 not part of this project's license.
 
 ## Data attribution

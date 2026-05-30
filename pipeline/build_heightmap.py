@@ -14,6 +14,10 @@ Output:
   <out_dir>/heightmap.json — metadata (elevation range, suggested UE5 landscape scale)
 
 Usage:
+  # Get a free OpenTopography API key first:
+  #   https://portal.opentopography.org/myopentopo (sign up, request a key)
+  export OPENTOPO_API_KEY=<your-key>
+
   python build_heightmap.py \\
       --bbox-wgs84 -121.951,36.566,-121.937,36.580 \\
       --course-id pebble-beach \\
@@ -45,8 +49,21 @@ from PIL import Image
 # (2^N) + 1 — landscape sections snap cleanly to these sizes.
 UE5_LANDSCAPE_SIZES = [505, 1009, 2017, 4033, 8129]
 
-# Public demo key for OpenTopography. Has rate limits. Get a free real key for production.
-OPENTOPO_DEMO_KEY = "demoapikeyot2022"
+# Environment variable name that holds the contributor's OpenTopography API key.
+# We deliberately do NOT ship a default key — sign up for a free one at
+# https://portal.opentopography.org/myopentopo and either export this env var
+# or pass --opentopo-key.
+OPENTOPO_ENV_VAR = "OPENTOPO_API_KEY"
+
+OPENTOPO_KEY_HELP = (
+    "No OpenTopography API key found.\n"
+    "  Get a free key at https://portal.opentopography.org/myopentopo (sign up,\n"
+    "  then 'Request an API Key'), and either:\n"
+    f"    export {OPENTOPO_ENV_VAR}=<your-key>\n"
+    "  or pass --opentopo-key <your-key> on the command line.\n"
+    "  (The pipeline used to ship a public demo key; it was removed when the\n"
+    "  repo went public so contributors don't share the demo's rate limit.)"
+)
 
 
 @dataclass
@@ -61,10 +78,32 @@ class HeightmapMeta:
     backend: str
 
 
+# -------------------- key resolution --------------------
+
+
+def resolve_opentopo_key(cli_value: str | None, env: dict | None = None) -> str:
+    """
+    Resolve the OpenTopography API key, in priority order:
+    1. --opentopo-key flag (cli_value, if non-empty)
+    2. OPENTOPO_API_KEY environment variable
+    3. raise SystemExit with the help text.
+
+    `env` is injectable for testing; defaults to os.environ.
+    """
+    if cli_value:
+        return cli_value
+    env = env if env is not None else os.environ
+    env_value = env.get(OPENTOPO_ENV_VAR, "").strip()
+    if env_value:
+        return env_value
+    print(OPENTOPO_KEY_HELP, file=sys.stderr)
+    raise SystemExit(2)
+
+
 # -------------------- backends --------------------
 
 
-def fetch_dem_opentopo(bbox: Tuple[float, float, float, float], out_tif: Path, dataset: str = "USGS10m", api_key: str = OPENTOPO_DEMO_KEY) -> None:
+def fetch_dem_opentopo(bbox: Tuple[float, float, float, float], out_tif: Path, dataset: str, api_key: str) -> None:
     """
     Fetch a pre-processed DEM GeoTIFF from OpenTopography REST API.
 
@@ -227,8 +266,9 @@ def main() -> None:
     p.add_argument("--backend", choices=["opentopo", "pdal"], default="opentopo")
     p.add_argument("--opentopo-dataset", default="USGS10m",
                    help="OpenTopography dataset name (opentopo backend only)")
-    p.add_argument("--opentopo-key", default=OPENTOPO_DEMO_KEY,
-                   help="OpenTopography API key (default = public demo key, rate-limited)")
+    p.add_argument("--opentopo-key", default=None,
+                   help=f"OpenTopography API key. Falls back to ${OPENTOPO_ENV_VAR}. "
+                        "Get a free key at https://portal.opentopography.org/myopentopo.")
     p.add_argument("--pdal-ept-url", default=None,
                    help="USGS 3DEP EPT (Entwine) URL covering the bbox (pdal backend only)")
     p.add_argument("--pdal-resolution", type=float, default=0.5,
@@ -243,8 +283,9 @@ def main() -> None:
     out_meta = out_dir / "heightmap.json"
 
     if args.backend == "opentopo":
+        api_key = resolve_opentopo_key(args.opentopo_key)
         fetch_dem_opentopo(args.bbox_wgs84, intermediate_tif,
-                           dataset=args.opentopo_dataset, api_key=args.opentopo_key)
+                           dataset=args.opentopo_dataset, api_key=api_key)
     else:
         if not args.pdal_ept_url:
             print("--pdal-ept-url required for pdal backend", file=sys.stderr)

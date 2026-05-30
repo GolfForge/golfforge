@@ -2,6 +2,13 @@
 
 > Dated milestone summaries, newest on top. The durable outcome + the committed artifact, not the blow-by-blow — process detail lives in git history, `docs/ue5-cookbook.md`, and the scripts themselves.
 
+## 2026-05-30 — GOL-50 OpenTopography API key externalized (Mac)
+
+- **GOL-50 DONE.** Pulled the hardcoded `OPENTOPO_DEMO_KEY = "demoapikeyot2022"` out of `pipeline/build_heightmap.py` so public contributors use their own free key and don't share the demo's rate limit. Resolution order is now **CLI flag (`--opentopo-key`) > env var `OPENTOPO_API_KEY` > friendly SystemExit(2)** that points at https://portal.opentopography.org/myopentopo + the env-var setup. New pure `resolve_opentopo_key(cli_value, env=None)` helper makes the logic unit-testable.
+- **Doc surfaces updated:** `pipeline/README.md` got a new "OpenTopography API key (required for the default backend)" section with the signup link + `export` snippet, replacing the old "demo key is rate-limited" footnote. `pipeline/example.sh` fails fast with the same friendly message if `OPENTOPO_API_KEY` isn't set (clean exit before reaching the API call). `build_heightmap.py`'s usage docstring shows the `export` line above the example invocation.
+- **Tests:** new `pipeline/tests/test_build_heightmap.py` (6 cases) freezes the resolver contract — CLI wins over env, empty-string CLI falls through, whitespace env treated as missing, missing-everywhere produces help on stderr + exit 2, and a **regression guard** that fails if the `OPENTOPO_DEMO_KEY` constant or the literal `demoapikeyot2022` ever sneaks back into the module. **34/34 tests pass** (28 existing splatmap + 6 new). Verified the missing-key branch in a real shell: prints the help, exits non-zero.
+- One of the P1 GolfForge-launch tickets cleared (alongside GOL-49 Win64 done / macOS open and GOL-51 cross-platform pipeline still open).
+
 ## 2026-05-29 — Main menu + DPI-aware native render; first Windows package verified (Windows)
 
 - **Main menu DONE.** Pure-C++ `UMainMenu : UUserWidget` (USettingsMenu idiom) shown on launch over the already-loaded range behind a soft `UBackgroundBlur` (strength 3.5) — so **Range** is an instant dismiss, not a level load. Buttons: **Range** (-> live range), **Play Course** (disabled + small "Coming soon"), **Exit** (`QuitGame`). Wired through `AGolfRangeHUD` (Z-order 30; `EnsureMainMenu`/`ShowMainMenu`/`DismissMainMenu`); a new `InputGated()` helper kills club-select/fire/aim/manual/settings while it's up. Files: `MainMenu.{h,cpp}`, `GolfRangeHUD.{h,cpp}`.

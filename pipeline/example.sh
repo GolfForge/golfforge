@@ -12,6 +12,16 @@ SIZE="${SIZE:-4033}"
 BACKEND="${BACKEND:-opentopo}"
 OUT_DIR="${OUT_DIR:-../courses}"
 
+# build_heightmap.py needs OPENTOPO_API_KEY (or --opentopo-key) for the default
+# backend. Fail fast with a friendly message rather than reaching the API call.
+if [[ "$BACKEND" == "opentopo" && -z "${OPENTOPO_API_KEY:-}" ]]; then
+    echo "OPENTOPO_API_KEY is not set." >&2
+    echo "  Get a free key at https://portal.opentopography.org/myopentopo, then:" >&2
+    echo "    export OPENTOPO_API_KEY=<your-key>" >&2
+    echo "  See pipeline/README.md for details." >&2
+    exit 2
+fi
+
 # NOTE: --bbox-wgs84=... uses '=' notation because negative longitudes start with '-'
 # and argparse would otherwise interpret them as another flag.
 

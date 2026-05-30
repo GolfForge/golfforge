@@ -25,6 +25,23 @@ brew install pdal gdal       # macOS
 pip install pdal             # python bindings
 ```
 
+## OpenTopography API key (required for the default backend)
+
+The default `opentopo` backend fetches DEMs from OpenTopography, which requires a free
+per-contributor API key — there's no shared default. One-time setup:
+
+1. Sign up at https://portal.opentopography.org/myopentopo and request an API key
+   ("MyOpenTopo" → "Request an API Key"). It's free and usually instant.
+2. Export the key in your shell so every pipeline run picks it up:
+   ```bash
+   export OPENTOPO_API_KEY=<your-key>
+   # Persist it: add the line to ~/.zshrc, ~/.bashrc, or equivalent.
+   ```
+
+You can also pass it per-run with `--opentopo-key <your-key>`, which wins over the env var.
+
+If neither is set, `build_heightmap.py` exits with a friendly message pointing at this setup.
+
 ## Use
 
 ```bash
@@ -57,7 +74,7 @@ Note the `=` syntax for `--bbox-wgs84`. Negative longitudes start with `-` and a
 | `opentopo` (default) | OpenTopography REST API | fast | lower (10–30m resolution) | iteration, prototyping, picking bbox |
 | `pdal` | USGS 3DEP point cloud via AWS Entwine | slow | high (sub-meter) | building a course you actually care about |
 
-The OpenTopography demo API key is rate-limited; get a free real key at portal.opentopography.org for sustained use.
+The `opentopo` backend needs an OpenTopography API key — see the setup section above.
 
 For the `pdal` backend you also need the EPT (Entwine Point Tile) URL of the USGS 3DEP project covering your bbox — look it up at https://usgs.entwine.io/.
 

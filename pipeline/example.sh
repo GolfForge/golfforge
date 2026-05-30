@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # Sample pipeline run against a small test bbox.
 #
-# Default course is Pebble Beach holes 7–9 (small, well-tagged in OSM, dramatic terrain).
+# Default course is GolfForge Demo Coast holes 7–9 (small, well-tagged in OSM, dramatic terrain).
 # Override by passing your own bbox + course-id.
 
 set -euo pipefail
 
-COURSE_ID="${COURSE_ID:-pebble-beach-test}"
+COURSE_ID="${COURSE_ID:-golfforge-demo-coast}"
 BBOX="${BBOX:--121.9530,36.5660,-121.9370,36.5800}"  # minlon,minlat,maxlon,maxlat
 SIZE="${SIZE:-4033}"
 BACKEND="${BACKEND:-opentopo}"

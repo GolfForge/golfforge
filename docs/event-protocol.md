@@ -216,7 +216,7 @@ The sim writes every event to a JSON-lines log (`session-YYYY-MM-DD-HHMMSS.jsonl
 ## Example: a full minute of events
 
 ```
-{"v":1,"ts_ms":1747000000000,"source":"sim","player_id":"...","type":"session.start","payload":{"course_id":"pebble-beach","tees":"blue","players":[...]}}
+{"v":1,"ts_ms":1747000000000,"source":"sim","player_id":"...","type":"session.start","payload":{"course_id":"golfforge-demo-coast","tees":"blue","players":[...]}}
 {"v":1,"ts_ms":1747000000050,"source":"sim","player_id":"...","type":"session.hole_change","payload":{"hole_num":1,"par":4,"yardage":380}}
 {"v":1,"ts_ms":1747000001000,"source":"esp32-ftms-7f3a","player_id":"...","type":"walk.session_start","payload":{"device":"esp32-ftms-7f3a","mode":"compressed_3x"}}
 {"v":1,"ts_ms":1747000001100,"source":"esp32-ftms-7f3a","player_id":"...","type":"walk.tick","payload":{"speed_mps":1.40,"distance_increment_m":0.14,"cadence_spm":98,"session_distance_m":0.14,"session_elevation_gain_m":0.0}}

@@ -39,18 +39,18 @@ import unreal
 
 # ---------------------------------------------------------------- parameters
 GRAPH_PATH        = "/Game/PCG/PCG_TreeScatter"
-LEVEL_HINT        = "BethPageBlack"            # logged for sanity only
+LEVEL_HINT        = "GolfForgeDemoBlack"            # logged for sanity only
 VOLUME_LABEL      = "PCG_TreeScatter_FullVolume"
 TEST_VOLUME_LABEL = "PCG_TreeScatter_TestVolume"   # de-risk volume; NEVER touch
 
-# World-space center of the course landscape. BethPage's Landscape_0 sits
+# World-space center of the course landscape. GolfForgeDemo's Landscape_0 sits
 # at actor loc (-100800,-100800,0) and spans XY +/-100800 cm about the
 # world origin, so its center is (0,0,0). Kept a parameter (per-course).
 VOLUME_LOCATION   = (0.0, 0.0, 0.0)
 
 # Volume half-extents (cm). XY must cover the full landscape (+/-100800)
 # with a small margin; Z must EXCEED local relief (~2154 cm for the 43 m
-# BethPage range) with headroom or SurfaceSampler finds no surface inside
+# GolfForgeDemo range) with headroom or SurfaceSampler finds no surface inside
 # the box and yields 0 points.
 HALF_XY_CM        = 101000.0                   # 100800 landscape + 200 margin
 HALF_Z_CM         = 3000.0                     # > ~2154 relief, generous

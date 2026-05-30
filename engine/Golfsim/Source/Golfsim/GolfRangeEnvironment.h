@@ -9,7 +9,7 @@
 // actor SPAWNS NOTHING -- it finds those by class and mutates them (mirrors build_range_lighting.py,
 // but at runtime across several presets). Real-time capture means ambient tracks the sun on its
 // own, so there's no manual SkyLight recapture. Range-only: the HUD find-or-spawns it in PIE, so
-// the editor viewport keeps its authored look and BethPage is untouched.
+// the editor viewport keeps its authored look and GolfForgeDemo is untouched.
 
 #pragma once
 

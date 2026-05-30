@@ -31,7 +31,7 @@ import build_splatmap as bs  # noqa: E402
 
 
 # Real bbox we use as the reference for unit-scale sanity checks.
-BBOX_BETHPAGE = (-73.4540, 40.7423, -73.4374, 40.7549)
+BBOX_GOLFFORGE_DEMO = (-73.4540, 40.7423, -73.4374, 40.7549)
 
 
 # ---------- helpers ----------
@@ -120,15 +120,15 @@ def test_two_point_line_is_valid():
 # ---------- meters_per_pixel ----------
 
 
-def test_meters_per_pixel_bethpage_within_expected_range():
-    mpp = bs.meters_per_pixel(BBOX_BETHPAGE, 2017)
+def test_meters_per_pixel_golfforge_demo_within_expected_range():
+    mpp = bs.meters_per_pixel(BBOX_GOLFFORGE_DEMO, 2017)
     # Empirically ~0.69 m/px at this bbox/size; allow some slack.
     assert 0.6 < mpp < 0.8
 
 
 def test_meters_per_pixel_scales_inversely_with_size():
-    mpp_low = bs.meters_per_pixel(BBOX_BETHPAGE, 1009)
-    mpp_high = bs.meters_per_pixel(BBOX_BETHPAGE, 4033)
+    mpp_low = bs.meters_per_pixel(BBOX_GOLFFORGE_DEMO, 1009)
+    mpp_high = bs.meters_per_pixel(BBOX_GOLFFORGE_DEMO, 4033)
     assert mpp_high < mpp_low
     # 4033/1009 ≈ 4×, so mpp should be ~4× finer
     assert math.isclose(mpp_low / mpp_high, 4.0, rel_tol=0.05)

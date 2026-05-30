@@ -16,7 +16,7 @@
 # Built with DynamicMeshActor + GeometryScript (no Water plugin, no plugin
 # enable, no editor restart). Collision is generated from the mesh
 # (ball-in-water / walk-blocking ready). Mesh actors are PERSISTENT level
-# actors - this script does NOT save; the operator saves BethPageBlack.umap
+# actors - this script does NOT save; the operator saves GolfForgeDemoBlack.umap
 # afterward or the water is lost.
 #
 #   Run in the UE5.7 editor Python interpreter via execute_unreal_python:
@@ -35,7 +35,7 @@ import os
 import unreal
 
 # ---------------------------------------------------------------- parameters
-COURSE_ID        = "bethpage-black"
+COURSE_ID        = "golfforge-demo-black"
 # Repo root from the UE project location (repo/engine/Golfsim -> repo) so this
 # runs for any contributor / checkout. Set GEOJSON_PATH before exec to override.
 _REPO_ROOT       = os.path.normpath(os.path.join(
@@ -43,7 +43,7 @@ _REPO_ROOT       = os.path.normpath(os.path.join(
     "..", ".."))
 GEOJSON_PATH     = globals().get("GEOJSON_PATH") or os.path.join(
     _REPO_ROOT, "courses", COURSE_ID, "water.geojson")
-LEVEL_HINT       = "BethPageBlack"
+LEVEL_HINT       = "GolfForgeDemoBlack"
 LANDSCAPE_LABEL_HINT = "Landscape"
 
 # heightmap.json georeference (minlon, minlat, maxlon, maxlat).
@@ -352,7 +352,7 @@ def main():
              % (wid, n, z, " Z_ESTIMATED" if est else "", area))
 
     _log("=== M0.9 DONE: %d built, %d skipped, %d Z_ESTIMATED. "
-         "umap NOT saved - operator must save BethPageBlack.umap. ==="
+         "umap NOT saved - operator must save GolfForgeDemoBlack.umap. ==="
          % (built, skipped, estimated))
 
 

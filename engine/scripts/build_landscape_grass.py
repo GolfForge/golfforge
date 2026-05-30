@@ -65,7 +65,7 @@ GRASS_SCALE_MIN      = 0.5
 GRASS_SCALE_MAX      = 0.8
 GRASS_RANDOM_ROTATION  = True
 GRASS_ALIGN_TO_SURFACE = True
-LEVEL_HINT      = "BethPageBlack"
+LEVEL_HINT      = "GolfForgeDemoBlack"
 
 # Gate sanity band: grass density is per-tiny-area so the count is orders of
 # magnitude larger than the 29k trees - wide band, the gate is the real check.

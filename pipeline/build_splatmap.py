@@ -20,12 +20,12 @@ the secondary ones into a second material layer in UE5.
 Usage:
   python build_splatmap.py \\
       --bbox-wgs84 -121.951,36.566,-121.937,36.580 \\
-      --course-id pebble-beach \\
+      --course-id golfforge-demo-coast \\
       --size 4033
 
 Notes:
   - OSM coverage for golf courses is uneven. Some courses are fully tagged
-    (Augusta National, St Andrews, Pebble Beach), others have just the outer
+    (Augusta National, St Andrews, GolfForge Demo Coast), others have just the outer
     polygon. Inspect what you got and hand-fix in QGIS or by editing GeoJSON
     if needed.
   - This script is intentionally pure-python with no GDAL CLI dependency.

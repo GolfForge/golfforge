@@ -160,7 +160,7 @@ namespace
 			Speed, DescentDeg, SpinRpm, *LieToProtocol(Lie), R.RollDistanceM, R.RollDistanceM * 1.0936132983);
 	}
 
-	// The range's time-of-day/weather director, if present. Range-only -- BethPage has none.
+	// The range's time-of-day/weather director, if present. Range-only -- GolfForgeDemo has none.
 	AGolfRangeEnvironment* FindRangeEnv(UWorld* World)
 	{
 		if (!World)

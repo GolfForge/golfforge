@@ -20,7 +20,7 @@ Usage:
 
   python build_heightmap.py \\
       --bbox-wgs84 -121.951,36.566,-121.937,36.580 \\
-      --course-id pebble-beach \\
+      --course-id golfforge-demo-coast \\
       --size 4033 \\
       --backend opentopo
 

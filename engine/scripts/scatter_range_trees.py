@@ -8,7 +8,7 @@
 # the graph (AttributeFilter Trees>0.3) - no graph change here.
 #
 # This is a deliberate FORK of scatter_full_landscape.py with the OPPOSITE
-# persistence intent: BethPage's scale-up volume is transient/measure-only and
+# persistence intent: GolfForgeDemo's scale-up volume is transient/measure-only and
 # the umap is never saved (it was a de-risk perf gate). The range trees are a
 # permanent feature, so this script sets the PCG component to GenerateOnLoad
 # and the saved level regenerates the frame each load. It still does NOT save
@@ -41,7 +41,7 @@ import unreal
 # ---------------------------------------------------------------- parameters
 GRAPH_PATH    = "/Game/PCG/PCG_TreeScatter_Range"   # range's own 0.35 ppsm graph
 LEVEL_HINT    = "PracticeRange"                     # logged for sanity only
-VOLUME_LABEL  = "PCG_TreeScatter_RangeVolume"       # distinct from BethPage's
+VOLUME_LABEL  = "PCG_TreeScatter_RangeVolume"       # distinct from GolfForgeDemo's
 
 # The range landscape is centered at the world origin and spans XY +/-25200 cm
 # (504 m), flat (Z within +/-100 cm). Verified via inspect_landscape.

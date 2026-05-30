@@ -14,10 +14,10 @@
 #
 # SIBLING GRAPHS: GRAPH_PATH and DENSITY_PPSM read from globals() first, so a
 # caller can author a separate graph at a different density WITHOUT disturbing
-# the BethPage-validated defaults. If GRAPH_PATH names a graph that does not
+# the GolfForgeDemo-validated defaults. If GRAPH_PATH names a graph that does not
 # exist yet, main() seeds it by duplicating BASE_GRAPH_PATH (so it builds from
 # a valid PCGGraph copy). This is how the practice range gets its own denser
-# graph (the shared graph stays at the BethPage value):
+# graph (the shared graph stays at the GolfForgeDemo value):
 #
 #   DENSITY_PPSM=0.35; GRAPH_PATH="/Game/PCG/PCG_TreeScatter_Range"
 #   exec(compile(open(r"<repo>\engine\scripts"
@@ -45,7 +45,7 @@
 import unreal
 
 # ---------------------------------------------------------------- parameters
-# BASE_GRAPH_PATH is the canonical (BethPage-validated) graph and the seed for
+# BASE_GRAPH_PATH is the canonical (GolfForgeDemo-validated) graph and the seed for
 # any sibling. GRAPH_PATH / DENSITY_PPSM honor a pre-set global so a caller can
 # author a separate, denser graph (e.g. the range) without editing this file.
 BASE_GRAPH_PATH  = "/Game/PCG/PCG_TreeScatter"
@@ -56,7 +56,7 @@ MESH_SOFT_PATH   = ("/Game/Megaplant_Library/Tree_Silver_Birch/"
                     "Tree_Silver_Birch_01/SK_Silver_Birch_01_D.SK_Silver_Birch_01_D")
 TREES_LAYER_NAME = "Trees"     # must match the LII_Trees landscape layer name
 TREES_THRESHOLD  = 0.3         # keep points where Trees weight > this
-DENSITY_PPSM     = globals().get("DENSITY_PPSM", 0.02)  # points/m^2 (BethPage de-risk default)
+DENSITY_PPSM     = globals().get("DENSITY_PPSM", 0.02)  # points/m^2 (GolfForgeDemo de-risk default)
 SCALE_MIN        = 0.85
 SCALE_MAX        = 1.20
 MESH_ATTR_NAME   = "Mesh"      # attribute that carries the mesh soft path

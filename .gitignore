@@ -59,7 +59,7 @@ engine/UnrealClaudeMCP-upstream/
 # via the UE5.7 Fab plugin (Quixel Bridge is deprecated; Megascans now ships
 # through Fab → /Game/Fab/...). Skipping ~2 GB of LFS bloat. docs/ue5-cookbook.md
 # lists which assets are referenced so a fresh clone knows what to re-download
-# before opening BethPageBlack.
+# before opening GolfForgeDemoBlack.
 engine/**/Content/Megaplant_Library/
 engine/**/Content/Megascans/
 engine/**/Content/Fab/

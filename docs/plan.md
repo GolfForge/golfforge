@@ -114,7 +114,7 @@ Walking integration deliberately lands before launch monitor — it's a bigger d
 
 ## Settled working decisions
 
-- **First course: Bethpage Black.** 1.4km × 1.4km bbox `-73.4540,40.7423,-73.4374,40.7549` (incidentally picks up adjacent Bethpage State Park courses; fine).
+- **First course: GolfForge Demo Black.** 1.4km × 1.4km bbox `-73.4540,40.7423,-73.4374,40.7549` (incidentally picks up adjacent GolfForge Demo State Park courses; fine).
 - **Claude Code is the surface for engine work; Cowork stays for repo/docs work.** `.mcp.json.example` at the repo root is the template; each machine copies it to `.mcp.json` (gitignored). Cowork's MCP set is curated and won't load arbitrary MCPs, so drive UE5 from Claude Code (CLI), not Cowork.
 - **Third-party MCP plugin is not vendored.** Cloned per-machine to `engine/UnrealClaudeMCP-upstream/` (gitignored), plugin folder copied into `engine/Golfsim/Plugins/UnrealClaudeMCP/` (also gitignored). New contributors clone + copy themselves.
 

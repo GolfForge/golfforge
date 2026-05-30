@@ -163,14 +163,14 @@ Watch the World Outliner. Cube appearing = Claude Code can drive UE from this re
 
 ## First milestone (Milestone 0)
 
-Once everything is set up, the first concrete deliverable is to import the Pebble Beach test heightmap and verify a ball rolls on it. From the repo:
+Once everything is set up, the first concrete deliverable is to import the GolfForge Demo Coast test heightmap and verify a ball rolls on it. From the repo:
 
-1. `courses/pebble-beach-test/heightmap.png` is the 1009×1009 16-bit heightmap.
-2. `courses/pebble-beach-test/heightmap.json` tells you the elevation range (135.81m) and the suggested UE5 Z scale (26.53%).
+1. `courses/golfforge-demo-coast/heightmap.png` is the 1009×1009 16-bit heightmap.
+2. `courses/golfforge-demo-coast/heightmap.json` tells you the elevation range (135.81m) and the suggested UE5 Z scale (26.53%).
 3. In UE5: `Landscape Mode → Manage → New → Import from File`, point at the PNG.
 4. Set `RelativeScale3D` to (100, 100, 26.53) on the resulting Landscape actor.
 5. Drop a default Material on it (anything green-ish).
-6. Spawn a sphere with Chaos Physics, drop from height, watch it roll on real Pebble Beach topography.
+6. Spawn a sphere with Chaos Physics, drop from height, watch it roll on real GolfForge Demo Coast topography.
 
 That's Milestone 0 done. The remainder of the plan is in `docs/plan.md`.
 

@@ -66,7 +66,9 @@ engine/**/Content/Fab/
 # Marketplace foliage packs that import to their own top-level Content
 # folder (not under /Fab) - same re-downloadable rationale, huge LFS cost
 # (PC3D Kentucky Bluegrass = 112 meshes + 546 MIs + Pivot-Painter textures).
-engine/**/Content/PC3D_Kentucky_Bluegrass_v14/
+# Pattern matches any version (v13, v14, v15, ...) so a contributor with a
+# different version installed doesn't accidentally commit the pack.
+engine/**/Content/PC3D_Kentucky_Bluegrass_v*/
 
 # World Partition external actors/objects. Our course maps are deliberately
 # non-WP Basic levels (see M0 'Save As off Open World Template' pitfall), so

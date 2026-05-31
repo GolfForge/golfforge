@@ -2,6 +2,13 @@
 
 > Dated milestone summaries, newest on top. The durable outcome + the committed artifact, not the blow-by-blow — process detail lives in git history, `docs/ue5-cookbook.md`, and the scripts themselves.
 
+## 2026-05-31 — Identity hardening planned + trademark concern dropped (Mac)
+
+- **6 identity-hardening tickets filed** ahead of the public GolfForge flip: **GOL-76** reserve `golfforge.org` + Google Workspace (Urgent — blocks the rest; ~$94 first year), **GOL-77** GolfForge GH org + repo transfer (Urgent), **GOL-78** git author identity → `contact@golfforge.org`, **GOL-79** scrub `pucho` / `franciscomazzoni` / personal email from current repo files, **GOL-80** git history rewrite via `git filter-repo` mailmap, **GOL-81** GH 2FA + profile hardening (independent, can run in parallel). Architecture chosen: Cloudflare Registrar (DNS only) → MX records → Google Workspace Business Starter mailbox at `contact@golfforge.org` with free `security@` / `legal@` / `support@` / `noreply@` aliases.
+- **Trademark protection explicitly dropped.** GOL-48 canceled; not worth $250-500 USPTO filing + lawyer time + ongoing maintenance for a solo OSS project with no brand equity yet. If someone squats "GolfForge" later we'll rename — cheaper than defensive filing. New low-priority **GOL-82** ("trademark protection — deferred until needed") parks the concern with revisit-conditions (squatting attempt, real brand equity emerging, commercial customer demand, impersonation).
+- **Repo cleanup:** `TRADEMARK.md` to be removed (user does `git rm` from terminal — sandbox can't unlink); README's trademark sentence stripped (now just "© 2026 GolfForge contributors. UE EULA notice."); CLAUDE.md invariant #4 updated to "no defensive trademark filing — see GOL-82 for rationale"; active-focus section updated to sequence identity tickets ahead of repo rename. `LICENSE` (AGPL boilerplate) unchanged — it mentions "trademark" as part of standard AGPL text, leave alone.
+- **Sibling-ticket bulk update:** GOL-77/78/79/80/81 descriptions had `@golfforge.com` example emails — swapped to `@golfforge.org` after the domain TLD decision firmed up.
+
 ## 2026-05-30 — Trademark scrub (Bethpage / Pebble Beach → GolfForge demo names, GOL-20) (Mac)
 
 - **GOL-20 partially landed: trademarked course names removed from the repo** ahead of the public GolfForge flip. "Bethpage" / "BethPage" / "BethPageBlack" → "GolfForge Demo" / "GolfForgeDemo" / "GolfForgeDemoBlack" across 24 files (docs, code, scripts, configs, JSON metadata). `courses/bethpage-black/` renamed (via `git mv`) to `courses/golfforge-demo-black/`; the gitignored intermediates (`osm_raw.json`, `dem.tif`) move with it. `pebble-beach-test/` (the week-1 scaffold, never used past the original pipeline smoke test) deleted.

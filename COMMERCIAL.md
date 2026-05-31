@@ -28,7 +28,7 @@ that is itself willing to be AGPL.
 
 Commercial licensing is handled case by case (terms are still being finalized). To inquire, contact:
 
-**Francisco Mazzoni — fran.mazzoni@gmail.com**
+**legal@golfforge.org**
 
 Please include a short description of how you intend to use the software.
 

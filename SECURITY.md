@@ -7,7 +7,7 @@ security seriously within that scope.
 
 **Please do not report security issues in public GitHub issues.**
 
-Instead, email **fran.mazzoni@gmail.com** with:
+Instead, email **security@golfforge.org** with:
 
 - a description of the issue and its impact,
 - steps to reproduce (a proof of concept if you have one),

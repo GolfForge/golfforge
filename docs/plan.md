@@ -4,9 +4,9 @@ Working notes. Living doc. Update as decisions firm up.
 
 ## Vision & positioning
 
-An open-source, cross-platform golf simulator. Differentiates from GSPro and competitors on three axes that closed-source incumbents structurally cannot match:
+An open-source, cross-platform golf simulator. Differentiates from the closed-source incumbents on three axes that the proprietary sim-golf market structurally cannot match:
 
-1. **Course-pipeline tooling.** The community produces courses faster than GSPro's CourseForge can. AI-assisted import from open LIDAR + OSM data.
+1. **Course-pipeline tooling.** The community produces courses faster than existing community-course tools allow. AI-assisted import from open LIDAR + OSM data.
 2. **Walking/exercise integration.** Treadmill-driven, FTMS-compliant, incline-matched to course elevation. Competes with Zwift and Peloton, not just sim-golf.
 3. **Genuinely cross-platform.** PC/Mac/Linux desktop tier with Nanite/Lumen; iPad mobile tier with traditional LODs. BLE/WiFi connect to launch monitors and fitness hardware regardless of host.
 
@@ -108,7 +108,7 @@ Walking integration deliberately lands before launch monitor — it's a bigger d
 ## Open decisions
 
 - **License — DECIDED (2026-05-28):** AGPL-3.0 + a paid commercial-exception dual-license (sell closed-source licenses; external contributions under a CLA). See `LICENSE`, `COMMERCIAL.md`, Linear GOL-43. Public name: **GolfForge**.
-- **Course IP.** Real course names vs. generic "Coastal Links" style. GSPro plays this carefully. Probably real names with disclaimers and clear takedown process.
+- **Course IP.** Real course names vs. generic "Coastal Links" style. Closed-source competitors play this carefully. Probably real names with disclaimers and clear takedown process.
 - **Walking mode default.** Compressed (~3:1) is recommended default; strict 1:1 opt-in.
 - **Multiplayer host model.** PC-authoritative is the cleanest; needs decision on whether iPad-only households can host.
 

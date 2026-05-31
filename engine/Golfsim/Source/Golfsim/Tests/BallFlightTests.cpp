@@ -118,8 +118,9 @@ bool FGolfsimBallFlightBackspinCarryTest::RunTest(const FString& /*Parameters*/)
 // Source: Trackman PGA Tour averages. Tolerances reflect what a real-time, 2-parameter spin-dependent
 // Cd/Cl model achieves across the whole bag (driver -> wedge) with a single coefficient set:
 // carry ~6%, apex ~8%, descent ~5 deg. Hitting tighter than this across every club simultaneously
-// requires a per-ball CFD / spin-axis lookup model (e.g. GSPro-class), out of scope for the in-game
-// solver. The per-club got-vs-expected numbers are logged below so the real accuracy is always visible.
+// requires a per-ball CFD / spin-axis lookup model (studio-grade ballistics), out of scope for the
+// in-game solver. The per-club got-vs-expected numbers are logged below so the real accuracy is
+// always visible.
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FGolfsimBallFlightTrackmanTest, "Golfsim.BallFlight.TrackmanReferenceTable",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)

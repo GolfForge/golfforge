@@ -4,8 +4,8 @@
 #
 # APPROACH (pivoted 2026-05-16): one FLAT TRANSLUCENT WATER MESH per Feature
 # in courses/<id>/water.geojson, georeferenced onto the course Landscape,
-# at the median-shoreline water Z. This is exactly how the golf-sim course
-# ecosystem (TGC Designer / GSPro CourseForge) represents water - a visual +
+# at the median-shoreline water Z. This is how the golf-sim course-authoring
+# ecosystem represents water in general - a visual +
 # collision plane, NOT simulated fluid. The earlier UE Water-plugin path was
 # abandoned: WaterBodyLake needs AWaterZone::MarkForRebuild (C++/editor-only,
 # not Python-bindable in 5.7) to render, plus WaterZone/collision-profile

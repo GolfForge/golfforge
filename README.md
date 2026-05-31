@@ -4,21 +4,65 @@ Open-source, cross-platform golf simulator with AI-assisted course building, wal
 integration, and a clean BLE-based hardware story for launch monitors.
 
 > **Status:** early, pre-1.0, and moving fast. The practice range runs and a real launch monitor
-> (OpenFlight) can drive it; full courses are being brought up. Expect rough edges.
+> ([OpenFlight](https://github.com/jewbetcha/openflight)) can drive it; full courses are being brought up. Expect rough edges.
 >
 > _The repository is still named `golfsim` while the rename to GolfForge is in progress._
 
 ## Why
 
-GSPro and the rest of the closed-source sim-golf market are good products gated by three structural
-weaknesses an open-source project can attack:
+Three structural weaknesses in the closed-source sim-golf market that an open-source project can
+attack:
 
-1. **Course pipeline lock-in.** The community builds the courses; the platform charges for access.
+1. **Course pipeline lock-in.** The community builds the courses; closed platforms charge for access.
    GolfForge makes the pipeline ~10x cheaper using open LIDAR + OpenStreetMap + AI-assisted UE5 import.
-2. **No walking integration.** Sim golf sits you on a couch. Wire it to a treadmill over Bluetooth
-   FTMS and you compete with Zwift, not couch-golf.
+2. **A walking tier nobody else ships.** Wire the sim to a treadmill over Bluetooth FTMS and golf-sim
+   sessions add a fitness layer — the same idea Zwift uses for cycling, applied to golf. Sit-down play
+   stays a first-class option; walking is the new mode.
 3. **Closed platforms.** Built on Unreal Engine 5 with real cross-platform targets (Windows / Mac /
    Linux desktop, iPad as a future tier) and no hardware gated behind a single OS.
+
+## Try it
+
+Pre-built packages are attached to the latest [GitHub Release](https://github.com/GolfForge/golfforge/releases). Range only for v1 — drives a launch monitor, swings, lands. Course play is on the way (see [Coming soon](#coming-soon) below).
+
+### Windows
+
+1. Download `GolfForge-windows-x64.zip` from the latest release, extract anywhere.
+2. Run `GolfForge.exe`.
+3. **Windows SmartScreen will warn "Unrecognized app."** Click **More info** → **Run anyway.** The binary is unsigned (proper code-signing is on the roadmap); it's safe — verify the SHA-256 on the release page if you want belt-and-suspenders.
+
+### macOS (Apple Silicon)
+
+1. Download `GolfForge-macos-arm64.zip` from the latest release, extract to your `Applications` folder (or anywhere).
+2. **One-time Terminal command** to bypass macOS Gatekeeper (the app is unsigned for v1 — Apple Developer Program enrollment is on the roadmap):
+   ```bash
+   xattr -dr com.apple.quarantine /Applications/GolfForge.app
+   ```
+   (Adjust the path if you extracted elsewhere.) After this runs once, the app launches normally forever.
+3. Open `GolfForge.app`.
+
+### Linux
+
+Not yet packaged. Build from source — instructions TBD.
+
+### What you need to actually play
+
+GolfForge can run standalone with the built-in manual-shot dialog and a keyboard-fallback swing input (in progress). For the real experience you also need either:
+
+- A **launch monitor** that speaks our driver protocol. Today: [OpenFlight](https://github.com/jewbetcha/openflight) (DIY, ~$800 in parts, Doppler radar). More to follow.
+- A **treadmill** broadcasting Bluetooth FTMS, for the walking tier — coming soon.
+
+## Coming soon
+
+In rough priority order:
+
+- **Playable round.** Tap-to-advance hole play, scorecard, local multiplayer.
+- **Course-quality polish on the demo course.** Bunker geometry (raised lip + depression), fairway mowing patterns (stripes / criss-cross / diagonal), tee/fairway coverage fixes on the first real-world course.
+- **Practice modes.** Closest-to-the-pin with configurable distance range; TopGolf-style islands practice map; putting drills.
+- **Walking integration.** Bluetooth FTMS treadmill driver (build-it-yourself ESP32 reference design or any FTMS-compliant treadmill); compressed walk mode; eventual incline-matching from hole elevation profiles.
+- **More launch monitors.** Square Omni driver alongside OpenFlight; other consumer LMs as the community brings them.
+- **Mac/iPadOS GPU acceleration.** MetalFX upscaling for Apple Silicon (currently TSR-only).
+- **Cross-platform pipeline.** Make the Python course pipeline work on Windows (Mac/Linux already supported).
 
 ## Architecture in one paragraph
 

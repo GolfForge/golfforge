@@ -21,7 +21,7 @@ Once GitHub private security advisories are enabled on the repo, you may use tho
 
 Most relevant areas:
 
-- the launch-monitor driver socket connection (e.g. OpenFlight over a local WebSocket);
+- the launch-monitor driver socket connection (e.g. [OpenFlight](https://github.com/jewbetcha/openflight) over a local WebSocket);
 - any networked / multiplayer code as it lands;
 - the Python pipeline's handling of downloaded data (OpenStreetMap / elevation).
 

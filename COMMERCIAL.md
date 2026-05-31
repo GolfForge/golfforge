@@ -42,6 +42,7 @@ external pull requests are not being merged — see `CONTRIBUTING.md`.
 ## Note on bundled third parties
 
 A commercial license covers **this project's own code**. Third-party components that ship under
-their own terms — the Unreal Engine (Epic's EULA), any bundled assets, the OpenFlight launch
-monitor talked to over a socket, etc. — remain under their respective licenses and are not
+their own terms — the Unreal Engine (Epic's EULA), any bundled assets, the
+[OpenFlight](https://github.com/jewbetcha/openflight) launch monitor talked to over a socket, etc.
+— remain under their respective licenses and are not
 sublicensed by a commercial license for this project.

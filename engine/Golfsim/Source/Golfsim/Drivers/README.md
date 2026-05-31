@@ -4,6 +4,10 @@ Connectors that turn a real launch monitor's shot data into our `shot.taken` eve
 Each driver lives in our binary and talks to its device/service over a socket or BLE — the sim
 only ever sees the normalized `FShotTakenEvent`, never the hardware.
 
+> [OpenFlight](https://github.com/jewbetcha/openflight) is an open-source DIY launch monitor
+> (OPS243-A Doppler radar + Raspberry Pi 5) and is the first concrete `ULaunchMonitorDriver`
+> implementation. Repo: github.com/jewbetcha/openflight.
+
 ## ⚠️ License note — read before touching `OpenFlightDriver`
 
 **OpenFlight and this project are both AGPL-3.0**, so there is no MIT-vs-AGPL "firewall" to police

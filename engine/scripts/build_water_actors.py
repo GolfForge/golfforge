@@ -46,8 +46,10 @@ GEOJSON_PATH     = globals().get("GEOJSON_PATH") or os.path.join(
 LEVEL_HINT       = "GolfForgeDemoBlack"
 LANDSCAPE_LABEL_HINT = "Landscape"
 
-# heightmap.json georeference (minlon, minlat, maxlon, maxlat).
-BBOX_WGS84       = (-73.454, 40.7423, -73.4374, 40.7549)
+# heightmap.json georeference (minlon, minlat, maxlon, maxlat). Bbox was widened
+# east on 2026-05-31 (GOL-33) from maxlon -73.4374 -> -73.4350 to capture Black
+# hole 8 on the eastern edge of the course.
+BBOX_WGS84       = (-73.454, 40.7423, -73.435, 40.7549)
 WORLD_HALF_XY_CM = 100800.0
 WORLD_ORIGIN_XY  = (0.0, 0.0)
 

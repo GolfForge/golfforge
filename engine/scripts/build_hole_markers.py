@@ -88,6 +88,11 @@ CUBE_MESH_PATH = "/Engine/BasicShapes/Cube"
 LABEL_PREFIX_MARKER = "HoleMarker_"    # -> HoleMarker_<course>_<ref>_<Tee|Green>
 LABEL_PREFIX_TEXT   = "HoleLabel_"     # -> HoleLabel_<course>_<ref>_<Tee|Green>
 
+# Window > Layers panel groups every spawned actor under "HoleMarkers_<Course>"
+# (per-course so a multi-course COURSE_FILTER yields one toggleable layer each).
+# Show/hide all pillars + labels with one click via the eye icon on the layer.
+LAYER_PREFIX = "HoleMarkers_"
+
 
 def _log(msg):
     unreal.log("HOLE_MARKERS: " + str(msg))
@@ -95,6 +100,10 @@ def _log(msg):
 
 def _eas():
     return unreal.get_editor_subsystem(unreal.EditorActorSubsystem)
+
+
+def _layers():
+    return unreal.get_editor_subsystem(unreal.LayersSubsystem)
 
 
 def _editor_world():
@@ -153,6 +162,19 @@ def _set_editor_only(actor):
         return False
 
 
+def _assign_layer(actor, course):
+    """Drop the actor into HoleMarkers_<Course> in Window > Layers (auto-creates
+    the layer if missing). LayersSubsystem.add_actor_to_layer is one-call: adds
+    to the actor's `layers` TArray AND registers in the Layers panel."""
+    try:
+        _layers().add_actor_to_layer(actor, LAYER_PREFIX + (course or "Unk"))
+        return True
+    except Exception as exc:
+        _log("WARNING add_actor_to_layer on %s failed: %s"
+             % (actor.get_actor_label(), str(exc)[:80]))
+        return False
+
+
 def _kill_prior():
     eas = _eas()
     killed = 0
@@ -170,7 +192,7 @@ def _kill_prior():
     return killed
 
 
-def _spawn_pillar(x, y, ground_z_cm, label, cube_mesh):
+def _spawn_pillar(x, y, ground_z_cm, label, cube_mesh, course):
     eas = _eas()
     pillar_z = ground_z_cm + PILLAR_HEIGHT_CM * 0.5
     actor = eas.spawn_actor_from_class(
@@ -186,10 +208,11 @@ def _spawn_pillar(x, y, ground_z_cm, label, cube_mesh):
         PILLAR_THICK_CM / 100.0,
         PILLAR_HEIGHT_CM / 100.0))
     _set_editor_only(actor)
+    _assign_layer(actor, course)
     return actor
 
 
-def _spawn_label(x, y, ground_z_cm, label, text):
+def _spawn_label(x, y, ground_z_cm, label, text, course):
     eas = _eas()
     text_z = ground_z_cm + PILLAR_HEIGHT_CM + TEXT_HEIGHT_ABOVE_PILLAR_CM
     actor = eas.spawn_actor_from_class(
@@ -205,6 +228,7 @@ def _spawn_label(x, y, ground_z_cm, label, text):
     actor.set_actor_scale3d(unreal.Vector(
         TEXT_ACTOR_SCALE, TEXT_ACTOR_SCALE, TEXT_ACTOR_SCALE))
     _set_editor_only(actor)
+    _assign_layer(actor, course)
     return actor
 
 
@@ -252,9 +276,16 @@ def _build():
             marker_label = LABEL_PREFIX_MARKER + base.rstrip("_")
             label_label  = LABEL_PREFIX_TEXT   + base.rstrip("_")
             text = "%s %s\\n%s\\npar %s hcp %s" % (course, ref, kind, par, hcp)
-            _spawn_pillar(x, y, z, marker_label, cube)
-            _spawn_label(x, y, z, label_label, text)
+            _spawn_pillar(x, y, z, marker_label, cube, course)
+            _spawn_label(x, y, z, label_label, text, course)
             spawned_actors += 2
+
+    # Refresh the Layers panel so freshly-created HoleMarkers_<Course> layers
+    # show up immediately (without needing a panel reopen).
+    try:
+        _layers().editor_refresh_layer_browser()
+    except Exception as exc:
+        _log("WARNING editor_refresh_layer_browser failed: %s" % str(exc)[:80])
 
     summary = ", ".join("%s=%d" % (k or "Unk", v)
                         for k, v in sorted(by_course.items()))
@@ -262,6 +293,8 @@ def _build():
          "(2 per hole-end x 2 ends)" % (spawned_holes, summary, spawned_actors))
     _log("Markers are EditorOnly + transient: do NOT save the umap with them "
          "live; re-run anytime to refresh.")
+    _log("Toggle visibility in Window > Layers: %s<Course> (e.g. %sBlack)."
+         % (LAYER_PREFIX, LAYER_PREFIX))
     _log("=== BUILD DONE ===")
 
 

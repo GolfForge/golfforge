@@ -31,7 +31,12 @@ import build_splatmap as bs  # noqa: E402
 
 
 # Real bbox we use as the reference for unit-scale sanity checks.
-BBOX_GOLFFORGE_DEMO = (-73.4540, 40.7423, -73.4374, 40.7549)
+# History:
+#   - original (pre-GOL-33): -73.4540, 40.7423, -73.4374, 40.7549
+#   - GOL-33: widened E for Black hole 8 -> -73.4540, 40.7423, -73.4350, 40.7549
+#   - GOL-108: widened W + E + N to land all 18 Black hole tees + greens on
+#     the landscape (visual verify in GOL-85 found 5 endpoints off-edge)
+BBOX_GOLFFORGE_DEMO = (-73.4555, 40.7423, -73.4345, 40.7571)
 
 
 # ---------- helpers ----------
@@ -122,8 +127,9 @@ def test_two_point_line_is_valid():
 
 def test_meters_per_pixel_golfforge_demo_within_expected_range():
     mpp = bs.meters_per_pixel(BBOX_GOLFFORGE_DEMO, 2017)
-    # Empirically ~0.69 m/px at this bbox/size; allow some slack.
-    assert 0.6 < mpp < 0.8
+    # Empirically ~0.84 m/px at the GOL-108 bbox / 2017 size; allow some slack.
+    # (Was ~0.69 m/px before bbox widening — see BBOX_GOLFFORGE_DEMO history above.)
+    assert 0.7 < mpp < 1.0
 
 
 def test_meters_per_pixel_scales_inversely_with_size():

@@ -114,7 +114,7 @@ Walking integration deliberately lands before launch monitor — it's a bigger d
 
 ## Settled working decisions
 
-- **First course: GolfForge Demo Black.** ~1.6km × 1.4km bbox `-73.4540,40.7423,-73.4350,40.7549` (incidentally picks up adjacent GolfForge Demo State Park courses; fine). Bbox widened east on 2026-05-31 from `-73.4374` → `-73.4350` to capture Black hole 8, which sits on the eastern side of the course and was previously clipped (see GOL-33 worklog entry).
+- **First course: GolfForge Demo Black.** ~1.77km × 1.64km bbox `-73.4555,40.7423,-73.4345,40.7571` (incidentally picks up adjacent GolfForge Demo State Park courses; fine). History: original bbox clipped Black hole 8 on the east (fixed in GOL-33, 2026-05-31); a visual hole-end verify in GOL-85 then revealed 5 more endpoints off the landscape on the N + W edges (fixed in GOL-108, 2026-06-01 — the current bbox).
 - **Claude Code is the surface for engine work; Cowork stays for repo/docs work.** `.mcp.json.example` at the repo root is the template; each machine copies it to `.mcp.json` (gitignored). Cowork's MCP set is curated and won't load arbitrary MCPs, so drive UE5 from Claude Code (CLI), not Cowork.
 - **Third-party MCP plugin is not vendored.** Cloned per-machine to `engine/UnrealClaudeMCP-upstream/` (gitignored), plugin folder copied into `engine/Golfsim/Plugins/UnrealClaudeMCP/` (also gitignored). New contributors clone + copy themselves.
 

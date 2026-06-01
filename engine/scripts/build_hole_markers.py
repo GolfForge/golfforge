@@ -62,8 +62,9 @@ GEOJSON_PATH = globals().get("GEOJSON_PATH") or os.path.join(
     _REPO_ROOT, "courses", COURSE_ID, "hole.geojson")
 
 # heightmap.json georeference (minlon, minlat, maxlon, maxlat). Must match
-# build_water_actors.py BBOX_WGS84. If GOL-108 widens the bbox, bump both.
-BBOX_WGS84       = (-73.454, 40.7423, -73.435, 40.7549)
+# build_water_actors.py BBOX_WGS84. Widened on 2026-06-01 (GOL-108) N + W
+# after GOL-85's verify caught 5 Black endpoints off the prior landscape.
+BBOX_WGS84       = (-73.4555, 40.7423, -73.4345, 40.7571)
 WORLD_HALF_XY_CM = 100800.0   # landscape default-stretched, see GOL-85
 WORLD_ORIGIN_XY  = (0.0, 0.0)
 FLIP_X, FLIP_Y, SWAP_XY = False, True, False   # verified against painted water

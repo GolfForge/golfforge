@@ -46,10 +46,12 @@ GEOJSON_PATH     = globals().get("GEOJSON_PATH") or os.path.join(
 LEVEL_HINT       = "GolfForgeDemoBlack"
 LANDSCAPE_LABEL_HINT = "Landscape"
 
-# heightmap.json georeference (minlon, minlat, maxlon, maxlat). Bbox was widened
-# east on 2026-05-31 (GOL-33) from maxlon -73.4374 -> -73.4350 to capture Black
-# hole 8 on the eastern edge of the course.
-BBOX_WGS84       = (-73.454, 40.7423, -73.435, 40.7549)
+# heightmap.json georeference (minlon, minlat, maxlon, maxlat). Bbox widening
+# history: GOL-33 (2026-05-31) bumped maxlon -73.4374 -> -73.4350 for Black hole
+# 8 east; GOL-108 (2026-06-01) then widened N + W after GOL-85's verify caught 5
+# Black endpoints (1 Tee, 9 Tee, 10 Green, 11 Tee, 18 Green) off the landscape.
+# Keep in sync with build_hole_markers.py BBOX_WGS84.
+BBOX_WGS84       = (-73.4555, 40.7423, -73.4345, 40.7571)
 WORLD_HALF_XY_CM = 100800.0
 WORLD_ORIGIN_XY  = (0.0, 0.0)
 

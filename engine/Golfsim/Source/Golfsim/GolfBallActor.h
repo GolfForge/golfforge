@@ -51,6 +51,11 @@ public:
 
 	virtual void Tick(float DeltaSeconds) override;
 
+	// Ball-center launch height above the traced ground so the ~6 cm-radius sphere mesh sits flush on
+	// the turf. Single source of truth for the floor-trace consumers (range HUD spawn, console fire,
+	// post-landing terrain snap). Matches the BallMesh scale of 0.12 on a 100 cm Engine sphere.
+	static constexpr float BallRestHeightUU = 6.f;
+
 private:
 	FBallTrajectory Trajectory;
 	FVector LaunchOriginUU = FVector::ZeroVector;
@@ -60,6 +65,14 @@ private:
 	float CurrentCarryMeters = 0.f;              // live downrange distance, updated each Tick
 	FVector PrevDrawPos = FVector::ZeroVector;   // last point of the growing tracer trail
 
-	// Map a sample (SI, launch-local: +X downrange, +Y right, +Z up) into world space.
-	FVector SampleToWorld(const FTrajectorySample& Sample) const;
+	// Per-sample landscape Z in world UU for Trajectory.Samples[LandingSampleIndex..end], populated
+	// in PlayTrajectory via a downward line trace. Empty (or sentinel-filled) means "no terrain
+	// info available", and SampleToWorld falls back to the flat GOL-9 mapping. GOL-110.
+	TArray<float> PostLandingGroundCacheUU;
+
+	// Map sample i into world space. For post-landing samples with valid cached ground Z, the world
+	// Z is replaced with (ground + BallRestHeightUU + sample.LocalZ * MetersToUU) so the ball
+	// tracks terrain while keeping its bounce arc. SI launch-local frame: +X downrange, +Y right,
+	// +Z up.
+	FVector SampleToWorld(const FTrajectorySample& Sample, int32 SampleIdx) const;
 };

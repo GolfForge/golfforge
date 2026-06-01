@@ -28,14 +28,27 @@ namespace
 	{
 		FVector Loc = FVector::ZeroVector;
 		FRotator Rot = FRotator::ZeroRotator;
+		APawn* Pawn = nullptr;
 		if (APlayerController* PC = World->GetFirstPlayerController())
 		{
-			if (APawn* Pawn = PC->GetPawn())
+			Pawn = PC->GetPawn();
+			if (Pawn)
 			{
 				Loc = Pawn->GetActorLocation();
 				Rot = Pawn->GetActorRotation();
 				Rot.Pitch = 0.f;
 				Rot.Roll = 0.f;
+				// GOL-110: trace launch origin to the floor so a course-fired shot starts on the
+				// landscape, not at pawn capsule center. Mirrors AGolfRangeHUD's recipe -- complex
+				// collision (landscape simple-collision sits above the visible heightfield) +
+				// ignore the pawn so the trace doesn't get eaten by the capsule.
+				FCollisionQueryParams P(SCENE_QUERY_STAT(GolfsimFireShotFloorTrace), /*bTraceComplex=*/true);
+				P.AddIgnoredActor(Pawn);
+				FHitResult Ground;
+				if (World->LineTraceSingleByChannel(Ground, Loc, Loc - FVector(0.f, 0.f, 100000.f), ECC_WorldStatic, P))
+				{
+					Loc.Z = Ground.ImpactPoint.Z + AGolfBallActor::BallRestHeightUU;
+				}
 			}
 		}
 

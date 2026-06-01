@@ -72,9 +72,9 @@ namespace
 	static constexpr float FollowInterpSpeed = 4.f;  // position smoothing (VInterpTo)
 	static constexpr float FollowViewBlend = 0.25f;  // SetViewTargetWithBlend time, s
 
-	// Ball-center launch height above the traced ground (so the ~6 cm-radius sphere sits on the turf
-	// rather than half-buried). The solver's z=0 maps to this world Z, so flight + roll ride the ground.
-	static constexpr float BallRestHeightUU = 6.f;
+	// Ball-center launch height above the traced ground -- single source of truth lives on
+	// AGolfBallActor (GOL-110). Aliased here for the file-scope launch trace code below.
+	static constexpr float BallRestHeightUU = AGolfBallActor::BallRestHeightUU;
 
 	// Ideal chase pose for a ball at BallPos, given the (flattened) downrange direction.
 	void ComputeFollowPose(const FVector& BallPos, const FVector& DownrangeDir, FVector& OutLoc, FRotator& OutRot)

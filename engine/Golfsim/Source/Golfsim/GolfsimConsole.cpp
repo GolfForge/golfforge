@@ -17,6 +17,7 @@
 #include "Events/EventBusSubsystem.h"
 #include "Drivers/LaunchMonitorManager.h"
 #include "Drivers/LaunchMonitorDriver.h"
+#include "Course/CourseSurfaceSubsystem.h"
 
 namespace
 {
@@ -158,6 +159,37 @@ namespace
 		UE_LOG(LogTemp, Display,
 			TEXT("golfsim.TestGroundRoll: speed=%.1f m/s descent=%.1f deg spin=%.0f rpm lie=%s -> roll=%.1f m (%.1f yd)"),
 			Speed, DescentDeg, SpinRpm, *LieToProtocol(Lie), R.RollDistanceM, R.RollDistanceM * 1.0936132983);
+	}
+
+	// Course lie probe (GOL-40): map a world XY in METERS to its painted EGolfLie via the active
+	// UCourseSurfaceSubsystem. The subsystem only exists on known course levels (see
+	// CourseIdByLevelName); on the range / unrecognized maps this command logs a hint and stops.
+	void TestCourseLieCmd(const TArray<FString>& Args, UWorld* World)
+	{
+		if (Args.Num() < 2)
+		{
+			UE_LOG(LogTemp, Warning,
+				TEXT("Usage: golfsim.TestCourseLie <world_x_m> <world_y_m>  (course-level only; uses the splatmap)"));
+			return;
+		}
+		UCourseSurfaceSubsystem* CSS = World ? World->GetSubsystem<UCourseSurfaceSubsystem>() : nullptr;
+		if (!CSS)
+		{
+			UE_LOG(LogTemp, Warning,
+				TEXT("golfsim.TestCourseLie: no UCourseSurfaceSubsystem on this level (not a known course)."));
+			return;
+		}
+		if (!CSS->IsValid())
+		{
+			UE_LOG(LogTemp, Warning,
+				TEXT("golfsim.TestCourseLie: course-surface subsystem present but sampler not loaded (check earlier warnings)."));
+			return;
+		}
+		const double X = FCString::Atod(*Args[0]);
+		const double Y = FCString::Atod(*Args[1]);
+		const EGolfLie Lie = CSS->ClassifyAt(X, Y);
+		UE_LOG(LogTemp, Display,
+			TEXT("golfsim.TestCourseLie: (%.1f, %.1f) m -> %s"), X, Y, *LieToProtocol(Lie));
 	}
 
 	// The range's time-of-day/weather director, if present. Range-only -- GolfForgeDemo has none.
@@ -414,6 +446,11 @@ static FAutoConsoleCommandWithWorldAndArgs GTestGroundRollCmd(
 	TEXT("golfsim.TestGroundRoll"),
 	TEXT("Roll a synthetic landing out on a surface: golfsim.TestGroundRoll <landing_speed_mps> <descent_deg> <lie> [spin_rpm]. Compare fairway/rough/bunker."),
 	FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&TestGroundRollCmd));
+
+static FAutoConsoleCommandWithWorldAndArgs GTestCourseLieCmd(
+	TEXT("golfsim.TestCourseLie"),
+	TEXT("Probe the course splatmap at a world XY in meters: golfsim.TestCourseLie <x_m> <y_m>. Course levels only."),
+	FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&TestCourseLieCmd));
 
 static FAutoConsoleCommandWithWorldAndArgs GSetTimeCmd(
 	TEXT("golfsim.SetTime"),

@@ -142,6 +142,62 @@ bool FGolfsimGroundRollSteepTest::RunTest(const FString& /*Parameters*/)
 	return true;
 }
 
+// --- GOL-38 multi-bounce phase: driver shows >= 2 visible hops, peaks strictly decreasing ------
+//
+// Peak detection over RollSamples: a "hop" is a maximal contiguous run where Z > AirborneEps; its
+// peak is the max Z in the run. Stricter epsilon than 0 because the parabola's last sample is
+// clamped to z=0 but the prior step may carry sub-cm float residual.
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FGolfsimGroundRollDriverHopsTest, "Golfsim.GroundRoll.DriverHops",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FGolfsimGroundRollDriverHopsTest::RunTest(const FString& /*Parameters*/)
+{
+	FShotInput Drive;
+	Drive.BallSpeedMps = 74.6;
+	Drive.LaunchAngleDeg = 10.9;
+	Drive.BackspinRpm = 2686.0;
+
+	const FBallTrajectory Flight = GolfBallFlight::Simulate(Drive);
+	const FGroundRollResult R =
+		GolfBallFlight::SimulateGroundRoll(Flight, EGolfLie::Fairway, GolfBallFlight::SurfaceRollFor(EGolfLie::Fairway));
+	TestTrue(TEXT("roll valid"), R.bValid);
+
+	constexpr double AirborneEps = 0.01;   // m
+	TArray<double> HopPeaks;
+	double CurrentPeak = 0.0;
+	bool   bInHop = false;
+	for (const FTrajectorySample& S : R.RollSamples)
+	{
+		const double Z = S.PositionMeters.Z;
+		if (Z > AirborneEps)
+		{
+			bInHop = true;
+			CurrentPeak = FMath::Max(CurrentPeak, Z);
+		}
+		else if (bInHop)
+		{
+			HopPeaks.Add(CurrentPeak);
+			CurrentPeak = 0.0;
+			bInHop = false;
+		}
+	}
+	if (bInHop) { HopPeaks.Add(CurrentPeak); }   // trailing hop (shouldn't happen w/ z=0 clamp, but be safe)
+
+	TestTrue(TEXT("driver shows visible hops (>= 2)"), HopPeaks.Num() >= 2);
+	for (int32 i = 1; i < HopPeaks.Num(); ++i)
+	{
+		TestTrue(TEXT("hop peaks strictly decrease"), HopPeaks[i] < HopPeaks[i - 1]);
+	}
+
+	AddInfo(FString::Printf(TEXT("driver hops=%d, peaks (m)=%s; total=%.1f yd (carry=%.1f yd, roll-phase=%.1f yd)"),
+		HopPeaks.Num(),
+		HopPeaks.Num() == 0 ? TEXT("(none)")
+			: *FString::JoinBy(HopPeaks, TEXT(", "), [](double P) { return FString::Printf(TEXT("%.2f"), P); }),
+		R.TotalDistanceM * 1.0936132983, Flight.CarryM * 1.0936132983, R.RollDistanceM * 1.0936132983));
+	return true;
+}
+
 // --- Lie <-> protocol string round-trips -------------------------------------------------------
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FGolfsimGroundRollLieStringTest, "Golfsim.GroundRoll.LieStringRoundTrip",

@@ -1,7 +1,8 @@
-// Ground interaction + roll (GOL-9): turns a flight-only FBallTrajectory's landing state into
-// post-bounce roll -> total distance + a rest position. Pure SI, UE-agnostic (like the flight
-// solver) -- the bounce/roll is an analytical friction model, NOT Chaos: deterministic and
-// headless-testable, hand-off at the landing instant only (per the ticket pitfall).
+// Ground interaction + roll (GOL-9 + GOL-38): turns a flight-only FBallTrajectory's landing state
+// into a few visible bounces + a settle roll -> total distance + a rest position. Pure SI,
+// UE-agnostic (like the flight solver) -- the bounce/roll is an analytical model, NOT Chaos:
+// deterministic and headless-testable, hand-off at the landing instant only (per the ticket
+// pitfall). GOL-38 added the multi-bounce phase ahead of the roll; GOL-9 had only a flat slide.
 
 #pragma once
 
@@ -28,12 +29,17 @@ enum class EGolfLie : uint8
 /**
  * Per-surface ground-roll tuning. Code-seeded defaults (SurfaceRollFor); promote to a UDataAsset
  * later if designer-facing tuning is wanted. Treat each field as a knob.
+ *
+ * GOL-38 reinterpreted Restitution: it was "fraction of horizontal speed surviving the bounce" in
+ * the GOL-9 flat-slide model; it is now the vertical coefficient of restitution applied per bounce
+ * (the real physics meaning), and BounceHorizontalKeep took over the per-bounce horizontal decay.
  */
 struct FSurfaceRoll
 {
-	double RollFriction = 0.30;   // rolling-friction coefficient -> decel a = RollFriction * g (higher = shorter roll)
-	double Restitution = 0.55;    // fraction of horizontal speed surviving the bounce into the roll phase
-	double SpinCheck = 0.20;      // how strongly landing backspin kills roll (0 = none, 1 = full at RefSpin)
+	double RollFriction = 0.30;            // rolling-friction coefficient -> decel a = RollFriction * g (higher = shorter roll)
+	double Restitution = 0.35;             // vertical coefficient of restitution (COR) per bounce, 0..1
+	double BounceHorizontalKeep = 0.55;    // horizontal-speed retention per bounce, 0..1 (GOL-38)
+	double SpinCheck = 0.20;               // how strongly landing backspin kills the initial scrape (0 = none, 1 = full at RefSpin)
 };
 
 /** Result of the ground-roll pass. RollSamples is the post-bounce ground polyline for the visualizer. */

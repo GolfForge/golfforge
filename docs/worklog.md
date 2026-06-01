@@ -2,6 +2,14 @@
 
 > Dated milestone summaries, newest on top. The durable outcome + the committed artifact, not the blow-by-blow — process detail lives in git history, `docs/ue5-cookbook.md`, and the scripts themselves.
 
+## 2026-05-31 — GOL-33 pipeline polish: hole.geojson sidecar + cart_path coverage (Mac)
+
+- **Root cause confirmed via Overpass audit, not a pipeline bug.** GolfForge Demo Black's "missing holes" complaint resolved into two distinct facts: (1) rasterization is exact — 38 OSM fairway ways → 39 painted components, 25 greens → 25, 83 bunkers → 83, 66 tees → 66 (BFS connected-component check). (2) the visible quality gap is **OSM data sparsity** — the bbox has full fairway/green/bunker polygons for the Black course but only thin/incomplete coverage for the other 4 Bethpage State Park courses inside the same bbox, and per-hole metadata (`par`/`handicap`/`ref`/`name`) lives on `golf=hole` *linestrings* the pipeline wasn't extracting at all. 32 such hole centerlines were available but dropped on the floor.
+- **`hole.geojson` sidecar added.** New `FEATURE_LAYERS["hole"]` entry: `geom=line`, `emit_geojson=True`, `skip_raster=True` — the per-hole tee→green centerline is preserved as a `LineString` Feature with full `osm_tags` (so `par`, `handicap`, `ref`, `name` survive end-to-end). This is the source-of-truth for the future scorecard / hole selector / opening fly-in camera on under-mapped courses where the fairway polygons aren't drawn. **Unblocks GOL-69 game-loop work for any future course where OSM has `golf=hole` ways.**
+- **`cart_path` extended to cover `highway=service`** (in addition to `golf=cartpath` + `highway=path`). Overpass query updated to pull `way["highway"="service"]` so the layer config actually has data to consume. The Black-course bbox has 2 such ways the pipeline was missing before.
+- **35/35 pytest** (one new case `test_hole_layer_emits_geojson_with_metadata_and_no_raster` — freezes the `osm_tags` round-trip + the skip_raster + no-splat-contamination contract). `pipeline/build_splatmap.py`, `pipeline/tests/test_build_splatmap.py`, `docs/pipeline-data-contract.md` (new row), `.gitignore` (scratch `pipeline/_*.py` audit scripts) — all committed.
+- **Re-run pending.** The course-side `hole.geojson` for GolfForge Demo Black hasn't been regenerated yet (the user will re-run `pipeline/build_pipeline.py` and verify 32 features with par/handicap/name preserved). The pipeline source-of-truth change is committed; the regenerated course output is the follow-up step.
+
 ## 2026-05-31 — 🚀 v0.0.1-alpha PUBLIC LAUNCH (Both machines)
 
 - **Repo flipped public** at [github.com/GolfForge/golfforge](https://github.com/GolfForge/golfforge). v0.0.1-alpha pre-release published with both `GolfForge-macos-arm64.zip` (692 MB) and `GolfForge-windows-x64.zip` (759 MB) attached. GolfForge is now publicly downloadable open-source software under AGPL-3.0 + commercial dual-license.

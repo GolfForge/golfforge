@@ -363,6 +363,54 @@ def test_skip_raster_suppresses_layer_png_but_keeps_geojson(tmp_path, monkeypatc
     assert len(fc["features"]) == 1
 
 
+def test_hole_layer_emits_geojson_with_metadata_and_no_raster(tmp_path):
+    """`golf=hole` features are linestrings carrying per-hole metadata
+    (par, handicap, name, ref). They must:
+
+    - emit a `hole.geojson` sidecar with osm_way_id + osm_tags preserved
+      (the game-loop/scorecard consumer needs par/handicap/ref/name);
+    - NOT emit a `layer_hole.png` (the centerline is not paintable terrain);
+    - NOT contaminate any splatmap channel.
+
+    This is the GOL-33 contract for under-mapped courses where fairway
+    polygons aren't drawn in OSM but per-hole tee→green centerlines are.
+    """
+    bbox = (-1.0, 40.0, 1.0, 41.0)
+    osm = {"elements": [
+        way(501, [(-0.5, 40.4), (0.5, 40.4), (0.5, 40.6), (-0.5, 40.6), (-0.5, 40.4)],
+            tags={"leisure": "golf_course"}),
+        way(502, [(-0.2, 40.5), (-0.1, 40.52), (0.0, 40.5), (0.1, 40.48), (0.2, 40.5)],
+            tags={"golf": "hole", "par": "4", "handicap": "7", "ref": "3", "name": "Long Iron"}),
+    ]}
+    out_dir = tmp_path / "test"
+    bs.build_splatmap(osm, bbox, 200, out_dir)
+
+    # Raster suppressed (skip_raster=True; linestring centerlines aren't terrain).
+    assert not (out_dir / "layer_hole.png").exists(), (
+        "hole has skip_raster=True; no painted PNG must be emitted"
+    )
+    # GeoJSON sidecar present with metadata.
+    assert (out_dir / "hole.geojson").exists(), (
+        "hole has emit_geojson=True; sidecar must be emitted"
+    )
+    fc = json.loads((out_dir / "hole.geojson").read_text())
+    assert len(fc["features"]) == 1
+    feat = fc["features"][0]
+    assert feat["geometry"]["type"] == "LineString"
+    assert feat["properties"]["osm_way_id"] == 502
+    # Per-hole metadata must survive end-to-end (this is the contract the
+    # engine relies on for scorecard + future tee/pin placement).
+    tags = feat["properties"]["osm_tags"]
+    assert tags["par"] == "4"
+    assert tags["handicap"] == "7"
+    assert tags["ref"] == "3"
+    assert tags["name"] == "Long Iron"
+    # And the splatmap channels must not have been contaminated by the hole way.
+    for ch_layer in ("fairway", "green", "bunker"):
+        ch = np.array(Image.open(out_dir / f"splat_{ch_layer}.png"))
+        assert ch.sum() == 0, f"hole linestring leaked into splat_{ch_layer}.png"
+
+
 def test_rough_does_not_paint_outside_the_course_outline(tmp_path):
     bbox = (-1.0, 40.0, 1.0, 41.0)
     osm = {"elements": [

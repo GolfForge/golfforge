@@ -102,6 +102,11 @@ Thumbs.db
 courses/**/osm_raw.json
 courses/**/dem.tif
 
+# One-shot diagnostic scripts under pipeline/_*.py — local scratch tools (OSM
+# audits, geometry classifiers, etc.). Recipes live in worklog / Linear if we
+# ever need to re-run them.
+pipeline/_*.py
+
 # Local OS junk
 *.swp
 *.swo

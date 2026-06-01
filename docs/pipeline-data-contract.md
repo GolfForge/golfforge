@@ -25,8 +25,9 @@ For every non-core feature type, the pipeline may emit a raster mask, a vector s
 |---|---|---|---|
 | `tee` | `layer_tee.png` | — | Weight-paint material layer |
 | `water` | — (skip_raster) | `water.geojson` (Polygon) | Flat translucent `DynamicMeshActor` per Feature (see `engine/scripts/build_water_actors.py`) |
-| `cart_path` | `layer_cart_path.png` | `cart_path.geojson` (LineString) | Weight-paint **or** `LandscapeSplineActor` per Feature |
+| `cart_path` | `layer_cart_path.png` | `cart_path.geojson` (LineString) | Weight-paint **or** `LandscapeSplineActor` per Feature. Aggregates `golf=cartpath`, `highway=path`, `highway=service` |
 | `trees` | `layer_trees.png` | — | Weight-paint → PCG SurfaceSampler with `AttributeFiltering` on the weight |
+| `hole` | — (skip_raster) | `hole.geojson` (LineString) | Per-hole tee→green centerline (`golf=hole`). Drives scorecard, hole selector, opening camera fly-in. `osm_tags` carries `par`, `handicap`, `ref` (hole number), `name`. Survives even when OSM is missing fairway polygons — the only source of truth for hole metadata on under-mapped courses |
 
 ## GeoJSON sidecar shape (one canonical form for both line and polygon)
 

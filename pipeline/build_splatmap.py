@@ -82,8 +82,19 @@ FEATURE_LAYERS = {
                                                                                     "geom": "polygon",
                                                                                     "emit_geojson": True,
                                                                                     "skip_raster": True},
-    "cart_path":   {"channel": None, "osm_tag": ["golf=cartpath", "highway=path"],  "geom": "line", "width_m": 3.0},
+    "cart_path":   {"channel": None, "osm_tag": ["golf=cartpath", "highway=path", "highway=service"],
+                                                                                    "geom": "line",
+                                                                                    "width_m": 3.0},
     "trees":       {"channel": None, "osm_tag": ["natural=wood", "landuse=forest"], "geom": "polygon"},
+    # Per-hole centerlines (`golf=hole` ways) carry rich metadata — par,
+    # handicap, name, ref (hole number) — but are LINESTRINGS not polygons,
+    # so they can't be painted as areas in the splatmap. Emit as a GeoJSON
+    # sidecar so the engine can consume the hole metadata directly (game loop,
+    # scorecard, future tee/pin placement, camera positioning) even for
+    # under-mapped courses where the fairway polygons aren't drawn in OSM.
+    "hole":        {"channel": None, "osm_tag": ["golf=hole"],                      "geom": "line",
+                                                                                    "emit_geojson": True,
+                                                                                    "skip_raster": True},
 }
 
 
@@ -109,6 +120,7 @@ def overpass_query(bbox: Tuple[float, float, float, float]) -> dict:
       way["natural"="wood"]({bbox_str});
       way["landuse"="forest"]({bbox_str});
       way["highway"="path"]({bbox_str});
+      way["highway"="service"]({bbox_str});
     );
     out geom;
     """

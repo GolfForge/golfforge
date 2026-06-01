@@ -14,6 +14,8 @@
 class UComboBoxString;
 class UTextBlock;
 class UButton;
+class USpinBox;
+class UCheckBox;
 
 UCLASS()
 class GOLFSIM_API UGolfRangePanel : public UUserWidget
@@ -53,12 +55,21 @@ public:
 	void SetSelectedLaunchMonitorIndex(int32 Index);
 	void SetSelectedCameraIndex(int32 Index);
 
+	// Range pin distance (GOL-29). SetPinValue updates the spinner (re-entrancy guarded so a console
+	// or HUD push doesn't re-broadcast OnPinChanged); SetPinActualReadout shows the resolved
+	// post-clamp distance next to the spinner. SetPuttMode flips the "Putt from green" checkbox.
+	void SetPinValue(double Yards);
+	void SetPinActualReadout(double Yards);
+	void SetPuttMode(bool bChecked);
+
 	// Set by the owning HUD; each ComboBox pushes the user's pick back through its delegate.
 	TFunction<void(int32)> OnClubChosen;
 	TFunction<void(int32)> OnTimeChosen;
 	TFunction<void(int32)> OnSkyChosen;
 	TFunction<void(int32)> OnLaunchMonitorChosen;
 	TFunction<void(int32)> OnCameraChosen;
+	TFunction<void(double)> OnPinChanged;       // user dragged/edited the Pin spinner
+	TFunction<void(bool)>   OnPuttModeChanged;  // user toggled "Putt from green"
 
 	// Fired by the "Simulate Shot" button (only shown while a launch monitor is connected). The HUD
 	// asks the active driver to emit a shot (OpenFlight mock mode -> Socket.IO simulate_shot).
@@ -73,6 +84,8 @@ protected:
 	UFUNCTION() void HandleLaunchMonitorSelectionChanged(FString SelectedItem, ESelectInfo::Type SelectionType);
 	UFUNCTION() void HandleCameraSelectionChanged(FString SelectedItem, ESelectInfo::Type SelectionType);
 	UFUNCTION() void HandleSimulateClicked();
+	UFUNCTION() void HandlePinValueChanged(float Value);
+	UFUNCTION() void HandlePuttModeChanged(bool bChecked);
 
 private:
 	void BuildTree();
@@ -92,6 +105,9 @@ private:
 	UPROPERTY(Transient) TObjectPtr<UComboBoxString> CameraCombo;
 	UPROPERTY(Transient) TObjectPtr<UComboBoxString> LMCombo;
 	UPROPERTY(Transient) TObjectPtr<UButton> SimulateButton;   // shown only while an LM is connected
+	UPROPERTY(Transient) TObjectPtr<USpinBox> PinBox;          // pin distance, yards
+	UPROPERTY(Transient) TObjectPtr<UTextBlock> PinActualText; // resolved post-clamp distance next to PinBox
+	UPROPERTY(Transient) TObjectPtr<UCheckBox> PuttModeBox;    // teleports the player onto the green
 	UPROPERTY(Transient) TObjectPtr<UTextBlock> ValClub;
 	UPROPERTY(Transient) TObjectPtr<UTextBlock> ValSpeed;
 	UPROPERTY(Transient) TObjectPtr<UTextBlock> ValLaunch;
@@ -104,4 +120,6 @@ private:
 	// True while we programmatically set the ComboBox selection, so the resulting
 	// OnSelectionChanged broadcast doesn't loop back into gameplay.
 	bool bSuppressSelectionCallback = false;
+	bool bSuppressPinCallback = false;     // same guard for the Pin spinner
+	bool bSuppressPuttCallback = false;    // same guard for the Putt-mode checkbox
 };

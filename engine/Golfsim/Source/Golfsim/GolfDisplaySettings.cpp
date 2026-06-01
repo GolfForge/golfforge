@@ -3,6 +3,7 @@
 #include "GameFramework/GameUserSettings.h"
 #include "Kismet/KismetSystemLibrary.h"
 #include "HAL/IConsoleManager.h"
+#include "Misc/ConfigCacheIni.h"   // GConfig + GGameUserSettingsIni for the pin-distance helpers
 #include "RHI.h"   // IsRHIDeviceNVIDIA() -- gate DLSS to NVIDIA GPUs
 
 namespace GolfDisplay
@@ -224,5 +225,30 @@ namespace GolfDisplay
 			Res = { FIntPoint(1280, 720), FIntPoint(1920, 1080), FIntPoint(2560, 1440), FIntPoint(3840, 2160) };
 		}
 		return Res;
+	}
+
+	// GOL-29 pin-distance round-trip. Same .ini as UGameUserSettings, separate section so it doesn't
+	// collide with engine-owned keys. SetDouble + Flush so the value survives a crash before the next
+	// UGameUserSettings::SaveSettings call.
+	static const TCHAR* PinSection = TEXT("GolfForge.Range");
+	static const TCHAR* PinKey = TEXT("PinDistanceYd");
+	static constexpr double PinDefaultYd = 150.0;
+	static constexpr double PinMaxYd = 400.0;   // matches LANE_LEN_YD in build_range_splatmap.py / RangeSurface
+
+	double ReadPinDistanceYd()
+	{
+		if (!GConfig) { return PinDefaultYd; }
+		double V = PinDefaultYd;
+		const bool bFound = GConfig->GetDouble(PinSection, PinKey, V, GGameUserSettingsIni);
+		if (!bFound) { return PinDefaultYd; }
+		return FMath::Clamp(V, 0.0, PinMaxYd);
+	}
+
+	void WritePinDistanceYd(double Yards)
+	{
+		if (!GConfig) { return; }
+		const double Clamped = FMath::Clamp(Yards, 0.0, PinMaxYd);
+		GConfig->SetDouble(PinSection, PinKey, Clamped, GGameUserSettingsIni);
+		GConfig->Flush(/*bRead=*/false, GGameUserSettingsIni);
 	}
 }

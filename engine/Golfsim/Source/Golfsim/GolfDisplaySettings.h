@@ -34,4 +34,11 @@ namespace GolfDisplay
 	FGolfDisplaySettings ReadCurrent();                        // from UGameUserSettings + r.ScreenPercentage
 	void Apply(const FGolfDisplaySettings& S);                 // write + ApplyResolutionSettings + SaveSettings
 	TArray<FIntPoint> SupportedResolutions();                  // monitor modes, or a sane fallback list
+
+	// Range pin distance (GOL-29). Stored in the same GameUserSettings.ini that Apply() writes, under
+	// section [GolfForge.Range], key PinDistanceYd. Default 150 yd if unset; clamped to [0, 400] (the
+	// range corridor's LANE_LEN_YD). These are split out from FGolfDisplaySettings because they're a
+	// range-specific gameplay setting, not part of the display-settings round-trip.
+	double ReadPinDistanceYd();
+	void WritePinDistanceYd(double Yards);
 }

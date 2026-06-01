@@ -17,6 +17,7 @@ class UManualShotDialog;
 class USettingsMenu;
 class UMainMenu;
 class AGolfBallActor;
+class AGolfPinActor;
 class ACameraActor;
 struct FManualShotValues;
 
@@ -53,6 +54,14 @@ private:
 	void ApplyDisplaySettings(const FGolfDisplaySettings& S);
 public:
 	void OpenCreditsSection();   // golfsim.Credits entry point
+
+	// GOL-29: range target pin. ApplyPinDistance places the pin actor at <Yards> downrange along the
+	// corridor centerline (world +X from the tee, Y=0), ground-snapped via line trace. Idempotent --
+	// the pin actor is find-or-spawned, never duplicated. Persisted so the value comes back next PIE.
+	// SetPuttMode teleports the pawn onto the green (Putter selected, camera back to Tee view) on, or
+	// restores the tee + previous club on off. Console + checkbox both call into these.
+	void ApplyPinDistance(double Yards);
+	void SetPuttMode(bool bEnabled);
 private:
 
 	// Startup main menu (Range / Play Course [disabled] / Exit). Shown over the already-loaded range
@@ -143,4 +152,14 @@ private:
 	UPROPERTY(Transient) TObjectPtr<UManualShotDialog> ManualDialog;
 	UPROPERTY(Transient) TObjectPtr<USettingsMenu> SettingsMenu;
 	UPROPERTY(Transient) TObjectPtr<UMainMenu> MainMenu;
+
+	// GOL-29 state. Pin is find-or-spawned (cached weakly so the PIE-spawned actor goes away with
+	// the world). Putt mode caches the tee pawn pose + club so the toggle is reversible.
+	TWeakObjectPtr<AGolfPinActor> Pin;
+	bool bPuttMode = false;
+	bool bTeeCached = false;
+	FVector TeeOriginalLoc = FVector::ZeroVector;
+	FRotator TeeOriginalRot = FRotator::ZeroRotator;
+	int32 TeeOriginalClub = 0;
+	double CurrentPinYd = 150.0;   // last applied; survives spinner -> SetPuttMode round-trips
 };

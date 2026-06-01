@@ -1,6 +1,7 @@
 // Automation tests for the pure GolfDisplay helpers (no world/RHI). Mirrors the EventBus test style.
 // Run: UnrealEditor-Cmd <proj> -ExecCmds="Automation RunTests Golfsim.Settings; Quit" -unattended -nullrhi
 #include "Misc/AutomationTest.h"
+#include "Misc/ConfigCacheIni.h"   // GConfig + GGameUserSettingsIni for the pin-distance tests
 #include "GolfDisplaySettings.h"
 
 #if WITH_AUTOMATION_TESTS
@@ -59,6 +60,41 @@ bool FGolfsimSettingsUpscaleModeTest::RunTest(const FString&)
 	TestTrue(TEXT("DLSS DLAA is 100%"), FMath::IsNearlyEqual(GolfDisplay::ScreenPctForMode(1, 0), 100.f));
 	TestEqual(TEXT("DLSS 50% -> Performance (3)"), GolfDisplay::ModeForScreenPct(1, 50.f), 3);
 	TestTrue(TEXT("XeSS top tier is Native AA"), GolfDisplay::UpscaleModeNames(2)[0] == TEXT("Native AA"));
+	return true;
+}
+
+// GOL-29 pin-distance persistence (GConfig round-trip via GGameUserSettingsIni).
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FGolfsimSettingsPinDistanceRoundTripTest, "Golfsim.Settings.PinDistanceRoundTrip",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FGolfsimSettingsPinDistanceRoundTripTest::RunTest(const FString&)
+{
+	GolfDisplay::WritePinDistanceYd(175.0);
+	TestTrue(TEXT("175 round-trips"), FMath::IsNearlyEqual(GolfDisplay::ReadPinDistanceYd(), 175.0));
+
+	GolfDisplay::WritePinDistanceYd(50.0);
+	TestTrue(TEXT("50 round-trips"), FMath::IsNearlyEqual(GolfDisplay::ReadPinDistanceYd(), 50.0));
+
+	// Clamps: above the corridor and below zero.
+	GolfDisplay::WritePinDistanceYd(500.0);
+	TestTrue(TEXT("500 clamps to 400"), FMath::IsNearlyEqual(GolfDisplay::ReadPinDistanceYd(), 400.0));
+	GolfDisplay::WritePinDistanceYd(-25.0);
+	TestTrue(TEXT("-25 clamps to 0"), FMath::IsNearlyEqual(GolfDisplay::ReadPinDistanceYd(), 0.0));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FGolfsimSettingsPinDistanceDefaultTest, "Golfsim.Settings.PinDistanceDefault",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FGolfsimSettingsPinDistanceDefaultTest::RunTest(const FString&)
+{
+	// Wipe the key so ReadPinDistanceYd has to fall back to the default. Other tests in this file
+	// may have written it; flush so the unset state is observable.
+	if (GConfig)
+	{
+		GConfig->RemoveKey(TEXT("GolfForge.Range"), TEXT("PinDistanceYd"), GGameUserSettingsIni);
+		GConfig->Flush(/*bRead=*/false, GGameUserSettingsIni);
+	}
+	TestTrue(TEXT("missing key -> 150 yd default"),
+		FMath::IsNearlyEqual(GolfDisplay::ReadPinDistanceYd(), 150.0));
 	return true;
 }
 

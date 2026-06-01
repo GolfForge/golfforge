@@ -444,6 +444,29 @@ namespace
 		UE_LOG(LogTemp, Warning, TEXT("golfsim.Credits: no AGolfRangeHUD in this level"));
 	}
 
+	// golfsim.SetPin <yards>  -- range target distance (GOL-29). Drives the spinner via the HUD,
+	// which spawns/moves the AGolfPinActor down the corridor centerline. Range-only; on other
+	// levels the AGolfRangeHUD cast fails and the command logs a hint.
+	void SetPinCmd(const TArray<FString>& Args, UWorld* World)
+	{
+		if (Args.Num() < 1)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("Usage: golfsim.SetPin <yards>  (0-400; range only)"));
+			return;
+		}
+		if (!World) { return; }
+		APlayerController* PC = World->GetFirstPlayerController();
+		AGolfRangeHUD* HUD = PC ? Cast<AGolfRangeHUD>(PC->GetHUD()) : nullptr;
+		if (!HUD)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("golfsim.SetPin: no AGolfRangeHUD in this level (range only)"));
+			return;
+		}
+		const double Yards = FCString::Atod(*Args[0]);
+		HUD->ApplyPinDistance(Yards);
+		UE_LOG(LogTemp, Display, TEXT("golfsim.SetPin: %.0f yd"), Yards);
+	}
+
 	// golfsim.SetStimp <feet>  -- live-tune the green stimp used by the putter-friction override
 	// (GOL-109). With no argument, logs the current value. Clamps to a sensible 6-16 ft band.
 	void SetStimpCmd(const TArray<FString>& Args, UWorld* /*World*/)
@@ -497,6 +520,11 @@ static FAutoConsoleCommandWithWorldAndArgs GSetStimpCmd(
 	TEXT("golfsim.SetStimp"),
 	TEXT("Live-tune the green stimp for putter shots: golfsim.SetStimp <feet>  (6-16, default 11). No arg = print current."),
 	FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&SetStimpCmd));
+
+static FAutoConsoleCommandWithWorldAndArgs GSetPinCmd(
+	TEXT("golfsim.SetPin"),
+	TEXT("Range target distance: golfsim.SetPin <yards>  (0-400; clamped, persisted, syncs the panel spinner)."),
+	FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&SetPinCmd));
 
 static FAutoConsoleCommandWithWorldAndArgs GPublishTestShotCmd(
 	TEXT("golfsim.PublishTestShot"),

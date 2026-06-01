@@ -3,6 +3,7 @@
 #include "GolfBallActor.h"
 #include "GolfRangeEnvironment.h"
 #include "ManualShotDialog.h"              // manual-shot dialog (GOL-8)
+#include "Range/GolfPinActor.h"            // range target pin (GOL-29)
 #include "Events/EventBusSubsystem.h"      // publish shot.taken / subscribe shot.outcome (GOL-7)
 #include "Drivers/LaunchMonitorManager.h"  // active-driver status -> panel dot (GOL-11)
 #include "Drivers/LaunchMonitorDriver.h"
@@ -238,6 +239,20 @@ void AGolfRangeHUD::EnsureInputBound()
 			{
 				if (AGolfRangeHUD* HUD = WeakThis.Get()) { HUD->SetCameraMode(Idx); }
 			};
+
+			// Pin distance (GOL-29). Restore the persisted yardage, push it to the spinner without
+			// re-broadcasting, then place the pin once so the green is visible on entry.
+			CurrentPinYd = GolfDisplay::ReadPinDistanceYd();
+			Panel->OnPinChanged = [WeakThis](double Y)
+			{
+				if (AGolfRangeHUD* HUD = WeakThis.Get()) { HUD->ApplyPinDistance(Y); }
+			};
+			Panel->OnPuttModeChanged = [WeakThis](bool b)
+			{
+				if (AGolfRangeHUD* HUD = WeakThis.Get()) { HUD->SetPuttMode(b); }
+			};
+			Panel->SetPinValue(CurrentPinYd);
+			ApplyPinDistance(CurrentPinYd);
 
 			// Environment director: find-or-spawn the range's time-of-day/weather actor and wire the
 			// Time + Sky dropdowns to it. Names come from the director (single source of truth, like
@@ -614,6 +629,164 @@ void AGolfRangeHUD::ApplyDisplaySettings(const FGolfDisplaySettings& S)
 	GolfDisplay::Apply(S);
 	UE_LOG(LogTemp, Display, TEXT("golfsim settings: applied %dx%d windowMode=%d quality=%d screen%%=%.0f"),
 		S.Resolution.X, S.Resolution.Y, S.WindowModeIndex, S.QualityLevel, S.ScreenPercentage);
+}
+
+namespace
+{
+	// GOL-29: pin sits down the corridor centerline. World +X downrange from the tee, Y=0 always.
+	// Corridor max length = LANE_LEN_YD = 400 yd (RangeSurface.cpp), so this also bounds the
+	// resolved placement so a 400+ yd request doesn't bury the disc in the tree wall.
+	constexpr double YdPerMeter = 1.0936132983;
+	constexpr double CmPerYd = 91.44;
+	constexpr double PinMaxYd = 400.0;
+
+	// Where to drop the pawn when entering putt mode: a few yards behind the flag on the green.
+	constexpr double PuttStandoffYd = 3.0;   // ~9 ft -- a "lag putt" starting distance
+}
+
+void AGolfRangeHUD::ApplyPinDistance(double Yards)
+{
+	UWorld* World = GetWorld();
+	if (!World)
+	{
+		return;
+	}
+	const double ClampedYd = FMath::Clamp(Yards, 0.0, PinMaxYd);
+	CurrentPinYd = ClampedYd;
+
+	APlayerController* PC = GetOwningPlayerController();
+	APawn* Pawn = PC ? PC->GetPawn() : nullptr;
+	if (!Pawn)
+	{
+		return;   // no pawn yet -- EnsureInputBound retries on the next DrawHUD tick
+	}
+
+	// Tee origin: the pawn's X is the tee X (lane runs along world +X). Y forced to 0 so the pin
+	// sits on the corridor centerline regardless of where the pawn has wandered to. While in putt
+	// mode the pawn has been teleported onto the green, so use the cached tee location instead --
+	// otherwise dragging the spinner would re-anchor the pin to the green and walk it away.
+	// Source ground Z by tracing down from above the requested XY so the disc sits flush on the
+	// visible turf (bTraceComplex=true; same gotcha as the launch trace -- landscape simple-
+	// collision is a coarser mip a few cm above the heightfield).
+	const FVector TeeLoc = bTeeCached ? TeeOriginalLoc : Pawn->GetActorLocation();
+	const double PinWorldXcm = TeeLoc.X + ClampedYd * CmPerYd;
+	const FVector ProbeStart(PinWorldXcm, 0.0, TeeLoc.Z + 5000.0);
+	const FVector ProbeEnd(PinWorldXcm, 0.0, TeeLoc.Z - 5000.0);
+
+	FCollisionQueryParams Params(SCENE_QUERY_STAT(GolfsimPinFloorTrace), /*bTraceComplex=*/true);
+	Params.AddIgnoredActor(Pawn);
+	if (AGolfPinActor* Existing = Pin.Get())
+	{
+		Params.AddIgnoredActor(Existing);   // never let the disc eat its own placement trace
+	}
+
+	double GroundZ = TeeLoc.Z;   // fall back to tee Z if the trace misses (shouldn't happen on the range)
+	FHitResult Hit;
+	if (World->LineTraceSingleByChannel(Hit, ProbeStart, ProbeEnd, ECC_WorldStatic, Params))
+	{
+		GroundZ = Hit.ImpactPoint.Z;
+	}
+
+	// Find-or-spawn the pin and slide it into place. Actor origin = disc bottom, so Z = GroundZ.
+	AGolfPinActor* PinActor = Pin.Get();
+	if (!PinActor)
+	{
+		FActorSpawnParameters Sp;
+		Sp.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+		PinActor = World->SpawnActor<AGolfPinActor>(AGolfPinActor::StaticClass(),
+			FVector(PinWorldXcm, 0.0, GroundZ), FRotator::ZeroRotator, Sp);
+		Pin = PinActor;
+	}
+	else
+	{
+		PinActor->SetActorLocationAndRotation(FVector(PinWorldXcm, 0.0, GroundZ), FRotator::ZeroRotator);
+	}
+
+	if (Panel)
+	{
+		// SetPinValue is suppress-guarded, so this is safe even when ApplyPinDistance was
+		// triggered by the spinner itself (loop guard inside the panel).
+		Panel->SetPinValue(ClampedYd);
+		Panel->SetPinActualReadout(ClampedYd);
+	}
+	GolfDisplay::WritePinDistanceYd(ClampedYd);
+
+	// If we're in putt mode, re-teleport the pawn onto the new green so the toggle tracks the pin.
+	if (bPuttMode)
+	{
+		SetPuttMode(true);
+	}
+}
+
+void AGolfRangeHUD::SetPuttMode(bool bEnabled)
+{
+	APlayerController* PC = GetOwningPlayerController();
+	APawn* Pawn = PC ? PC->GetPawn() : nullptr;
+	if (!PC || !Pawn)
+	{
+		return;
+	}
+
+	if (bEnabled)
+	{
+		// Cache the tee pose + club the first time we go on; re-entering putt mode at a new pin
+		// distance shouldn't overwrite the original tee (we only restore back to that).
+		if (!bTeeCached)
+		{
+			TeeOriginalLoc = Pawn->GetActorLocation();
+			TeeOriginalRot = PC->GetControlRotation();
+			TeeOriginalClub = ActiveClub;
+			bTeeCached = true;
+		}
+
+		AGolfPinActor* PinActor = Pin.Get();
+		if (!PinActor)
+		{
+			return;   // no pin yet -- ApplyPinDistance hasn't run; bail quietly
+		}
+
+		// Stand a few yards behind the flag (lower X), face the flag (Yaw 0 = +X). The range corridor
+		// is flat, so the pawn's capsule-center Z carries over from the tee unchanged -- no per-pawn
+		// ground trace needed at v1. If GOL-110-style undulation lands on the range later, swap this
+		// for a downward trace + add a cached pawn-to-floor offset.
+		const FVector PinLoc = PinActor->GetActorLocation();
+		const double StandoffCm = PuttStandoffYd * CmPerYd;
+		const FVector PuttLoc(PinLoc.X - StandoffCm, 0.0, TeeOriginalLoc.Z);
+		Pawn->SetActorLocation(PuttLoc);
+		PC->SetControlRotation(FRotator::ZeroRotator);   // Yaw 0 -> face +X (toward the flag)
+
+		// Select the Putter (last preset in the bag). SelectClub clamps so a huge index lands on the
+		// last entry; the bag layout (driver -> putter) is enforced at the top of this .cpp.
+		SelectClub(0x7FFFFFFF);
+
+		// Snap camera back to Tee view so the chase cam doesn't fly off above a green-distance shot.
+		if (Panel)
+		{
+			Panel->SetSelectedCameraIndex(0);
+		}
+		SetCameraMode(0);
+
+		bPuttMode = true;
+		if (Panel)
+		{
+			Panel->SetPuttMode(true);
+		}
+	}
+	else
+	{
+		bPuttMode = false;
+		if (bTeeCached)
+		{
+			Pawn->SetActorLocation(TeeOriginalLoc);
+			PC->SetControlRotation(TeeOriginalRot);
+			SelectClub(TeeOriginalClub);
+			bTeeCached = false;
+		}
+		if (Panel)
+		{
+			Panel->SetPuttMode(false);
+		}
+	}
 }
 
 void AGolfRangeHUD::OpenCreditsSection()

@@ -9,9 +9,13 @@
 #include "Components/Button.h"
 #include "Components/CanvasPanel.h"
 #include "Components/CanvasPanelSlot.h"
+#include "Components/CheckBox.h"
 #include "Components/ComboBoxString.h"
 #include "Components/GridPanel.h"
 #include "Components/GridSlot.h"
+#include "Components/HorizontalBox.h"
+#include "Components/HorizontalBoxSlot.h"
+#include "Components/SpinBox.h"
 #include "Components/TextBlock.h"
 #include "Components/VerticalBox.h"
 #include "Components/VerticalBoxSlot.h"
@@ -76,6 +80,56 @@ void UGolfRangePanel::BuildTree()
 	ValOffline = AddRow(6, TEXT("Offline (yd)"));
 	UVerticalBoxSlot* GridSlot = Col->AddChildToVerticalBox(Grid);
 	GridSlot->SetPadding(FMargin(0.f, 6.f, 0.f, 6.f));
+
+	// Pin distance row (GOL-29): label + integer spinner (0..400 yd, +/-5) + actual readout.
+	// Same fixed-width recipe as the manual-shot dialog (MinDesiredWidth + 0 fractional digits) so
+	// the spinner's pixel width doesn't shove the AutoSize panel as the value drags.
+	{
+		UTextBlock* PinLbl = WidgetTree->ConstructWidget<UTextBlock>();
+		PinLbl->SetText(FText::FromString(TEXT("Pin (yd)")));
+		UVerticalBoxSlot* PinLblSlot = Col->AddChildToVerticalBox(PinLbl);
+		PinLblSlot->SetPadding(FMargin(0.f, 6.f, 0.f, 1.f));
+
+		UHorizontalBox* PinRow = WidgetTree->ConstructWidget<UHorizontalBox>();
+		Col->AddChildToVerticalBox(PinRow);
+
+		PinBox = WidgetTree->ConstructWidget<USpinBox>();
+		PinBox->SetMinValue(0.f);
+		PinBox->SetMaxValue(400.f);
+		PinBox->SetMinSliderValue(0.f);
+		PinBox->SetMaxSliderValue(400.f);
+		PinBox->SetDelta(5.f);
+		PinBox->SetMinDesiredWidth(96.f);
+		PinBox->SetMinFractionalDigits(0);
+		PinBox->SetMaxFractionalDigits(0);
+		PinBox->OnValueChanged.AddDynamic(this, &UGolfRangePanel::HandlePinValueChanged);
+		UHorizontalBoxSlot* PinBoxSlot = PinRow->AddChildToHorizontalBox(PinBox);
+		PinBoxSlot->SetPadding(FMargin(0.f, 0.f, 8.f, 0.f));
+		PinBoxSlot->SetVerticalAlignment(VAlign_Center);
+
+		PinActualText = WidgetTree->ConstructWidget<UTextBlock>();
+		PinActualText->SetText(FText::FromString(TEXT("@ -- yd")));
+		PinActualText->SetColorAndOpacity(FSlateColor(FLinearColor(0.75f, 0.75f, 0.75f)));
+		UHorizontalBoxSlot* PinReadSlot = PinRow->AddChildToHorizontalBox(PinActualText);
+		PinReadSlot->SetVerticalAlignment(VAlign_Center);
+
+		// Putt-mode toggle right below the pin row -- teleports the pawn to the green, selects Putter.
+		// Session-only; defaults off every PIE entry.
+		UHorizontalBox* PuttRow = WidgetTree->ConstructWidget<UHorizontalBox>();
+		UVerticalBoxSlot* PuttRowSlot = Col->AddChildToVerticalBox(PuttRow);
+		PuttRowSlot->SetPadding(FMargin(0.f, 4.f, 0.f, 0.f));
+
+		PuttModeBox = WidgetTree->ConstructWidget<UCheckBox>();
+		PuttModeBox->OnCheckStateChanged.AddDynamic(this, &UGolfRangePanel::HandlePuttModeChanged);
+		UHorizontalBoxSlot* PuttBoxSlot = PuttRow->AddChildToHorizontalBox(PuttModeBox);
+		PuttBoxSlot->SetPadding(FMargin(0.f, 0.f, 6.f, 0.f));
+		PuttBoxSlot->SetVerticalAlignment(VAlign_Center);
+
+		UTextBlock* PuttLbl = WidgetTree->ConstructWidget<UTextBlock>();
+		PuttLbl->SetText(FText::FromString(TEXT("Putt from green")));
+		UHorizontalBoxSlot* PuttLblSlot = PuttRow->AddChildToHorizontalBox(PuttLbl);
+		PuttLblSlot->SetVerticalAlignment(VAlign_Center);
+	}
 
 	// Three labeled dropdowns (Club / Time / Sky). A code-only ComboBoxString renders fully styled in
 	// 5.7 (its ctor defaults WidgetStyle/ItemStyle/Font from the style cache), so no style asset is
@@ -209,6 +263,66 @@ void UGolfRangePanel::HandleSimulateClicked()
 		OnSimulateShot();
 	}
 	ReturnFocusToGameViewport();   // so Space/1-6/arrows still reach gameplay after the click
+}
+
+void UGolfRangePanel::HandlePinValueChanged(float Value)
+{
+	// Programmatic SetValue() should not loop back into gameplay (the HUD writes the persisted value
+	// at start-up, and the console push calls SetPinValue too).
+	if (bSuppressPinCallback)
+	{
+		return;
+	}
+	if (OnPinChanged)
+	{
+		OnPinChanged(static_cast<double>(Value));
+	}
+	ReturnFocusToGameViewport();
+}
+
+void UGolfRangePanel::HandlePuttModeChanged(bool bChecked)
+{
+	if (bSuppressPuttCallback)
+	{
+		return;
+	}
+	if (OnPuttModeChanged)
+	{
+		OnPuttModeChanged(bChecked);
+	}
+	ReturnFocusToGameViewport();
+}
+
+void UGolfRangePanel::SetPinValue(double Yards)
+{
+	if (!PinBox)
+	{
+		return;
+	}
+	const float Clamped = FMath::Clamp(static_cast<float>(Yards), 0.f, 400.f);
+	bSuppressPinCallback = true;
+	PinBox->SetValue(Clamped);
+	bSuppressPinCallback = false;
+}
+
+void UGolfRangePanel::SetPinActualReadout(double Yards)
+{
+	if (!PinActualText)
+	{
+		return;
+	}
+	PinActualText->SetText(FText::FromString(FString::Printf(TEXT("@ %.0f yd"), Yards)));
+}
+
+void UGolfRangePanel::SetPuttMode(bool bChecked)
+{
+	if (!PuttModeBox)
+	{
+		return;
+	}
+	bSuppressPuttCallback = true;
+	PuttModeBox->SetIsChecked(bChecked);
+	bSuppressPuttCallback = false;
 }
 
 void UGolfRangePanel::HandleComboPick(UComboBoxString* Combo, const TFunction<void(int32)>& OnChosen,

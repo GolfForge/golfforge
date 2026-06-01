@@ -688,8 +688,15 @@ void AGolfRangeHUD::OnShotOutcome(const FGolfEvent& Event)
 				// Launch from the floor (the tee surface), not the pawn's elevated capsule center, so the
 				// ball flies, lands, and rolls on the ground instead of floating at eye height. Trace down
 				// against world static (the landscape); the ball has collision disabled so it can't self-hit.
+				// Use bTraceComplex=true: the landscape's simple-collision representation is a coarser mip
+				// that can sit a few cm above the visual heightfield, which made the ball appear to bounce/
+				// roll a few cm above the visible turf. Same lesson the water script learned (cookbook).
+				FCollisionQueryParams TraceParams(SCENE_QUERY_STAT(GolfRangeFloorTrace));
+				TraceParams.bTraceComplex = true;
+				TraceParams.AddIgnoredActor(Pawn);   // skip the pawn capsule even if its channel changes
 				FHitResult Ground;
-				if (World->LineTraceSingleByChannel(Ground, Loc, Loc - FVector(0.f, 0.f, 100000.f), ECC_WorldStatic))
+				if (World->LineTraceSingleByChannel(Ground, Loc, Loc - FVector(0.f, 0.f, 100000.f),
+					ECC_WorldStatic, TraceParams))
 				{
 					Loc.Z = Ground.ImpactPoint.Z + BallRestHeightUU;
 				}

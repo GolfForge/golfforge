@@ -2,6 +2,14 @@
 
 > Dated milestone summaries, newest on top. The durable outcome + the committed artifact, not the blow-by-blow — process detail lives in git history, `docs/ue5-cookbook.md`, and the scripts themselves.
 
+## 2026-05-31 — 🚀 v0.0.1-alpha PUBLIC LAUNCH (Both machines)
+
+- **Repo flipped public** at [github.com/GolfForge/golfforge](https://github.com/GolfForge/golfforge). v0.0.1-alpha pre-release published with both `GolfForge-macos-arm64.zip` (692 MB) and `GolfForge-windows-x64.zip` (759 MB) attached. GolfForge is now publicly downloadable open-source software under AGPL-3.0 + commercial dual-license.
+- **GOL-49 (cross-platform distribution v1) DONE** — see Linear ticket comment for the v1 trade-offs deferred (committed packaging script, signing/notarization both platforms).
+- **Identity hardening 95%+ done.** GOL-76 / 77 / 78 / 79 / 80 all landed across two machines. Only GOL-81 (GH 2FA hardening) remains, independent.
+- **What's live in alpha:** practice range with OpenFlight launch monitor driver (Socket.IO over local network), in-engine settings (TSR/DLSS/XeSS upscaler, quality presets, resolution/window mode, persisted), manual-shot dialog (M), ball-flight aerodynamics solver (RK4 spin-dependent drag + Magnus), analytical ground roll, main menu with "Coming soon" Play Course button.
+- **Known v1 trade-offs documented in README "Coming soon" section:** no playable course yet, no walking integration, no MetalFX on Mac (TSR-only), unsigned binaries on both platforms (workarounds in README "Try it"). Roadmap features filed in Linear as future tickets.
+
 ## 2026-05-31 — v0.0.1-alpha cross-platform Release: Win64 build attached (Windows)
 
 - **`GolfForge-windows-x64.zip` (759 MB) uploaded to the v0.0.1-alpha pre-release** alongside `GolfForge-macos-arm64.zip`. Win64 Development build, range-only cook, smoke-test verified: main menu over the blurred range, Range dismisses, panel works, settings (Esc/Tab) with TSR/DLSS/XeSS dropdown, Exit quits. **Cross-platform v0.0.1-alpha is now ready to publish + flip the repo public.**

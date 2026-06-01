@@ -58,6 +58,14 @@ namespace GolfBallFlight
 	FSurfaceRoll SurfaceRollFor(EGolfLie Lie);
 
 	/**
+	 * Putter-on-green coefficients parameterised by stimpmeter feet (GOL-109). The stimp reading IS
+	 * the rollout in feet at the standard release speed (~2 m/s), so v^2 = 2*mu*g*d gives
+	 * `RollFriction ≈ 0.67 / StimpFt`. Bounce + spin terms are zeroed (a putt scrapes, doesn't bounce).
+	 * Typical input: StimpFt = 10-14 (slow muni -> Augusta-fast); default 11.
+	 */
+	FSurfaceRoll PutterSurfaceRoll(double StimpFt);
+
+	/**
 	 * Compute bounce + roll from a flight's landing state.
 	 * @param Flight  a valid, landed flight trajectory (reads its landing sample velocity + spin)
 	 * @param Lie     the surface the ball landed on (selects the roll behavior)

@@ -255,6 +255,63 @@ bool FGolfsimGroundRollDriverHopsTest::RunTest(const FString& /*Parameters*/)
 	return true;
 }
 
+// --- GOL-109 putter: stimp scales rollout distance; bounce loop self-skips with Vv = 0 ---------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FGolfsimGroundRollPutterStimpTest,
+	"Golfsim.GroundRoll.PutterStimpScalesDistance",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FGolfsimGroundRollPutterStimpTest::RunTest(const FString& /*Parameters*/)
+{
+	// 4 m/s putt with descent = 0 (no vertical component) so the bounce loop has nothing to launch.
+	const FBallTrajectory Land = MakeLanding(/*speed*/4.0, /*descent*/0.0, /*spin*/100.0);
+
+	const FGroundRollResult Slow = GolfBallFlight::SimulateGroundRoll(
+		Land, EGolfLie::Green, GolfBallFlight::PutterSurfaceRoll(11.0));   // tour green
+	const FGroundRollResult Fast = GolfBallFlight::SimulateGroundRoll(
+		Land, EGolfLie::Green, GolfBallFlight::PutterSurfaceRoll(14.0));   // Augusta-fast
+
+	constexpr double FtPerM = 3.28084;
+	const double SlowFt = Slow.RollDistanceM * FtPerM;
+	const double FastFt = Fast.RollDistanceM * FtPerM;
+
+	TestTrue(TEXT("stimp 11 rolls >= 30 ft"), SlowFt >= 30.0);
+	TestTrue(TEXT("stimp 14 rolls farther than stimp 11"), FastFt > SlowFt);
+
+	// Putt scrapes -- no parabola hops emitted.
+	int32 HopSamples = 0;
+	for (const FTrajectorySample& S : Slow.RollSamples)
+	{
+		if (S.PositionMeters.Z > 0.01) { ++HopSamples; }
+	}
+	TestTrue(TEXT("no bounce samples on a putt"), HopSamples == 0);
+
+	AddInfo(FString::Printf(TEXT("putter @ 4 m/s: stimp 11 -> %.1f ft, stimp 14 -> %.1f ft"),
+		SlowFt, FastFt));
+	return true;
+}
+
+// --- A short-tempo putt lands around real-world expectations ----------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FGolfsimGroundRollPutterShortTest,
+	"Golfsim.GroundRoll.PutterShortDistanceCheck",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FGolfsimGroundRollPutterShortTest::RunTest(const FString& /*Parameters*/)
+{
+	// 2.5 m/s ~ tour-tempo 20 ft putt impact speed.
+	const FBallTrajectory Land = MakeLanding(/*speed*/2.5, /*descent*/0.0, /*spin*/100.0);
+	const FGroundRollResult R = GolfBallFlight::SimulateGroundRoll(
+		Land, EGolfLie::Green, GolfBallFlight::PutterSurfaceRoll(11.0));
+
+	constexpr double FtPerM = 3.28084;
+	const double Ft = R.RollDistanceM * FtPerM;
+	// Math: 2.5^2 / (2 * (0.67/11) * 9.81) = 6.25 / 1.195 ≈ 5.23 m ≈ 17.2 ft. Allow ±3 ft slack.
+	TestTrue(TEXT("2.5 m/s rolls in the 14-20 ft band on stimp 11"), Ft > 14.0 && Ft < 20.0);
+	AddInfo(FString::Printf(TEXT("putter @ 2.5 m/s, stimp 11 -> %.1f ft"), Ft));
+	return true;
+}
+
 // --- Lie <-> protocol string round-trips -------------------------------------------------------
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FGolfsimGroundRollLieStringTest, "Golfsim.GroundRoll.LieStringRoundTrip",

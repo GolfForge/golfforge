@@ -47,6 +47,20 @@ EGolfLie LieFromProtocol(const FString& Lie)
 
 namespace GolfBallFlight
 {
+	FSurfaceRoll PutterSurfaceRoll(double StimpFt)
+	{
+		// Stimpmeter math: stimp reading IS rollout in feet at ~2 m/s release.
+		//   v^2 = 2 * mu * g * d  -> mu = v^2 / (2 * g * d) = 4 / (19.62 * StimpFt * 0.3048) ≈ 0.67 / StimpFt
+		// Putt scrape: no bounce, no spin check (residual putt spin doesn't bite the scrape).
+		const double Safe = FMath::Max(StimpFt, 1.0);   // clamp; sub-1-stimp is unphysical
+		FSurfaceRoll C;
+		C.RollFriction         = 0.67 / Safe;
+		C.Restitution          = 0.0;
+		C.BounceHorizontalKeep = 1.0;
+		C.SpinCheck            = 0.0;
+		return C;
+	}
+
 	FSurfaceRoll SurfaceRollFor(EGolfLie Lie)
 	{
 		// { RollFriction, Restitution (V-COR), BounceHorizontalKeep, SpinCheck }.

@@ -2,6 +2,16 @@
 
 > Dated milestone summaries, newest on top. The durable outcome + the committed artifact, not the blow-by-blow — process detail lives in git history, `docs/ue5-cookbook.md`, and the scripts themselves.
 
+## 2026-06-01 — GOL-109 putting model: stimp-aware friction on the range (Windows)
+
+- **One-line core fix:** `Physics/GroundRoll.{h,cpp}` got `GolfBallFlight::PutterSurfaceRoll(double StimpFt)` — returns an `FSurfaceRoll` with friction = `0.67 / StimpFt` (stimpmeter math: stimp reading is rollout in feet at the standard ~2 m/s release), bounce + spin terms zeroed. Default stimp 11 ft → friction 0.061 → 4 m/s rolls 13.4m ≈ 44 ft. Augusta-fast stimp 14 → 0.048 → ~56 ft.
+- **Integrator detection:** `EventBusSubsystem::OnShotTaken` now checks `Shot.Club.Equals("Putter", IgnoreCase)` at the surface-coefficient lookup; on hit, swaps `SurfaceRollFor(LandingLie)` for `PutterSurfaceRoll(GreenStimpFt)`. The bounce loop self-skips (Vv ~ 0 from the near-flat putt input), so the trajectory is roll-only. Final lie still comes from the splatmap classifier — only friction is overridden.
+- **Live-tune knob:** `static inline double UEventBusSubsystem::GreenStimpFt = 11.0;` (header) + `golfsim.SetStimp <feet>` console command (clamped 6-16). With no arg, prints current value + computed friction.
+- **2 new headless tests + 36/36 pass.** `Golfsim.GroundRoll.PutterStimpScalesDistance` (4 m/s @ stimp 11 = 43.9 ft; @ stimp 14 = 55.9 ft; hops = 0). `Golfsim.GroundRoll.PutterShortDistanceCheck` (2.5 m/s @ stimp 11 = 17.2 ft in the 14-20 ft band).
+- **Bus-log PIE verify:** Putter @ default stimp 11 → totals 13.3-14.1 m (43-46 ft, varies with the bag's ±8% dispersion). `golfsim.SetStimp 14` → 16.9 m (55 ft). `golfsim.SetStimp 11` → 13.6 m (44 ft). Wiring confirmed end-to-end.
+- **v1 trade-off (deliberate):** every putter-tagged shot uses green friction regardless of lie. Range only paints fairway today; GOL-42 (range green region, machine/mac) is the prereq for a lie-gated putter rule. Green-break / slope is also out of scope — the integrator already snaps roll Z to terrain per GOL-110, so visible roll follows contours, but the SimulateGroundRoll model doesn't bend the *horizontal* path with slope yet.
+- Files: `Physics/GroundRoll.{h,cpp}`, `Events/EventBusSubsystem.{h,cpp}`, `GolfsimConsole.cpp` (+ command), `Tests/GroundRollTests.cpp` (+ 2 tests), `CLAUDE.md`, `docs/worklog.md`. **GOL-109 DONE pending commit + push. GOL-93 epic now has 1 child open: GOL-39 (coefficient/spin-back tuning, blocked on real LM session data).**
+
 ## 2026-06-01 — GOL-110 trajectory Z tracks terrain (Windows)
 
 - **`Physics/BallRender.{h,cpp}` — pure-C++ helper.** Two free functions: `CachePostLandingGroundZ` walks `Trajectory.Samples[LandingSampleIndex..end]`, calls a `TFunctionRef<TOptional<float>(double X, double Y)>` provider for each sample's world XY, and stores the result (or a `NoGroundZUU` sentinel). `SampleToWorld` then maps a sample into world UU, applying the snap when terrain info is available. Headless-testable; AGolfBallActor wraps it with a `LineTraceSingleByChannel(bTraceComplex=true, ignore pawn)` provider.

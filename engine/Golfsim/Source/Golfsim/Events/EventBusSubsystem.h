@@ -106,6 +106,14 @@ public:
 	 */
 	TFunction<EGolfLie(const FVector& /*LandingLocalSIm*/)> SurfaceProvider;
 
+	/**
+	 * Green speed for putter shots, in stimpmeter feet (GOL-109). Picked up by the integrator's
+	 * putter-detection branch -> GolfBallFlight::PutterSurfaceRoll(StimpFt). Default 11 = tour green.
+	 * Tunable at runtime via `golfsim.SetStimp <feet>`. Range stays single-surface today; this is
+	 * a global friction-override for putter-tagged shots regardless of where the ball sits.
+	 */
+	static inline double GreenStimpFt = 11.0;
+
 private:
 	/** Built-in subscriber: shot.taken -> GolfBallFlight::Simulate -> publish session.shot_outcome. */
 	void OnShotTaken(const FGolfEvent& Event);

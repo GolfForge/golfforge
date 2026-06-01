@@ -443,6 +443,24 @@ namespace
 		}
 		UE_LOG(LogTemp, Warning, TEXT("golfsim.Credits: no AGolfRangeHUD in this level"));
 	}
+
+	// golfsim.SetStimp <feet>  -- live-tune the green stimp used by the putter-friction override
+	// (GOL-109). With no argument, logs the current value. Clamps to a sensible 6-16 ft band.
+	void SetStimpCmd(const TArray<FString>& Args, UWorld* /*World*/)
+	{
+		if (Args.Num() < 1)
+		{
+			UE_LOG(LogTemp, Display,
+				TEXT("golfsim.SetStimp: current = %.1f ft  (friction = %.3f)"),
+				UEventBusSubsystem::GreenStimpFt,
+				0.67 / FMath::Max(UEventBusSubsystem::GreenStimpFt, 1.0));
+			return;
+		}
+		const double V = FMath::Clamp(FCString::Atod(*Args[0]), 6.0, 16.0);
+		UEventBusSubsystem::GreenStimpFt = V;
+		UE_LOG(LogTemp, Display, TEXT("golfsim.SetStimp: %.1f ft  -> putter friction %.3f"),
+			V, 0.67 / FMath::Max(V, 1.0));
+	}
 }
 
 static FAutoConsoleCommandWithWorldAndArgs GFireShotCmd(
@@ -474,6 +492,11 @@ static FAutoConsoleCommandWithWorldAndArgs GSetSkyCmd(
 	TEXT("golfsim.SetSky"),
 	TEXT("Range sky/weather preset: golfsim.SetSky <index>  (0=Clear 1=Cloudy 2=Overcast)"),
 	FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&SetSkyCmd));
+
+static FAutoConsoleCommandWithWorldAndArgs GSetStimpCmd(
+	TEXT("golfsim.SetStimp"),
+	TEXT("Live-tune the green stimp for putter shots: golfsim.SetStimp <feet>  (6-16, default 11). No arg = print current."),
+	FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&SetStimpCmd));
 
 static FAutoConsoleCommandWithWorldAndArgs GPublishTestShotCmd(
 	TEXT("golfsim.PublishTestShot"),

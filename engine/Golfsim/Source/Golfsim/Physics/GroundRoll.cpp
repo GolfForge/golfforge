@@ -93,13 +93,15 @@ namespace GolfBallFlight
 
 		// Initial landing scrape: a steep descent digs in more, landing backspin checks the run-out.
 		// Applied ONCE on first contact (no per-bounce re-attenuation; the surface table's
-		// BounceHorizontalKeep handles subsequent bounces).
+		// BounceHorizontalKeep handles subsequent bounces). SpinAtten hits BOTH horizontal AND
+		// vertical -- high spin bleeds into ground deformation + rotation on the first contact,
+		// so a high-spin wedge bounces lower (real check-up), not just shorter horizontally.
 		const double DescentAtten = FMath::Clamp(FMath::Cos(FMath::DegreesToRadians(Flight.DescentAngleDeg)), 0.0, 1.0);
 		const double SpinFactor   = FMath::Clamp(Flight.LandingSpinRpm / RefSpinRpm, 0.0, 1.0);
 		const double SpinAtten    = FMath::Clamp(1.0 - C.SpinCheck * SpinFactor, 0.0, 1.0);
 		Vh *= DescentAtten * SpinAtten;
 
-		double VvDown      = FMath::Max(0.0, -LandVel.Z);   // downward speed at landing (m/s)
+		double VvDown      = FMath::Max(0.0, -LandVel.Z) * SpinAtten;   // downward speed at landing (m/s), bled by spin
 		double DistAccum   = 0.0;                           // horizontal distance from landing
 		double TimeAccum   = 0.0;                           // time since landing
 		int32  NumBounces  = 0;

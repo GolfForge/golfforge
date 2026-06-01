@@ -102,29 +102,86 @@ bool FGolfsimGroundRollDriverTest::RunTest(const FString& /*Parameters*/)
 	return true;
 }
 
-// --- Total is never less than carry, across the bag --------------------------------------------
+// --- Full-bag report: total >= carry, plus per-club hops/peaks/total info ----------------------
+// Covers the Trackman PGA-Tour averages from AGolfRangeHUD::GBag. The asserts are conservative
+// (total >= carry + each total > 0); AddInfo emits the per-club hop signature so the model can be
+// hand-checked against expectations (driver runs out, wedges check up). Adjust ground-roll
+// coefficients in Physics/GroundRoll.cpp::SurfaceRollFor based on this readout.
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FGolfsimGroundRollTotalGEQCarryTest, "Golfsim.GroundRoll.TotalNeverLessThanCarry",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 bool FGolfsimGroundRollTotalGEQCarryTest::RunTest(const FString& /*Parameters*/)
 {
-	struct FCase { double Speed; double Launch; double Spin; };
+	// Mirror of AGolfRangeHUD::GBag -- if you add or tune a club there, update here too.
+	struct FCase { const TCHAR* Name; double Speed; double Launch; double Spin; };
 	static const FCase Cases[] = {
-		{ 74.6, 10.9, 2686.0 },   // driver
-		{ 55.0, 16.3, 7097.0 },   // 7-iron
-		{ 45.6, 24.2, 9304.0 },   // pitching wedge
+		{ TEXT("Driver"),         74.6, 10.9,  2686.0 },
+		{ TEXT("3-Wood"),         70.6,  9.2,  3655.0 },
+		{ TEXT("5-Wood"),         67.4,  9.4,  4350.0 },
+		{ TEXT("4-Iron"),         64.4, 10.4,  4630.0 },
+		{ TEXT("5-Iron"),         60.3, 11.9,  5280.0 },
+		{ TEXT("6-Iron"),         57.7, 14.1,  6204.0 },
+		{ TEXT("7-Iron"),         55.0, 16.3,  7097.0 },
+		{ TEXT("8-Iron"),         52.6, 18.1,  7998.0 },
+		{ TEXT("9-Iron"),         48.7, 20.4,  8647.0 },
+		{ TEXT("Pitching Wedge"), 45.6, 24.2,  9304.0 },
+		{ TEXT("Gap Wedge 50"),   43.0, 26.0,  9750.0 },
+		{ TEXT("Sand Wedge 56"),  40.0, 28.0, 10500.0 },
+		{ TEXT("Lob Wedge 60"),   36.0, 32.0, 11500.0 },
+		{ TEXT("Putter"),          4.0,  1.0,   100.0 },   // placeholder
 	};
+
+	constexpr double YdPerM = 1.0936132983;
+	constexpr double AirborneEps = 0.01;   // m
+
 	for (const FCase& Cse : Cases)
 	{
 		FShotInput Shot;
-		Shot.BallSpeedMps = Cse.Speed;
+		Shot.BallSpeedMps  = Cse.Speed;
 		Shot.LaunchAngleDeg = Cse.Launch;
-		Shot.BackspinRpm = Cse.Spin;
+		Shot.BackspinRpm   = Cse.Spin;
 		const FBallTrajectory Flight = GolfBallFlight::Simulate(Shot);
-		const FGroundRollResult R =
-			GolfBallFlight::SimulateGroundRoll(Flight, EGolfLie::Fairway, GolfBallFlight::SurfaceRollFor(EGolfLie::Fairway));
-		TestTrue(TEXT("total >= carry"), R.TotalDistanceM >= Flight.CarryM - 0.01);
+		const FGroundRollResult R = GolfBallFlight::SimulateGroundRoll(
+			Flight, EGolfLie::Fairway, GolfBallFlight::SurfaceRollFor(EGolfLie::Fairway));
+
+		TestTrue(*FString::Printf(TEXT("%s: roll valid"), Cse.Name), R.bValid);
+		TestTrue(*FString::Printf(TEXT("%s: total >= carry"), Cse.Name),
+			R.TotalDistanceM >= Flight.CarryM - 0.01);
+
+		// Walk RollSamples to extract hop peaks (parabola apex per airborne run).
+		TArray<double> HopPeaks;
+		double CurPeak = 0.0;
+		bool   bInHop = false;
+		for (const FTrajectorySample& S : R.RollSamples)
+		{
+			const double Z = S.PositionMeters.Z;
+			if (Z > AirborneEps)
+			{
+				bInHop = true;
+				CurPeak = FMath::Max(CurPeak, Z);
+			}
+			else if (bInHop)
+			{
+				HopPeaks.Add(CurPeak);
+				CurPeak = 0.0;
+				bInHop = false;
+			}
+		}
+		if (bInHop) { HopPeaks.Add(CurPeak); }
+
+		const FString PeaksStr = HopPeaks.Num() == 0 ? TEXT("none")
+			: FString::JoinBy(HopPeaks, TEXT(" "), [](double P) { return FString::Printf(TEXT("%.2f"), P); });
+		AddInfo(FString::Printf(
+			TEXT("%-15s carry=%5.1f yd  hops=%d  peaks(m)=[ %s ]  roll-phase=%4.1f yd  total=%5.1f yd  descent=%4.1f deg  landSpin=%5.0f rpm"),
+			Cse.Name,
+			Flight.CarryM * YdPerM,
+			HopPeaks.Num(),
+			*PeaksStr,
+			R.RollDistanceM * YdPerM,
+			R.TotalDistanceM * YdPerM,
+			Flight.DescentAngleDeg,
+			Flight.LandingSpinRpm));
 	}
 	return true;
 }

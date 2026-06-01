@@ -27,14 +27,24 @@ namespace
 	struct FClubPreset { const TCHAR* Name; double SpeedMps; double LaunchDeg; double SpinRpm; };
 
 	// Trackman PGA-Tour averages (ball speed mph -> m/s), hit straight; per-shot
-	// dispersion is added at fire time so no two shots are identical.
+	// dispersion is added at fire time so no two shots are identical. Putter is a
+	// placeholder until a real putting model lands -- BallFlight produces a tiny
+	// arc and GroundRoll handles the actual roll at the Fairway friction value.
 	static const FClubPreset GBag[] = {
-		{ TEXT("Driver"),         74.6, 10.9, 2686.0 },
-		{ TEXT("3-Wood"),         70.6,  9.2, 3655.0 },
-		{ TEXT("5-Iron"),         60.3, 11.9, 5280.0 },
-		{ TEXT("7-Iron"),         55.0, 16.3, 7097.0 },
-		{ TEXT("9-Iron"),         48.7, 20.4, 8647.0 },
-		{ TEXT("Pitching Wedge"), 45.6, 24.2, 9304.0 },
+		{ TEXT("Driver"),         74.6, 10.9,  2686.0 },
+		{ TEXT("3-Wood"),         70.6,  9.2,  3655.0 },
+		{ TEXT("5-Wood"),         67.4,  9.4,  4350.0 },
+		{ TEXT("4-Iron"),         64.4, 10.4,  4630.0 },
+		{ TEXT("5-Iron"),         60.3, 11.9,  5280.0 },
+		{ TEXT("6-Iron"),         57.7, 14.1,  6204.0 },
+		{ TEXT("7-Iron"),         55.0, 16.3,  7097.0 },
+		{ TEXT("8-Iron"),         52.6, 18.1,  7998.0 },
+		{ TEXT("9-Iron"),         48.7, 20.4,  8647.0 },
+		{ TEXT("Pitching Wedge"), 45.6, 24.2,  9304.0 },
+		{ TEXT("Gap Wedge 50"),   43.0, 26.0,  9750.0 },
+		{ TEXT("Sand Wedge 56"),  40.0, 28.0, 10500.0 },
+		{ TEXT("Lob Wedge 60"),   36.0, 32.0, 11500.0 },
+		{ TEXT("Putter"),          4.0,  1.0,   100.0 },   // placeholder; see comment above
 	};
 	static constexpr int32 GBagNum = UE_ARRAY_COUNT(GBag);
 
@@ -380,12 +390,8 @@ void AGolfRangeHUD::EnsureInputBound()
 	{
 		return;
 	}
-	InputComponent->BindKey(EKeys::One,      IE_Pressed, this, &AGolfRangeHUD::SelectClub0);
-	InputComponent->BindKey(EKeys::Two,      IE_Pressed, this, &AGolfRangeHUD::SelectClub1);
-	InputComponent->BindKey(EKeys::Three,    IE_Pressed, this, &AGolfRangeHUD::SelectClub2);
-	InputComponent->BindKey(EKeys::Four,     IE_Pressed, this, &AGolfRangeHUD::SelectClub3);
-	InputComponent->BindKey(EKeys::Five,     IE_Pressed, this, &AGolfRangeHUD::SelectClub4);
-	InputComponent->BindKey(EKeys::Six,      IE_Pressed, this, &AGolfRangeHUD::SelectClub5);
+	InputComponent->BindKey(EKeys::Q,        IE_Pressed, this, &AGolfRangeHUD::PrevClub);
+	InputComponent->BindKey(EKeys::E,        IE_Pressed, this, &AGolfRangeHUD::NextClub);
 	InputComponent->BindKey(EKeys::SpaceBar, IE_Pressed, this, &AGolfRangeHUD::FireRandom);
 	InputComponent->BindKey(EKeys::Left,     IE_Pressed,  this, &AGolfRangeHUD::TurnLeftPressed);
 	InputComponent->BindKey(EKeys::Left,     IE_Released, this, &AGolfRangeHUD::TurnLeftReleased);
@@ -403,6 +409,18 @@ void AGolfRangeHUD::EnsureInputBound()
 	InputComponent->BindAxisKey(EKeys::MouseY, this, &AGolfRangeHUD::OnOrbitPitch);
 	ShowMainMenu();   // greet on the already-loaded range; gameplay stays gated until "Range"
 	bInputBound = true;
+}
+
+void AGolfRangeHUD::PrevClub()
+{
+	if (InputGated()) { return; }
+	SelectClub((ActiveClub - 1 + GBagNum) % GBagNum);
+}
+
+void AGolfRangeHUD::NextClub()
+{
+	if (InputGated()) { return; }
+	SelectClub((ActiveClub + 1) % GBagNum);
 }
 
 void AGolfRangeHUD::SelectClub(int32 Index)

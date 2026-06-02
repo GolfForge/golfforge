@@ -12,6 +12,7 @@
 #include "GolfDisplaySettings.h"   // FGolfDisplaySettings (ApplyDisplaySettings param)
 #include "Events/EventBusSubsystem.h"   // FGolfEventSubscription member + EventBus access
 #include "Input/KeyboardSwingComponent.h"   // GOL-67: Game-mode swing state
+#include "Game/GolfDifficulty.h"
 #include "GolfRangeHUD.generated.h"
 
 class UManualShotDialog;
@@ -93,6 +94,11 @@ public:
 	// keeps the LM dropdown + the existing random-fire path. Default = Game (lower barrier).
 	enum class EInputMode : uint8 { Game = 0, Simulation = 1 };
 	void SetInputMode(EInputMode NewMode);
+
+	// GOL-122: swap the swing-meter difficulty profile (Easy / Normal / Pro). Easy on entry; the
+	// pre-round picker (GOL-121) will overwrite at round start. Console: golfsim.SetDifficulty.
+	void SetSwingDifficulty(EGolfDifficulty D);
+	EGolfDifficulty GetSwingDifficulty() const { return ActiveDifficulty; }
 
 #if WITH_EDITOR
 	// Z: re-open the main menu mid-session. Editor / PIE only -- cooked builds don't bind this.
@@ -202,6 +208,7 @@ private:
 	EInputMode CurrentInputMode = EInputMode::Game;                           // default Game (renamed to avoid shadowing FInputModeGameAndUI local)
 	GolfsimKeyboardSwing::FState SwingState;
 	GolfsimKeyboardSwing::FConfig SwingConfig;
+	EGolfDifficulty ActiveDifficulty = EGolfDifficulty::Easy;                 // GOL-122 -- mirrors SwingConfig.Profile
 
 	// GOL-29 state. Pin is find-or-spawned (cached weakly so the PIE-spawned actor goes away with
 	// the world). Putt mode caches the tee pawn pose + club so the toggle is reversible.

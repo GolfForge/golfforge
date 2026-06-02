@@ -10,9 +10,36 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Game/GolfDifficulty.h"
 
 namespace GolfsimKeyboardSwing
 {
+	/**
+	 * Per-difficulty tuning for the swing meter + the gimme radius for hole-out detection.
+	 * Lifted from the `GAME-MODE DIFFICULTY KNOBS` block in KeyboardSwingComponent.cpp (GOL-122).
+	 * Three named presets (Easy / Normal / Pro) live as static factories below; pre-round
+	 * picker (GOL-121) picks one, URoundSubsystem (GOL-116) writes it to the live FConfig.
+	 *
+	 *   MaxAzimuthDeg       max degrees the ball flies off-target at full-penalty Accuracy
+	 *   SidespinPushRpm     max sidespin (curve) at full-penalty Accuracy
+	 *   MishitLaunchScale   multiplier on the club's launch angle when a mishit fires
+	 *   NormSpan            distance from sweet-spot edge that maps to MAX penalty
+	 *   GimmeRadiusFt       hole-out radius consumed by GOL-119 (carried with the profile so
+	 *                       swing toughness + putting forgiveness scale together)
+	 */
+	struct GOLFSIM_API FSwingDifficultyProfile
+	{
+		double MaxAzimuthDeg = 6.0;
+		double SidespinPushRpm = 600.0;
+		double MishitLaunchScale = 0.80;
+		double NormSpan = 0.40;
+		double GimmeRadiusFt = 8.0;
+
+		static FSwingDifficultyProfile For(EGolfDifficulty D);
+		static FSwingDifficultyProfile Easy();
+		static FSwingDifficultyProfile Normal();
+		static FSwingDifficultyProfile Pro();
+	};
 	enum class EState : uint8
 	{
 		Idle = 0,
@@ -35,6 +62,7 @@ namespace GolfsimKeyboardSwing
 		double SweetSpotLow = 0.80;               // accuracy band low end
 		double SweetSpotHigh = 0.90;              // accuracy band high end
 		double WhiffPowerThreshold = 0.10;        // below this -> no shot
+		FSwingDifficultyProfile Profile;          // GOL-122 -- default-constructed = Easy (today's values)
 	};
 
 	struct GOLFSIM_API FClubPreset

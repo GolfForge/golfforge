@@ -122,4 +122,74 @@ bool FGolfsimSwingStateMachineTest::RunTest(const FString&)
 	return true;
 }
 
+// --- Difficulty profile presets (GOL-122) ------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FGolfsimSwingDifficultyPresetsTest, "Golfsim.SwingDifficulty.PresetValues",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FGolfsimSwingDifficultyPresetsTest::RunTest(const FString&)
+{
+	using namespace GolfsimKeyboardSwing;
+
+	const FSwingDifficultyProfile E = FSwingDifficultyProfile::Easy();
+	TestTrue(TEXT("Easy.MaxAzimuthDeg = 6.0"),     FMath::IsNearlyEqual(E.MaxAzimuthDeg,     6.0,    1e-9));
+	TestTrue(TEXT("Easy.SidespinPushRpm = 600"),   FMath::IsNearlyEqual(E.SidespinPushRpm,   600.0,  1e-9));
+	TestTrue(TEXT("Easy.MishitLaunchScale = 0.80"),FMath::IsNearlyEqual(E.MishitLaunchScale, 0.80,   1e-9));
+	TestTrue(TEXT("Easy.NormSpan = 0.40"),         FMath::IsNearlyEqual(E.NormSpan,          0.40,   1e-9));
+	TestTrue(TEXT("Easy.GimmeRadiusFt = 8.0"),     FMath::IsNearlyEqual(E.GimmeRadiusFt,     8.0,    1e-9));
+
+	const FSwingDifficultyProfile N = FSwingDifficultyProfile::Normal();
+	TestTrue(TEXT("Normal.MaxAzimuthDeg = 8.0"),     FMath::IsNearlyEqual(N.MaxAzimuthDeg,     8.0,    1e-9));
+	TestTrue(TEXT("Normal.SidespinPushRpm = 900"),   FMath::IsNearlyEqual(N.SidespinPushRpm,   900.0,  1e-9));
+	TestTrue(TEXT("Normal.MishitLaunchScale = 0.65"),FMath::IsNearlyEqual(N.MishitLaunchScale, 0.65,   1e-9));
+	TestTrue(TEXT("Normal.NormSpan = 0.30"),         FMath::IsNearlyEqual(N.NormSpan,          0.30,   1e-9));
+	TestTrue(TEXT("Normal.GimmeRadiusFt = 6.0"),     FMath::IsNearlyEqual(N.GimmeRadiusFt,     6.0,    1e-9));
+
+	const FSwingDifficultyProfile P = FSwingDifficultyProfile::Pro();
+	TestTrue(TEXT("Pro.MaxAzimuthDeg = 10.0"),    FMath::IsNearlyEqual(P.MaxAzimuthDeg,     10.0,   1e-9));
+	TestTrue(TEXT("Pro.SidespinPushRpm = 1200"),  FMath::IsNearlyEqual(P.SidespinPushRpm,   1200.0, 1e-9));
+	TestTrue(TEXT("Pro.MishitLaunchScale = 0.55"),FMath::IsNearlyEqual(P.MishitLaunchScale, 0.55,   1e-9));
+	TestTrue(TEXT("Pro.NormSpan = 0.20"),         FMath::IsNearlyEqual(P.NormSpan,          0.20,   1e-9));
+	TestTrue(TEXT("Pro.GimmeRadiusFt = 3.0"),     FMath::IsNearlyEqual(P.GimmeRadiusFt,     3.0,    1e-9));
+
+	// For() dispatch matches the named factories.
+	const FSwingDifficultyProfile ForEasy   = FSwingDifficultyProfile::For(EGolfDifficulty::Easy);
+	const FSwingDifficultyProfile ForNormal = FSwingDifficultyProfile::For(EGolfDifficulty::Normal);
+	const FSwingDifficultyProfile ForPro    = FSwingDifficultyProfile::For(EGolfDifficulty::Pro);
+	TestTrue(TEXT("For(Easy) == Easy()"),     FMath::IsNearlyEqual(ForEasy.MaxAzimuthDeg,   E.MaxAzimuthDeg, 1e-9));
+	TestTrue(TEXT("For(Normal) == Normal()"), FMath::IsNearlyEqual(ForNormal.MaxAzimuthDeg, N.MaxAzimuthDeg, 1e-9));
+	TestTrue(TEXT("For(Pro) == Pro()"),       FMath::IsNearlyEqual(ForPro.MaxAzimuthDeg,    P.MaxAzimuthDeg, 1e-9));
+	return true;
+}
+
+// The promise on GOL-122's Done-when: Pro punishes the same below-sweet swing harder than Easy.
+// Same club + same Power + same below-sweet Accuracy -> Pro has larger |Azimuth| AND |Sidespin|.
+// (Note: at Accuracy=0.50 with SweetSpotLow=0.80, Below=0.30/NormSpan. Easy NormSpan=0.40 clamps
+// to 0.75 of the ramp; Pro NormSpan=0.20 clamps to 1.0 of the ramp AND has the higher MaxAzimuth
+// + SidespinPushRpm. Both effects compound -> Pro penalty strictly larger.)
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FGolfsimSwingDifficultyHarderProfileTest, "Golfsim.SwingDifficulty.HarderProfileHarderPenalty",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FGolfsimSwingDifficultyHarderProfileTest::RunTest(const FString&)
+{
+	using namespace GolfsimKeyboardSwing;
+	const FClubPreset C7 = MakeSevenIron();
+
+	FConfig EasyCfg;     EasyCfg.Profile     = FSwingDifficultyProfile::Easy();
+	FConfig ProCfg;      ProCfg.Profile      = FSwingDifficultyProfile::Pro();
+
+	const FResolution Easy = ResolveShot(/*Power=*/1.0, /*Accuracy=*/0.50, C7, EasyCfg);
+	const FResolution Pro  = ResolveShot(/*Power=*/1.0, /*Accuracy=*/0.50, C7, ProCfg);
+
+	TestTrue(TEXT("Pro |Azimuth| > Easy |Azimuth| for the same below-sweet swing"),
+		FMath::Abs(Pro.AzimuthDeg) > FMath::Abs(Easy.AzimuthDeg));
+	TestTrue(TEXT("Pro |Sidespin| > Easy |Sidespin| for the same below-sweet swing"),
+		FMath::Abs(Pro.SidespinRpm) > FMath::Abs(Easy.SidespinRpm));
+
+	// Sweet-spot strikes stay straight under every profile (sweet-spot is not a tuning knob).
+	const FResolution EasySweet = ResolveShot(1.0, 0.85, C7, EasyCfg);
+	const FResolution ProSweet  = ResolveShot(1.0, 0.85, C7, ProCfg);
+	TestTrue(TEXT("Easy sweet -> straight"), FMath::IsNearlyZero(EasySweet.AzimuthDeg, 1e-9));
+	TestTrue(TEXT("Pro sweet -> straight"),  FMath::IsNearlyZero(ProSweet.AzimuthDeg,  1e-9));
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

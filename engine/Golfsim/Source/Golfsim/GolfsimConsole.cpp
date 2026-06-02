@@ -480,6 +480,41 @@ namespace
 		UE_LOG(LogTemp, Display, TEXT("golfsim.SetMode: %s"), *Arg);
 	}
 
+	// golfsim.SetDifficulty easy|normal|pro  -- GOL-122. Swaps the active FSwingDifficultyProfile
+	// on the range HUD's SwingConfig. The pre-round picker (GOL-121) will replace this entry
+	// point at round start; the console command stays for headless PIE tuning. Range-only.
+	void SetDifficultyCmd(const TArray<FString>& Args, UWorld* World)
+	{
+		if (!World) { return; }
+		if (Args.Num() < 1)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("Usage: golfsim.SetDifficulty <easy|normal|pro>"));
+			return;
+		}
+		APlayerController* PC = World->GetFirstPlayerController();
+		AGolfRangeHUD* HUD = PC ? Cast<AGolfRangeHUD>(PC->GetHUD()) : nullptr;
+		if (!HUD)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("golfsim.SetDifficulty: no AGolfRangeHUD (range only)"));
+			return;
+		}
+		const FString& Arg = Args[0];
+		EGolfDifficulty D;
+		if      (Arg.Equals(TEXT("easy"),   ESearchCase::IgnoreCase)) { D = EGolfDifficulty::Easy;   }
+		else if (Arg.Equals(TEXT("normal"), ESearchCase::IgnoreCase)) { D = EGolfDifficulty::Normal; }
+		else if (Arg.Equals(TEXT("pro"),    ESearchCase::IgnoreCase)) { D = EGolfDifficulty::Pro;    }
+		else
+		{
+			UE_LOG(LogTemp, Warning, TEXT("golfsim.SetDifficulty: unknown '%s'  (easy|normal|pro)"), *Arg);
+			return;
+		}
+		HUD->SetSwingDifficulty(D);
+		const GolfsimKeyboardSwing::FSwingDifficultyProfile& P = GolfsimKeyboardSwing::FSwingDifficultyProfile::For(D);
+		UE_LOG(LogTemp, Display,
+			TEXT("golfsim.SetDifficulty: %s  (azMax=%.1f sideMax=%.0f mishitLaunch=%.2f normSpan=%.2f gimme=%.1fft)"),
+			*Arg, P.MaxAzimuthDeg, P.SidespinPushRpm, P.MishitLaunchScale, P.NormSpan, P.GimmeRadiusFt);
+	}
+
 	// golfsim.ShotHistory.Show / .Clear  -- GOL-65. Show toggles the in-range table; Clear empties
 	// the in-memory + on-disk current session. Range-only (no AGolfRangeHUD on other levels).
 	void ShotHistoryShowCmd(const TArray<FString>& /*Args*/, UWorld* World)
@@ -603,6 +638,11 @@ static FAutoConsoleCommandWithWorldAndArgs GSetModeCmd(
 	TEXT("golfsim.SetMode"),
 	TEXT("Switch range input: golfsim.SetMode <game|simulation>  (game = swing-meter; simulation = LM dropdown)"),
 	FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&SetModeCmd));
+
+static FAutoConsoleCommandWithWorldAndArgs GSetDifficultyCmd(
+	TEXT("golfsim.SetDifficulty"),
+	TEXT("Swap the swing-meter difficulty profile: golfsim.SetDifficulty <easy|normal|pro> (range HUD only)."),
+	FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&SetDifficultyCmd));
 
 static FAutoConsoleCommandWithWorldAndArgs GPublishTestShotCmd(
 	TEXT("golfsim.PublishTestShot"),

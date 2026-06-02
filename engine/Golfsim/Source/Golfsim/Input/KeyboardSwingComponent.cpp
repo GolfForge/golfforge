@@ -2,6 +2,52 @@
 
 namespace GolfsimKeyboardSwing
 {
+	FSwingDifficultyProfile FSwingDifficultyProfile::Easy()
+	{
+		// Today's shipped values (post-2026-06-01 softening). Default-constructed profile == Easy.
+		FSwingDifficultyProfile P;
+		P.MaxAzimuthDeg     = 6.0;
+		P.SidespinPushRpm   = 600.0;
+		P.MishitLaunchScale = 0.80;
+		P.NormSpan          = 0.40;
+		P.GimmeRadiusFt     = 8.0;
+		return P;
+	}
+
+	FSwingDifficultyProfile FSwingDifficultyProfile::Normal()
+	{
+		FSwingDifficultyProfile P;
+		P.MaxAzimuthDeg     = 8.0;
+		P.SidespinPushRpm   = 900.0;
+		P.MishitLaunchScale = 0.65;
+		P.NormSpan          = 0.30;
+		P.GimmeRadiusFt     = 6.0;
+		return P;
+	}
+
+	FSwingDifficultyProfile FSwingDifficultyProfile::Pro()
+	{
+		// Original alpha-1 cut, pre-softening.
+		FSwingDifficultyProfile P;
+		P.MaxAzimuthDeg     = 10.0;
+		P.SidespinPushRpm   = 1200.0;
+		P.MishitLaunchScale = 0.55;
+		P.NormSpan          = 0.20;
+		P.GimmeRadiusFt     = 3.0;
+		return P;
+	}
+
+	FSwingDifficultyProfile FSwingDifficultyProfile::For(EGolfDifficulty D)
+	{
+		switch (D)
+		{
+			case EGolfDifficulty::Normal: return Normal();
+			case EGolfDifficulty::Pro:    return Pro();
+			case EGolfDifficulty::Easy:
+			default:                      return Easy();
+		}
+	}
+
 	double TriangleWave(double SecondsElapsed, double PeriodS)
 	{
 		if (PeriodS <= 0.0) { return 0.0; }
@@ -66,42 +112,38 @@ namespace GolfsimKeyboardSwing
 		R.BackspinRpm = Club.SpinRpm * Power;
 
 		// =====================================================================================
-		// GAME-MODE DIFFICULTY KNOBS  --  REVISIT when the single-player-on-courses epic lands.
+		// GAME-MODE DIFFICULTY KNOBS  --  promoted to FSwingDifficultyProfile in GOL-122.
 		// =====================================================================================
-		// These constants define how forgiving keyboard-swing Game mode feels. Current values are
-		// tuned for ARCADE / CASUAL play on the practice range -- "slightly mistimed swing reads
-		// as a playable shot with shape, not a boomerang". When single-player rounds on real
-		// courses ship, we'll likely want a per-difficulty profile (Easy / Normal / Pro) selectable
-		// in the round-setup screen, because:
-		//   - Easy course play: even softer than these -- the player is also navigating wind,
-		//     hazards, club selection. Penalty stack means swing penalty alone shouldn't dominate.
-		//   - Pro course play: harder than these (closer to the original cut: 10 deg / 1200 rpm /
-		//     0.55 launch scale on mishit, normalized over 0.20 span) -- skill ceiling matters
-		//     when the player is competing for a leaderboard score.
-		// The cleanest refactor will be to promote these to FConfig fields (one set per profile)
-		// and have the HUD pick a profile based on the active round's difficulty setting. Don't do
-		// that until we actually have a difficulty UI -- premature flexibility otherwise.
+		// These constants used to live inline here as `constexpr double`s. GOL-122 promoted four
+		// of them (the actual difficulty-meaningful ones) to FSwingDifficultyProfile fields with
+		// three named presets (Easy / Normal / Pro). The pre-round picker (GOL-121) will let the
+		// player pick; URoundSubsystem (GOL-116) writes the chosen profile into the live FConfig.
+		// Outside a round (range / Game mode default) the profile stays Easy.
 		//
-		//   MaxAzimuthDeg       max degrees the ball flies off-target at full-penalty Accuracy
-		//   SidespinPushRpm     max sidespin (curve) at full-penalty Accuracy
-		//   MishitLaunchScale   multiplier on the club's launch angle when a mishit fires
-		//   MishitSidespinRpm   sidespin override on mishit (independent of the linear ramp above)
-		//   MishitLowAccuracy   below this -> mishit branch fires
-		//   MishitHighAccuracy  above this -> mishit branch fires (currently 1.10 = unreachable;
-		//                       see NormSpan note below)
-		//   NormSpan            distance from sweet-spot edge that maps to MAX penalty. With the
-		//                       bar's natural peak at 1.0 and SweetSpotHigh at 0.90, NormSpan=0.40
-		//                       means the apex gives Above = 0.25 (a moderate pull, not a max
-		//                       penalty). If we ever want hitting the apex to feel risky, narrow
-		//                       this span.
+		//   field               Easy   Normal   Pro     meaning
+		//   MaxAzimuthDeg       6.0    8.0      10.0    max deg off-target at full-penalty Accuracy
+		//   SidespinPushRpm     600    900      1200    max sidespin (curve) at full-penalty Accuracy
+		//   MishitLaunchScale   0.80   0.65     0.55    launch multiplier on a mishit (lower = flatter)
+		//   NormSpan            0.40   0.30     0.20    distance from sweet-spot edge -> MAX penalty
+		//   GimmeRadiusFt       8.0    6.0      3.0    GOL-119 hole-out radius (carried with the profile)
+		//
+		// History waypoints worth keeping:
+		//   - "Original cut" (alpha-1): 10 / 1200 / 0.55 / 0.20 -- felt punishing; post-playtest
+		//     softening 2026-06-01 lowered to today's Easy values (6 / 600 / 0.80 / 0.40).
+		//   - The asymmetric below-sweet/above-sweet normalization that made hitting the bar's
+		//     natural apex (Accuracy=1.0) an auto-mishit was replaced by symmetric NormSpan in
+		//     the same softening pass; apex now reads as a moderate pull regardless of profile.
+		//
+		// MishitSidespinRpm / MishitLowAccuracy / MishitHighAccuracy stay as inline constants --
+		// they're branch thresholds (not tuning knobs) and don't vary across profiles.
 		// =====================================================================================
-		constexpr double MaxAzimuthDeg = 6.0;
-		constexpr double SidespinPushRpm = 600.0;
-		constexpr double MishitLaunchScale = 0.80;
+		const double MaxAzimuthDeg     = C.Profile.MaxAzimuthDeg;
+		const double SidespinPushRpm   = C.Profile.SidespinPushRpm;
+		const double MishitLaunchScale = C.Profile.MishitLaunchScale;
+		const double NormSpan          = C.Profile.NormSpan;
 		constexpr double MishitSidespinRpm = 1300.0;
 		constexpr double MishitLowAccuracy = 0.15;
 		constexpr double MishitHighAccuracy = 1.10;
-		constexpr double NormSpan = 0.40;
 
 		const double Low = C.SweetSpotLow;
 		const double High = C.SweetSpotHigh;

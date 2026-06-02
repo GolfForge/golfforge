@@ -2,6 +2,18 @@
 
 > Dated milestone summaries, newest on top. The durable outcome + the committed artifact, not the blow-by-blow — process detail lives in git history, `docs/ue5-cookbook.md`, and the scripts themselves.
 
+## 2026-06-02 — GOL-115 + GOL-122 — Round events + swing difficulty profiles (Windows)
+
+First two children of GOL-112 (single-player on real courses) landed in parallel — both foundational, zero deps on the other six children, together unblock GOL-116 / 119 / 120 / 121.
+
+- **GOL-115 round events on the EventBus.** Four new envelopes in `Events/EventTypes.h` mirroring the `FShotTakenEvent` / `FShotOutcomeEvent` idiom: `FRoundStartEvent { CourseId, RoundId, Difficulty, TotalHoles }`, `FHoleStartEvent { RoundId, HoleRef, Par, Handicap, TeeWorldLoc, GreenWorldLoc, PinWorldLoc }`, `FHoleCompleteEvent { RoundId, HoleRef, StrokesUsed, ScoreVsPar }`, `FRoundCompleteEvent { RoundId, TotalStrokes, TotalScoreVsPar, PerHoleStrokes[18] }`. Four new `EEventKind` values; no `FGolfEventBus` changes (channels are a `TMap<EEventKind, ...>` keyed on enum value, so new kinds work automatically). `docs/event-protocol.md` documents each envelope with worked JSON. No publishers yet — URoundSubsystem in GOL-116 wires them up.
+- **GOL-122 swing meter difficulty profiles.** Lifted the `GAME-MODE DIFFICULTY KNOBS` constants in `KeyboardSwingComponent.cpp` into a `FSwingDifficultyProfile` struct with three preset factories (`Easy` / `Normal` / `Pro`). Easy = today's shipped values (`6.0 / 600.0 / 0.80 / 0.40 / 8.0`), default-constructed profile == Easy → no range regressions. Normal = `8.0 / 900.0 / 0.65 / 0.30 / 6.0`. Pro = original alpha-1 cut `10.0 / 1200.0 / 0.55 / 0.20 / 3.0`. `ResolveShot` reads `C.Profile.*` instead of the four old constexpr knobs. `GimmeRadiusFt` lives on the profile struct (unused this ticket — GOL-119 hole-out detector consumes it later).
+- **Shared `EGolfDifficulty` enum** at `Game/GolfDifficulty.h` — UENUM so `FRoundStartEvent.Difficulty` is a proper `UPROPERTY`, included by both `EventTypes.h` and `KeyboardSwingComponent.h` (the pure-C++ swing namespace can include a `.generated.h` without becoming a UObject — it just consumes the reflected enum value).
+- **Console.** `golfsim.SetDifficulty <easy|normal|pro>` swaps the active profile from PIE (mirrors the `golfsim.SetMode` pattern; logs the resolved profile knobs). Range HUD only. Will be replaced by GOL-121's pre-round picker at round start; the command stays for headless tuning.
+- **6 new automation tests** under `Golfsim.RoundEvents.*` (4 round-trip tests, one per envelope) and `Golfsim.SwingDifficulty.*` (`PresetValues` locks each preset's 5 constants + `For()` dispatch; `HarderProfileHarderPenalty` proves the user-facing promise — same below-sweet swing under Pro gives strictly larger `|Azimuth|` and `|Sidespin|` than under Easy, while sweet-spot strikes stay straight under every profile). Headless build clean 5.7 s; **52/52 automation tests pass** (46 + 6).
+- **PIE verified.** `golfsim.SetDifficulty pro` → next mistimed swing curves visibly harder than under Easy; `golfsim.SetDifficulty easy` restores baseline. `golfsim.PublishTestShot` still round-trips through the bus (no regression to the existing shot pipeline).
+- **GOL-112 epic now down to 6 open children:** GOL-116, 117, 118, 119, 120, 121.
+
 ## 2026-06-02 — Alpha-3 Linear restructure: practice modes + GOL-112 lit up, perf deferred to beta (Mac)
 
 - **"Make it work" alpha framing locked in.** Goal: a Reddit-worthy alpha that runs at sub-par perf on most hardware but plays well enough to share. Perf + lighting + Mac signing get a beta home; gameplay loops + ball physics + single-player on real courses are the alpha-3 focus.

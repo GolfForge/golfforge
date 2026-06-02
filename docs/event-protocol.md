@@ -188,6 +188,83 @@ Computed by the sim from `shot.taken` + course collision. Not published by drive
 }
 ```
 
+### `round.*` / `hole.*` — single-player round lifecycle (GOL-115)
+
+Published by `URoundSubsystem` during a single-player round on a real course (the GOL-112 flow). Consumers: pin placement, tee-up, scorecard, save-round-progress. `round_id` is a uuid v4 generated at `round.start` and carried by every subsequent event in the round.
+
+#### `round.start`
+
+A single-player round just began. Resets per-round state across consumers.
+
+```json
+{
+  "type": "round.start",
+  "payload": {
+    "course_id": "golfforge-demo-black",
+    "round_id": "11111111-2222-3333-4444-555555555555",
+    "difficulty": "pro",
+    "total_holes": 18
+  }
+}
+```
+
+`difficulty` is one of `easy`, `normal`, `pro`. Picked in the pre-round screen; selects an `FSwingDifficultyProfile` (azimuth penalty, sidespin penalty, mishit launch scale, normalization span, gimme radius — see GOL-122).
+
+#### `hole.start`
+
+Pawn teed up on a new hole. World locations are pre-resolved by `URoundSubsystem` (read from `hole.geojson` once at round start), so consumers don't need their own pipeline access.
+
+```json
+{
+  "type": "hole.start",
+  "payload": {
+    "round_id": "11111111-2222-...",
+    "hole_ref": 7,
+    "par": 4,
+    "handicap": 3,
+    "tee_world_loc":   { "x": 100.0,   "y": 200.0, "z": 30.0 },
+    "green_world_loc": { "x": 40000.0, "y": 800.0, "z": 25.0 },
+    "pin_world_loc":   { "x": 40050.0, "y": 820.0, "z": 25.0 }
+  }
+}
+```
+
+`hole_ref` is 1-indexed and matches OSM's `golf=hole` `ref` tag.
+
+#### `hole.complete`
+
+A hole was finished — holed-out (ball within gimme radius — GOL-119) or aborted at the per-hole stroke cap (GOL-116).
+
+```json
+{
+  "type": "hole.complete",
+  "payload": {
+    "round_id": "11111111-2222-...",
+    "hole_ref": 9,
+    "strokes_used": 3,
+    "score_vs_par": -1
+  }
+}
+```
+
+`score_vs_par` is `strokes_used - par`; negative = under par.
+
+#### `round.complete`
+
+Final scorecard. `per_hole_strokes` is parallel to hole 1..`total_holes` (index 0 = hole 1).
+
+```json
+{
+  "type": "round.complete",
+  "payload": {
+    "round_id": "11111111-2222-...",
+    "total_strokes": 76,
+    "total_score_vs_par": 4,
+    "per_hole_strokes": [4, 5, 3, 4, 4, 4, 5, 4, 4, 5, 4, 3, 4, 5, 4, 4, 5, 5]
+  }
+}
+```
+
 ## Transport details (per layer)
 
 ### In-process (production path)

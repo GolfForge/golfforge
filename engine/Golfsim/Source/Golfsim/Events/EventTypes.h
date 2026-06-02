@@ -13,6 +13,7 @@
 #include "CoreMinimal.h"
 #include "Misc/DateTime.h"
 #include "Physics/BallFlightTypes.h"   // FBallTrajectory -- the in-process render payload on an outcome
+#include "Game/GolfDifficulty.h"       // EGolfDifficulty -- stamped on FRoundStartEvent
 #include "EventTypes.generated.h"
 
 /**
@@ -30,6 +31,10 @@ enum class EEventKind : uint8
 	SessionStart,       // session.start        -- (reserved)
 	SessionEnd,         // session.end          -- (reserved)
 	SessionHoleChange,  // session.hole_change  -- (reserved)
+	RoundStart,         // round.start          -- GOL-115 -- a single-player round begins
+	RoundComplete,      // round.complete       -- GOL-115 -- a single-player round ends (all 18 played)
+	HoleStart,          // hole.start           -- GOL-115 -- pawn teed up on a new hole
+	HoleComplete,       // hole.complete        -- GOL-115 -- a hole was holed out (or abandoned at stroke cap)
 };
 
 /**
@@ -125,6 +130,80 @@ struct FShotOutcomeEvent : public FGolfEvent
 	FBallTrajectory Trajectory;
 
 	FShotOutcomeEvent() { Kind = EEventKind::ShotOutcome; }
+};
+
+/**
+ * round.start -- a single-player round just began (GOL-115). Published by URoundSubsystem from
+ * StartRound(); consumers reset their per-round state. RoundId is generated at publish time and
+ * carried by every subsequent hole.start / hole.complete / round.complete for the round.
+ */
+USTRUCT()
+struct FRoundStartEvent : public FGolfEvent
+{
+	GENERATED_BODY()
+
+	UPROPERTY() FString CourseId;                                   // e.g. "golfforge-demo-black"
+	UPROPERTY() FString RoundId;                                    // uuid v4 string; ties the round's events together
+	UPROPERTY() EGolfDifficulty Difficulty = EGolfDifficulty::Easy; // picked in the pre-round screen (GOL-121)
+	UPROPERTY() int32 TotalHoles = 18;
+
+	FRoundStartEvent() { Kind = EEventKind::RoundStart; }
+};
+
+/**
+ * hole.start -- pawn teed up on the next hole (GOL-115). Carries everything the tee-up / pin-place
+ * / aim subscribers need: world locations are pre-resolved by URoundSubsystem (it reads the
+ * splatmap/hole.geojson once at round start), so consumers don't need their own pipeline access.
+ */
+USTRUCT()
+struct FHoleStartEvent : public FGolfEvent
+{
+	GENERATED_BODY()
+
+	UPROPERTY() FString RoundId;
+	UPROPERTY() int32 HoleRef = 0;                       // 1..18 (matches OSM golf=hole "ref")
+	UPROPERTY() int32 Par = 0;
+	UPROPERTY() int32 Handicap = 0;
+	UPROPERTY() FVector TeeWorldLoc = FVector::ZeroVector;
+	UPROPERTY() FVector GreenWorldLoc = FVector::ZeroVector;
+	UPROPERTY() FVector PinWorldLoc = FVector::ZeroVector;
+
+	FHoleStartEvent() { Kind = EEventKind::HoleStart; }
+};
+
+/**
+ * hole.complete -- a hole was finished (GOL-115). Fired by URoundSubsystem when GOL-119's hole-out
+ * detector says the ball is within the gimme radius or when the per-hole stroke cap trips. The
+ * scorecard accumulator (GOL-120) keys off this.
+ */
+USTRUCT()
+struct FHoleCompleteEvent : public FGolfEvent
+{
+	GENERATED_BODY()
+
+	UPROPERTY() FString RoundId;
+	UPROPERTY() int32 HoleRef = 0;
+	UPROPERTY() int32 StrokesUsed = 0;
+	UPROPERTY() int32 ScoreVsPar = 0;   // StrokesUsed - Par (negative = under)
+
+	FHoleCompleteEvent() { Kind = EEventKind::HoleComplete; }
+};
+
+/**
+ * round.complete -- final scorecard (GOL-115). PerHoleStrokes is parallel to HoleRef 1..N (index
+ * 0 = hole 1, etc.). GOL-120's scorecard modal subscribes and auto-shows on receipt.
+ */
+USTRUCT()
+struct FRoundCompleteEvent : public FGolfEvent
+{
+	GENERATED_BODY()
+
+	UPROPERTY() FString RoundId;
+	UPROPERTY() int32 TotalStrokes = 0;
+	UPROPERTY() int32 TotalScoreVsPar = 0;
+	UPROPERTY() TArray<int32> PerHoleStrokes;   // length == TotalHoles from the round.start
+
+	FRoundCompleteEvent() { Kind = EEventKind::RoundComplete; }
 };
 
 namespace GolfsimEvents

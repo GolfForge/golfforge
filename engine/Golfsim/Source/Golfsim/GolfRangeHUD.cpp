@@ -1086,6 +1086,15 @@ void AGolfRangeHUD::SetInputMode(EInputMode NewMode)
 	}
 }
 
+void AGolfRangeHUD::SetSwingDifficulty(EGolfDifficulty D)
+{
+	ActiveDifficulty = D;
+	SwingConfig.Profile = GolfsimKeyboardSwing::FSwingDifficultyProfile::For(D);
+	// SweetSpot stays constant across profiles (band thresholds, not tuning knobs), so the meter
+	// widget's overlay needs no refresh. If a future profile shifts SweetSpotLow/High, mirror to
+	// SwingMeter->SetSweetSpot here.
+}
+
 void AGolfRangeHUD::OnSpaceForCurrentMode()
 {
 	if (InputGated()) { return; }

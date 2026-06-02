@@ -19,6 +19,7 @@
 #include "Drivers/LaunchMonitorDriver.h"
 #include "Course/CourseSurfaceSubsystem.h"
 #include "Session/ShotHistorySubsystem.h"
+#include "Round/RoundSubsystem.h"
 
 namespace
 {
@@ -542,6 +543,75 @@ namespace
 		UE_LOG(LogTemp, Display, TEXT("golfsim.ShotHistory.Clear: in-memory + JSONL truncated"));
 	}
 
+	// --- Single-player round (GOL-116) --------------------------------------------------------
+	//
+	// Round.Start <CourseId> [easy|normal|pro]   -- load hole.geojson, publish round.start + first hole.start
+	// Round.HoleOut                              -- finalize current hole; advance or fire round.complete
+	// Round.Abandon                              -- clear state silently (no round.complete)
+	// Round.Debug                                -- log current round state (for PIE smoke testing)
+	//
+	// Auto-hole-out detection ships in GOL-119; until then Round.HoleOut is the manual trigger.
+
+	EGolfDifficulty ParseDifficultyArg(const FString& Arg, EGolfDifficulty Fallback)
+	{
+		if (Arg.Equals(TEXT("easy"),   ESearchCase::IgnoreCase)) { return EGolfDifficulty::Easy;   }
+		if (Arg.Equals(TEXT("normal"), ESearchCase::IgnoreCase)) { return EGolfDifficulty::Normal; }
+		if (Arg.Equals(TEXT("pro"),    ESearchCase::IgnoreCase)) { return EGolfDifficulty::Pro;    }
+		return Fallback;
+	}
+
+	void RoundStartCmd(const TArray<FString>& Args, UWorld* World)
+	{
+		URoundSubsystem* Sub = URoundSubsystem::Get(World);
+		if (!Sub)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("golfsim.Round.Start: no URoundSubsystem (need a running game/PIE world)"));
+			return;
+		}
+		if (Args.Num() < 1)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("Usage: golfsim.Round.Start <CourseId> [easy|normal|pro]"));
+			return;
+		}
+		const FString CourseId = Args[0];
+		const EGolfDifficulty D = (Args.Num() > 1)
+			? ParseDifficultyArg(Args[1], EGolfDifficulty::Easy)
+			: EGolfDifficulty::Easy;
+		Sub->StartRound(CourseId, D);
+	}
+
+	void RoundHoleOutCmd(const TArray<FString>& /*Args*/, UWorld* World)
+	{
+		URoundSubsystem* Sub = URoundSubsystem::Get(World);
+		if (!Sub) { UE_LOG(LogTemp, Warning, TEXT("golfsim.Round.HoleOut: no URoundSubsystem")); return; }
+		Sub->OnHoleHoled();
+	}
+
+	void RoundAbandonCmd(const TArray<FString>& /*Args*/, UWorld* World)
+	{
+		URoundSubsystem* Sub = URoundSubsystem::Get(World);
+		if (!Sub) { UE_LOG(LogTemp, Warning, TEXT("golfsim.Round.Abandon: no URoundSubsystem")); return; }
+		Sub->AbandonRound();
+	}
+
+	void RoundDebugCmd(const TArray<FString>& /*Args*/, UWorld* World)
+	{
+		URoundSubsystem* Sub = URoundSubsystem::Get(World);
+		if (!Sub) { UE_LOG(LogTemp, Warning, TEXT("golfsim.Round.Debug: no URoundSubsystem")); return; }
+		const GolfsimRound::FRoundState& S = Sub->GetState();
+		if (!S.bActive)
+		{
+			UE_LOG(LogTemp, Display, TEXT("golfsim.Round.Debug: no active round"));
+			return;
+		}
+		const int32 N = S.Schedule.Num();
+		const int32 HoleIdx = FMath::Clamp(S.HoleIndex, 0, N - 1);
+		const GolfsimRound::FHoleSpec& H = S.Schedule[HoleIdx];
+		UE_LOG(LogTemp, Display,
+			TEXT("golfsim.Round.Debug: round=%s course=%s diff=%d hole=%d/%d (ref %d par %d) strokes=%d"),
+			*S.RoundId, *S.CourseId, (int32)S.Difficulty, HoleIdx + 1, N, H.Ref, H.Par, S.StrokesThisHole);
+	}
+
 	// golfsim.SetPin <yards>  -- range target distance (GOL-29). Drives the spinner via the HUD,
 	// which spawns/moves the AGolfPinActor down the corridor centerline. Range-only; on other
 	// levels the AGolfRangeHUD cast fails and the command logs a hint.
@@ -643,6 +713,26 @@ static FAutoConsoleCommandWithWorldAndArgs GSetDifficultyCmd(
 	TEXT("golfsim.SetDifficulty"),
 	TEXT("Swap the swing-meter difficulty profile: golfsim.SetDifficulty <easy|normal|pro> (range HUD only)."),
 	FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&SetDifficultyCmd));
+
+static FAutoConsoleCommandWithWorldAndArgs GRoundStartCmd(
+	TEXT("golfsim.Round.Start"),
+	TEXT("Start a single-player round: golfsim.Round.Start <CourseId> [easy|normal|pro]. Loads hole.geojson, fires round.start + hole 1."),
+	FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&RoundStartCmd));
+
+static FAutoConsoleCommandWithWorldAndArgs GRoundHoleOutCmd(
+	TEXT("golfsim.Round.HoleOut"),
+	TEXT("Finalize the current hole; advance or fire round.complete on hole 18. (GOL-119 will auto-fire this on ball-at-rest within gimme radius.)"),
+	FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&RoundHoleOutCmd));
+
+static FAutoConsoleCommandWithWorldAndArgs GRoundAbandonCmd(
+	TEXT("golfsim.Round.Abandon"),
+	TEXT("Abandon the active round; no round.complete published. Subsequent shots/HoleOut are no-ops until next Round.Start."),
+	FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&RoundAbandonCmd));
+
+static FAutoConsoleCommandWithWorldAndArgs GRoundDebugCmd(
+	TEXT("golfsim.Round.Debug"),
+	TEXT("Log current round state (hole, par, stroke count)."),
+	FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&RoundDebugCmd));
 
 static FAutoConsoleCommandWithWorldAndArgs GPublishTestShotCmd(
 	TEXT("golfsim.PublishTestShot"),

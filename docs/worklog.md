@@ -2,6 +2,19 @@
 
 > Dated milestone summaries, newest on top. The durable outcome + the committed artifact, not the blow-by-blow — process detail lives in git history, `docs/ue5-cookbook.md`, and the scripts themselves.
 
+## 2026-06-02 — GOL-118 — Tee-up between holes + between-shot ball-rest teleport (Windows)
+
+After GOL-117 the pin appears on each hole's green, but the pawn was still parked at the FirstPerson template's default spawn — disconnected from the course flow. This ticket closes the loop: pawn teleports to the tee at every `hole.start` and to the ball's rest position after every shot, so the round paces naturally instead of forcing a long walk.
+
+- **`Round/RoundTeeUpSubsystem.{h,cpp}` — UTickableWorldSubsystem.** Per-world lifetime + Tick. Subscribes to `HoleStart` + `ShotOutcome`. Mirrors `URoundPinSubsystem`'s subscription teardown pattern.
+- **Tee-up at hole start.** `OnHoleStart` stashes `PendingTeeLoc` + `PendingFacingDir` (XY-projected `Green - Tee` direction) and tries an immediate `TryApplyTeeUp()`. If `PlayerController->GetPawn()` is null (typical for the frame after auto-OpenLevel completes), Tick retries until possession. Target Z = `TeeWorldLoc.Z + capsule_half_height` (queries `ACharacter::GetCapsuleComponent()->GetScaledCapsuleHalfHeight()` with 88 cm fallback). Sets `Pawn->SetActorRotation` AND `PC->SetControlRotation` to a yaw-only rotation (pitch + roll zeroed for first-person camera comfort) so the FirstPerson template's camera lands on the green direction.
+- **Between-shot ball-rest teleport.** `OnShotOutcome` caches the live `AGolfBallActor` (find via `TActorIterator` — typically one ball per PIE world) and flips `bAwaitingBallSettle`. Tick polls `Ball->IsPlaying()`; once playback finishes, teleports the pawn to `Ball->GetActorLocation()` minus the ball's mesh rest height plus the capsule half-height, so the capsule lands on the same turf the ball sits on. Preserves current yaw (no auto-aim toward the pin — sibling polish).
+- **Round-active gate.** Both shot-outcome handler and Tick branch query `URoundSubsystem::Get(this)->IsActive()`; if no round, no teleport. Prevents range shots from yanking the pawn around.
+- **Why a Tick subsystem (not pure event-driven).** Two reasons: (a) the pawn might not be possessed on the frame `hole.start` fires after auto-OpenLevel (URoundSubsystem fires the event in `OnPostLoadMap`, possession lands ~1-2 frames later); (b) ball "rest" needs polling because `FShotOutcomeEvent` carries the trajectory in launch-local frame and the bus integrator doesn't know the launch transform — `AGolfBallActor::IsPlaying()` going false is the cleanest "settled" signal. Both checks are early-out unless a flag is set.
+- **PIE verified END-TO-END playable.** From `PracticeRange`: `Round.Start golfforge-demo-black easy` → auto-load → tee at Black 1 facing -42.4° → hit driver → pawn teleports to ball-rest at `(-81298, 82957, -2082)` → hit driver again → another teleport → `Round.HoleOut` → tee at Black 2 facing -44.4° → played cleanly through holes 1-4 including a par-3 ace on Black 3 with `strokes=1 vs_par=-2`. **The single-player round loop is now functionally complete via the console.** Remaining children are scorecard UI (GOL-120), auto hole-out detection (GOL-119), and the user-facing Play Course button (GOL-121).
+- **No new tests** (pure UWorld + pawn-transform glue with no isolatable logic). Build clean 4.0 s; **58/58 automation tests still pass.**
+- **GOL-112 epic now has 3 open children:** GOL-119 (auto hole-out), GOL-120 (scorecard), GOL-121 (Play Course button + pre-round picker).
+
 ## 2026-06-02 — GOL-117 — Per-hole pin placement on the course; auto-load course level on round start (Windows)
 
 First visible child of GOL-112. With this in, `golfsim.Round.Start golfforge-demo-black easy` from PIE on any level auto-loads the course map and spawns a flag + disc at each hole's green as the round progresses.

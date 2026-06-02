@@ -2,6 +2,18 @@
 
 > Dated milestone summaries, newest on top. The durable outcome + the committed artifact, not the blow-by-blow — process detail lives in git history, `docs/ue5-cookbook.md`, and the scripts themselves.
 
+## 2026-06-02 — GOL-119 — Auto hole-out detection (ball-at-rest within gimme radius) (Windows)
+
+Closes the last gameplay gap: the single-player round plays itself, no console `Round.HoleOut` needed.
+
+- **`Round/RoundHoleOutSubsystem.{h,cpp}`** — `URoundHoleOutSubsystem : UTickableWorldSubsystem`. Mirrors GOL-118's `URoundTeeUpSubsystem` skeleton: subscribes to `ShotOutcome`, caches live `AGolfBallActor` (via `TActorIterator`), Tick-polls `IsPlaying()` until settle, then runs the gimme check.
+- **Gimme check.** XY-only distance from `Ball->GetActorLocation()` to `URoundSubsystem::GetState().Schedule[HoleIndex].PinWorldLoc`. Threshold is `FSwingDifficultyProfile::For(State.Difficulty).GimmeRadiusFt` — Easy 8 ft / Normal 6 ft / Pro 3 ft (set in GOL-122). Z ignored — hilly greens can have meaningful elevation diff between ball-rest and pin-rest; gimme is the horizontal proximity check, matching real-golf intuition.
+- **Pure-namespace helper `GolfsimRound::IsWithinGimme`** in `Round/RoundState.{h,cpp}`. `GimmeRadiusFt <= 0` short-circuits to false — the ticket's "must true-hole with a putter" sentinel; meaningless until cup physics ship but the API is in place for when they do.
+- **Tick race with `URoundTeeUpSubsystem` accepted.** Both subsystems poll `IsPlaying` for the same "ball settled" trigger; Tick order isn't guaranteed. If HoleOut fires first → `hole.start` clears TeeUp's `bAwaitingBallSettle` (defensive code from GOL-118) and the round advances cleanly. If TeeUp fires first → pawn briefly teleports to ball-rest position before snapping to next tee — 1-frame visual glitch, ~16 ms, imperceptible.
+- **One new automation test** — `Golfsim.Round.GimmeRadiusDistance` against the pure helper. Asserts exact-pin / 5-ft offset across Easy-Normal-Pro radii / Z-difference irrelevance / zero-radius disabled. (Initial cut had an assertion that `0 radius rejects even exact match` returned false — `0 <= 0` was true, so I flipped the semantics: `GimmeRadiusFt <= 0` means disabled, not "must hit exactly on pin." Matches the ticket's stated meaning.) Headless build clean 8.5 s; **59/59 tests pass.**
+- **PIE verified** by user: auto-hole-out fires when shots land within gimme; `golfsim.SetDifficulty pro` tightens the radius live.
+- **GOL-112 epic now has 2 open children:** GOL-120 (scorecard), GOL-121 (Play Course button + pre-round picker). New sibling **GOL-123** about to be filed for round-flow UX polish (aim-at-pin between shots + auto-putter on green) before GOL-121.
+
 ## 2026-06-02 — GOL-118 — Tee-up between holes + between-shot ball-rest teleport (Windows)
 
 After GOL-117 the pin appears on each hole's green, but the pawn was still parked at the FirstPerson template's default spawn — disconnected from the course flow. This ticket closes the loop: pawn teleports to the tee at every `hole.start` and to the ball's rest position after every shot, so the round paces naturally instead of forcing a long walk.

@@ -67,6 +67,11 @@ namespace GolfsimRound
 	 *  Real play never hits this; the cap is a safety backstop. */
 	GOLFSIM_API int32 MaxStrokesForPar(int32 Par);
 
+	/** GOL-119: XY-only "is the ball close enough to the pin to count as holed out?" check. Z
+	 *  ignored on purpose -- ball-rest and pin-rest can sit at different terrain elevations on
+	 *  hilly greens; gimme is the horizontal "near the cup" check, not a 3D sphere. */
+	GOLFSIM_API bool IsWithinGimme(const FVector& BallWorldLoc, const FVector& PinWorldLoc, double GimmeRadiusFt);
+
 	/** UTC timestamp + 4 random hex chars. Filename- and log-safe. */
 	GOLFSIM_API FString MakeRoundId();
 

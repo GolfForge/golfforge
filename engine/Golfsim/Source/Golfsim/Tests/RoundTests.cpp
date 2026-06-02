@@ -175,6 +175,33 @@ bool FGolfsimRoundScheduleSortsByRefTest::RunTest(const FString&)
 	return true;
 }
 
+// GOL-119: gimme-radius distance check (XY-only, Z ignored).
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FGolfsimRoundGimmeRadiusTest, "Golfsim.Round.GimmeRadiusDistance",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FGolfsimRoundGimmeRadiusTest::RunTest(const FString&)
+{
+	using namespace GolfsimRound;
+	constexpr double CmPerFt = 30.48;
+	const FVector Pin(1000.0, 2000.0, 50.0);
+
+	// Ball directly on the pin XY -- within any positive radius.
+	TestTrue(TEXT("Pin == ball -> in for 8ft"),  IsWithinGimme(Pin, Pin, 8.0));
+	TestTrue(TEXT("Pin == ball -> in for 3ft"),  IsWithinGimme(Pin, Pin, 3.0));
+	TestFalse(TEXT("Zero radius rejects even exact match"), IsWithinGimme(Pin, Pin, 0.0));
+
+	// 5 ft offset: in for 6ft (Normal), out for 3ft (Pro), in for 8ft (Easy).
+	const FVector Ball5ft = Pin + FVector(5.0 * CmPerFt, 0.0, 0.0);
+	TestTrue(TEXT("5ft offset -> in for 8ft (Easy)"),    IsWithinGimme(Ball5ft, Pin, 8.0));
+	TestTrue(TEXT("5ft offset -> in for 6ft (Normal)"),  IsWithinGimme(Ball5ft, Pin, 6.0));
+	TestFalse(TEXT("5ft offset -> out for 3ft (Pro)"),   IsWithinGimme(Ball5ft, Pin, 3.0));
+
+	// Z difference doesn't affect the XY check.
+	const FVector BallHigh = Pin + FVector(2.0 * CmPerFt, 0.0, 100000.0);
+	TestTrue(TEXT("Z difference ignored; XY 2ft -> in for 3ft"), IsWithinGimme(BallHigh, Pin, 3.0));
+
+	return true;
+}
+
 // TrackName filter selects features by osm_tags["golf:course:name"]; fallback when filter empties.
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FGolfsimRoundTrackFilterTest, "Golfsim.Round.TrackNameFiltersFeatures",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)

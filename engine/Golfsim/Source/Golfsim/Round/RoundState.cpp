@@ -77,6 +77,17 @@ namespace GolfsimRound
 		return FMath::Max(Par, 1) + 5;
 	}
 
+	bool IsWithinGimme(const FVector& BallWorldLoc, const FVector& PinWorldLoc, double GimmeRadiusFt)
+	{
+		// GimmeRadiusFt <= 0 disables gimme (the ticket's "must true-hole with a putter" mode --
+		// auto-detection never fires; cup physics + putter-required would take over instead).
+		if (GimmeRadiusFt <= 0.0) { return false; }
+		constexpr double CmPerFt = 30.48;
+		const double GimmeCm = GimmeRadiusFt * CmPerFt;
+		const FVector2D DeltaXY(BallWorldLoc.X - PinWorldLoc.X, BallWorldLoc.Y - PinWorldLoc.Y);
+		return DeltaXY.Size() <= GimmeCm;
+	}
+
 	FString MakeRoundId()
 	{
 		// Same shape as a UUID v4 string; the leading timestamp keeps log lines sortable.

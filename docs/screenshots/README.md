@@ -1,25 +1,33 @@
 # Screenshots
 
-Drop screenshots here for the main README to pick up. PNG, 1920×1080 ideal (the README scales them down). Capture from PIE or the cooked binary; UE's high-res screenshot console command works well:
+In-game captures for the main README + future store pages (itch, Steam, Epic). Capture from PIE or the cooked binary via UE's console:
 
 ```
 ~  HighResShot 1920x1080
 ```
 
-(screenshots land in `Saved/Screenshots/Windows/`.)
+(captures land in `Saved/Screenshots/Windows/`.)
 
-## Filenames the README references
+## Current set (v0.0.3-alpha)
 
-| File | What it should show |
-|---|---|
-| `v0.0.3-picker.png` | Main menu with the **Play Course** button + the pre-round picker overlay on top (course dropdown + difficulty + name field). Either composited side-by-side or two stacked. |
-| `v0.0.3-on-course.png` | Mid-round on Black 1 or 2. Live HUD top-left (hole / par / strokes / total / distance to pin), yellow tracer arc from a recent shot, gimme ring visible on the distant green, swing meter at the bottom. |
-| `v0.0.3-scorecard.png` | The end-of-round scorecard modal — 18 rows with colored +/- column, "Round complete -- &lt;Name&gt;" header, total footer row, "Back to Menu" button. |
+| File | What it shows | Referenced from |
+|---|---|---|
+| `mainmenu.png` | Main menu (GolfForge title + Range / Previous Sessions / Play Course / Exit) over the blurred live range. | README "Try it" |
+| `playcoursemenu.png` | Pre-round picker — name + course + difficulty + Start Round / Back. | README "Try it" |
+| `startcourse.png` | Just-fired tee shot. Yellow tracer arc visible, live range panel on the right showing the resolved shot stats (ball speed / launch / spin / carry / total / offline). Two pins visible in the distance. | _unused — candidate for store pages_ |
+| `greenshot.png` | Standing near a green. Gimme ring (cream-yellow disc) around the pin, sand bunker bottom-left, character mid-frame, pin flag visible. The "this is real golf on a real course" hero shot. | README "Try it" |
+| `optionsmenu.png` | Settings modal showing the Display section + the new **Main Menu** button (GOL-125) between Close and Quit Game. | _unused — store pages or release-notes_ |
 
-Add more as the project grows — update the README image refs as they land.
+## File size note
 
-## Sizing / file size
+PNGs from `HighResShot` at 1080p land at 3-10 MB each. That's heavy for a repo. Options if it bites:
 
-GitHub recommends README images stay under ~1 MB each for snappy loads. PNGs from `HighResShot` at 1080p land around 500 KB–2 MB depending on scene complexity; if a shot's heavy, compress via `optipng` or run through `tinypng.com`.
+- **Compress before commit** — `tinypng.com` (drag-drop UI, ~70% size reduction with no visible quality loss) or `optipng -o7 *.png`.
+- **Convert to JPEG** — lossy but acceptable for screenshots; ~10x smaller. `magick mainmenu.png -quality 85 mainmenu.jpg`.
+- **LFS-track** — overkill for a handful of screenshots; revisit only if the set grows past ~50 MB.
 
-Don't commit screenshots over 5 MB — they bloat the clone. LFS them if you really need 4K hero shots later.
+For v0.0.3-alpha the raw PNGs are fine. Re-evaluate at v0.0.4+.
+
+## Filename convention going forward
+
+Stable feature names (`mainmenu.png`, `playcoursemenu.png`) rather than version-tagged (`v0.0.3-mainmenu.png`) — the README always references the latest. Replace in place when the UI changes.

@@ -27,9 +27,11 @@ Pre-built packages are attached to the latest [GitHub Release](https://github.co
 - **Single-player round** — main menu → **Play Course** → pick course + difficulty + name → land on hole 1's tee → swing through 18 holes on a real LIDAR-cooked course. No launch monitor needed; the built-in keyboard swing meter handles it.
 - **Practice range** — fixed-distance pin, full 14-club bag, launch-monitor support via [OpenFlight](https://github.com/jewbetcha/openflight) (Doppler radar) or manual-shot dialog for hardware-free testing.
 
-![Main menu → Play Course → pre-round picker](docs/screenshots/v0.0.3-picker.png)
-![On the course: live HUD, gimme ring, tracer arc](docs/screenshots/v0.0.3-on-course.png)
-![End-of-round scorecard](docs/screenshots/v0.0.3-scorecard.png)
+![Main menu — Range / Previous Sessions / Play Course / Exit, over the live range](docs/screenshots/mainmenu.png)
+
+![Pre-round picker — name, course, difficulty, Start Round](docs/screenshots/playcoursemenu.png)
+
+![Mid-round on the course — gimme ring around the pin, bunker, live HUD, walk-up between shots](docs/screenshots/greenshot.png)
 
 ### Windows
 

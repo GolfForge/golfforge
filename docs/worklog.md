@@ -2,6 +2,21 @@
 
 > Dated milestone summaries, newest on top. The durable outcome + the committed artifact, not the blow-by-blow — process detail lives in git history, `docs/ue5-cookbook.md`, and the scripts themselves.
 
+## 2026-06-02 — GOL-137 UI Elevation (epic start) — GolfUITheme foundation + bento main menu (Windows)
+
+Kicked off the GolfForge UI-elevation epic (GOL-137) from the Claude Design handoff in `Build/handoff/` (spec `BUILD_SPEC.md` + 8 renders + the working web prototype + `RESOLVED_TOKENS.md`). Two children shipped; scope is "build the whole spec UI, disable what has no backend yet" (Practice tile, multiplayer, formats, resume → "Coming soon" seams).
+
+### GOL-138 — GolfUITheme foundation + fonts (commit `b475993`)
+
+- New `Source/Golfsim/UI/GolfUITheme.{h,cpp}`: every `RESOLVED_TOKENS` value (palette sRGB-decoded to render-correct linear, radii 18/12/8, shadows, surface/border alpha ramps), `FSlateFontInfo` getters, rounded glass/card brushes, and reusable atoms (eyebrow, title, mono-number, glass panel, card, kbd, status dot, accent/ghost buttons) with Normal/Hover/Pressed/Disabled button styles + a `SetHoverLift` render-transform helper.
+- Barlow Condensed / Barlow / JetBrains Mono imported as Runtime `Font` assets (multi-weight composites authored via `CompositeFont.import_text` — `FFontData`/`FTypefaceEntry`/`FTypeface` aren't Python-exposed) under `Content/UI/Fonts/`; source TTFs + OFL-1.1 licenses bundled. Fonts are LazyLoad-**embedded** in the `.uasset` → cross-machine/cook safe (no `.ttf` runtime dep; see cookbook).
+
+### GOL-139 — bento main menu (commit `04e17fc`)
+
+- `MainMenu.{h,cpp}` rebuilt as the bento + new reusable `UI/MenuTile.{h,cpp}` tile. Proportional `UCanvasPanel` anchors (cols 1.45/1/1) → responsive across 1080/1440/2160 + DPI; top bar (brand + env cluster: live clock + real player name, static weather/HCP placeholders for GOL-144/143); footer (kbd legend + Previous Sessions link + danger-hover Exit); keyboard 1-4 select / Enter confirm / Esc quit (nothing selected by default); Practice tile disabled "Coming soon"; Settings tile opens settings over the menu (`AGolfRangeHUD::OpenSettingsOverMenu`, z-order 40); mode-honest hero copy (no fake course name; dynamic resumed-course info deferred to GOL-141).
+- **Layout gotcha (banked in `docs/ue5-cookbook.md`):** a `UButton` wrapping the card shrank every tile to its text content even in a fill slot. Fix = root the tile in a `UOverlay` with self-handled mouse (`NativeOnMouseButtonDown/Enter/Leave`) + lay the grid with `UCanvasPanel` proportional anchors (UMG's responsive primitive; `UGridPanel` fill is unreliable).
+- Follow-up filed: **GOL-150** — UI gradient material (`M_UIGradient`) for tile scrims / bg ambiance / hover-wash (Slate has no native gradient brush; flat fills stand in) + minor player-chip polish.
+
 ## 2026-06-02 — GOL-124 + GOL-125 — Cook-blockers + alpha-3 polish; cooked Win64 build verified (Windows)
 
 Closed every gap between the PIE-verified GOL-112 flow and a shippable cooked binary. Two tickets bundled in one commit since they all gate the alpha-3 cook.

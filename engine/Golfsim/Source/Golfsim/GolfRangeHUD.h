@@ -93,6 +93,10 @@ private:
 	// while it's open. ApplyDisplaySettings runs the chosen values through UGameUserSettings.
 	void EnsureSettingsMenu();
 	void ToggleSettingsMenu();
+	// GOL-139: the bento Settings tile opens settings ABOVE the still-shown main menu (ToggleSettingsMenu
+	// refuses to open while bMenuOpen). CloseSettings hides it and refocuses the menu (if up) or the game.
+	void OpenSettingsOverMenu();
+	void CloseSettings();
 	void ApplyDisplaySettings(const FGolfDisplaySettings& S);
 public:
 	void OpenCreditsSection();   // golfsim.Credits entry point

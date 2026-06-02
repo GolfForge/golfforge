@@ -750,30 +750,57 @@ void AGolfRangeHUD::EnsureSettingsMenu()
 	};
 	SettingsMenu->OnClose = [WeakThis]()
 	{
-		if (AGolfRangeHUD* HUD = WeakThis.Get()) { HUD->ToggleSettingsMenu(); }
+		if (AGolfRangeHUD* HUD = WeakThis.Get()) { HUD->CloseSettings(); }
 	};
 	// GOL-125: Main Menu button -- abandon active round + LoadMap PracticeRange + show main menu.
 	SettingsMenu->OnMainMenu = [WeakThis]()
 	{
 		if (AGolfRangeHUD* HUD = WeakThis.Get()) { HUD->ReturnToMainMenu(); }
 	};
-	SettingsMenu->AddToViewport(20);   // above the range panel + manual dialog
+	SettingsMenu->AddToViewport(40);   // top modal: above the range panel, manual dialog, AND the main menu (30)
 	SettingsMenu->SetVisibility(ESlateVisibility::Collapsed);
 }
 
 void AGolfRangeHUD::ToggleSettingsMenu()
 {
-	if (bMenuOpen) { return; }   // settings is reachable from in-range, not over the main menu
+	// Esc/Tab in-range. If settings is already open (even over the menu), close it; otherwise only open
+	// when the menu isn't up -- the bento's Settings tile uses OpenSettingsOverMenu for that path.
+	if (bSettingsOpen) { CloseSettings(); return; }
+	if (bMenuOpen) { return; }
 	EnsureSettingsMenu();
 	if (!SettingsMenu)
 	{
 		return;
 	}
-	bSettingsOpen = !bSettingsOpen;
-	SettingsMenu->SetVisibility(bSettingsOpen ? ESlateVisibility::Visible : ESlateVisibility::Collapsed);
-	if (bSettingsOpen)
+	bSettingsOpen = true;
+	SettingsMenu->SetCurrent(GolfDisplay::ReadCurrent());   // reseed in case values changed elsewhere
+	SettingsMenu->SetVisibility(ESlateVisibility::Visible);
+}
+
+void AGolfRangeHUD::OpenSettingsOverMenu()
+{
+	EnsureSettingsMenu();
+	if (!SettingsMenu)
 	{
-		SettingsMenu->SetCurrent(GolfDisplay::ReadCurrent());   // reseed in case values changed elsewhere
+		return;
+	}
+	bSettingsOpen = true;
+	SettingsMenu->SetCurrent(GolfDisplay::ReadCurrent());
+	SettingsMenu->SetVisibility(ESlateVisibility::Visible);
+	SettingsMenu->SetKeyboardFocus();   // settings owns keys while open; CloseSettings hands focus back to the menu
+}
+
+void AGolfRangeHUD::CloseSettings()
+{
+	if (!SettingsMenu)
+	{
+		return;
+	}
+	bSettingsOpen = false;
+	SettingsMenu->SetVisibility(ESlateVisibility::Collapsed);
+	if (bMenuOpen && MainMenu)
+	{
+		MainMenu->SetKeyboardFocus();   // settings was opened over the bento -> return focus to it
 	}
 	else if (FSlateApplication::IsInitialized())
 	{
@@ -1493,7 +1520,13 @@ void AGolfRangeHUD::EnsureMainMenu()
 	{
 		if (AGolfRangeHUD* HUD = WeakThis.Get()) { HUD->OpenPreRoundPicker(); }
 	};
-	MainMenu->AddToViewport(30);   // above the panel, manual dialog, and settings modal
+	// GOL-139: the bento Settings tile opens settings above the menu; the player chip shows the real name.
+	MainMenu->OnSettings = [WeakThis]()
+	{
+		if (AGolfRangeHUD* HUD = WeakThis.Get()) { HUD->OpenSettingsOverMenu(); }
+	};
+	MainMenu->SetPlayerName(GolfDisplay::ReadPlayerName());
+	MainMenu->AddToViewport(30);   // above the panel + manual dialog; the settings modal sits above it (40)
 	MainMenu->SetVisibility(ESlateVisibility::Collapsed);
 }
 
@@ -1512,6 +1545,7 @@ void AGolfRangeHUD::ShowMainMenu()
 	}
 	bMenuOpen = true;
 	MainMenu->SetVisibility(ESlateVisibility::Visible);
+	MainMenu->SetKeyboardFocus();   // GOL-139: route 1-4 / Enter / Esc to the menu's NativeOnKeyDown
 }
 
 void AGolfRangeHUD::DismissMainMenu()

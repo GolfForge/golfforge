@@ -2,6 +2,23 @@
 
 > Dated milestone summaries, newest on top. The durable outcome + the committed artifact, not the blow-by-blow — process detail lives in git history, `docs/ue5-cookbook.md`, and the scripts themselves.
 
+## 2026-06-02 — GOL-121 — Play Course button + pre-round picker (user-facing round entry) (Windows)
+
+Closes the demo-to-non-devs gap. Before today, starting a round required `golfsim.Round.Start ...` from the console; now it's main menu → Play Course → pick → swing, cold-launch.
+
+- **`PreRoundPicker.{h,cpp}` — UPreRoundPicker : UUserWidget.** Pure C++, same `BuildTree` + `TFunction` callback idiom as `UMainMenu`/`UPreviousSessionsList`. Centered card with: player-name `UEditableTextBox` (pre-filled from settings + system-username fallback), course `UComboBoxString` with parallel `TArray<FString> CourseIds` (display label decoupled from URoundSubsystem CourseId; future courses append to both arrays), difficulty `UComboBoxString` (Easy/Normal/Pro), Start Round + Back buttons. Dumb view: reports `OnStartRound(CourseId, Difficulty, PlayerName)` + `OnBack()` via TFunctions; HUD wires the callbacks.
+- **`MainMenu.{h,cpp}` enabled.** Removed the "Coming soon" text + disabled state on the Play Course button; new `OnPlayCourse` TFunction. HUD wires it to `OpenPreRoundPicker`.
+- **HUD plumbing.** New `EnsurePreRoundPicker` / `OpenPreRoundPicker` / `ClosePreRoundPicker` trio matches the existing `EnsureSessionsList` etc. pattern (`GolfRangeHUD.cpp`). Mount Z-order 35 (above sessions list 32, above main menu 30). `bPreRoundOpen` flag joins the `InputGated()` mask so gameplay keys stay dead while the picker is up.
+- **`GolfDisplaySettings.{h,cpp}` — player-name persistence.** New `ReadPlayerName()` + `WritePlayerName(const FString&)` mirror the existing pin-distance helpers. Section `[GolfForge.Round]`, key `PlayerName`, in `GGameUserSettingsIni`. Default falls back to `FPlatformProcess::UserName()` when the ini entry is missing or empty.
+- **One new automation test:** `Golfsim.Settings.PlayerNameRoundTrip` with `FPlayerNameKeyGuard` RAII (capture-and-restore the live ini value, identical idiom to `FPinKeyGuard`). Round-trip "Bryson" + "Rory McIlroy" (space in name), then wipe and verify the fallback is non-empty.
+- **PIE-surfaced bug #1: main menu re-opened on the course.** `AGolfRangeHUD::EnsureInputBound` calls `ShowMainMenu()` unconditionally on every new HUD instance — so after the picker's `URoundSubsystem::StartRound` auto-loaded `GolfForgeDemoBlack`, the new map's HUD spawned the main menu over Black 1's tee. Fix: new `URoundSubsystem::IsPendingStart() const` accessor; HUD checks it in `EnsureInputBound` and suppresses the menu when a deferred StartRound is in flight. The post-load-map handoff completes silently.
+- **PIE-surfaced bug #2: PIE-close warning `LightComponent0 has to be 'Movable'`.** `AGolfRangeEnvironment` find-or-spawns on every map (we want it for future course TOD) and rotates the DirectionalLight via `Sun->SetActorRotation` to the default Morning × Clear preset. The course's Sun mobility was Stationary; UE warned but the rotation silently no-op'd. Fixed by flipping the Sun's `RootComponent.Mobility` to Movable in `GolfForgeDemoBlack.umap` via MCP `set_actor_property` + `save_dirty_assets` — persists in the umap on disk (binary change committed).
+- **Trademark scrub follow-up.** First-cut display label was "Bethpage Black (demo)" — the directory name was scrubbed per GOL-20 but the human-facing label slipped through. Replaced with "GolfForge Demo Black".
+- **PIE end-to-end verified by user**: cold-launch → main menu → Play Course (enabled, no more "Coming soon") → picker shows player name + difficulty + course → Start Round → map auto-loads → land on Black 1 tee with chosen difficulty (3 ft gimme ring on Pro, etc.), no rogue main menu reopening, no PIE-close warning.
+- **Build clean 11.0 s; 60/60 automation tests pass.**
+
+**GOL-112 epic now has 1 open child:** GOL-120 (scorecard). The alpha-3 single-player demo is now playable cold-launch → main menu → Play Course → pick → play, end-to-end via UI. Only the end-of-round scoreboard modal on `round.complete` remains to fully close the demo arc.
+
 ## 2026-06-02 — GOL-123 — Round-flow UX polish: 8 fixes that make the round feel like a real game (Windows)
 
 Filed mid-playthrough after surfacing UX gaps in GOL-115-119's PIE verification. Started as 2 fixes (aim-at-pin + auto-putter), grew to 8 as more issues surfaced. No new automation tests; all UWorld glue + Slate focus.

@@ -81,18 +81,11 @@ void UMainMenu::BuildTree()
 	UVerticalBoxSlot* PrevSlot = Col->AddChildToVerticalBox(PreviousSessionsBtn);
 	PrevSlot->SetPadding(FMargin(0.f, 4.f));
 
-	UButton* CourseBtn = MakeButton(TEXT("Play Course"), /*bEnabled*/ false);
+	// GOL-121: Play Course is now wired through the HUD to UPreRoundPicker -> URoundSubsystem::StartRound.
+	UButton* CourseBtn = MakeButton(TEXT("Play Course"));
+	CourseBtn->OnClicked.AddDynamic(this, &UMainMenu::HandlePlayCourseClicked);
 	UVerticalBoxSlot* CourseSlot = Col->AddChildToVerticalBox(CourseBtn);
-	CourseSlot->SetPadding(FMargin(0.f, 4.f, 0.f, 0.f));
-
-	UTextBlock* Soon = WidgetTree->ConstructWidget<UTextBlock>();
-	Soon->SetText(FText::FromString(TEXT("Coming soon")));
-	{ FSlateFontInfo F = Soon->GetFont(); F.Size = 10; Soon->SetFont(F); }
-	Soon->SetColorAndOpacity(FSlateColor(FLinearColor(0.6f, 0.6f, 0.6f)));
-	Soon->SetJustification(ETextJustify::Center);
-	UVerticalBoxSlot* SoonSlot = Col->AddChildToVerticalBox(Soon);
-	SoonSlot->SetHorizontalAlignment(HAlign_Center);
-	SoonSlot->SetPadding(FMargin(0.f, 0.f, 0.f, 10.f));
+	CourseSlot->SetPadding(FMargin(0.f, 4.f));
 
 	UButton* ExitBtn = MakeButton(TEXT("Exit"));
 	ExitBtn->OnClicked.AddDynamic(this, &UMainMenu::HandleQuitClicked);
@@ -103,6 +96,11 @@ void UMainMenu::BuildTree()
 void UMainMenu::HandleRangeClicked()
 {
 	if (OnPlayRange) { OnPlayRange(); }
+}
+
+void UMainMenu::HandlePlayCourseClicked()
+{
+	if (OnPlayCourse) { OnPlayCourse(); }
 }
 
 void UMainMenu::HandlePreviousSessionsClicked()

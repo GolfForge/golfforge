@@ -51,6 +51,11 @@ public:
 	bool IsActive() const { return State.bActive; }
 	const GolfsimRound::FRoundState& GetState() const { return State; }
 
+	// True between an OpenLevel-deferred StartRound and the matching OnPostLoadMap. Used by the
+	// range HUD's BeginPlay to suppress the main menu on the course's HUD spawn (otherwise the
+	// menu pops up over the freshly-teed-up first hole). GOL-121.
+	bool IsPendingStart() const { return bPendingStart; }
+
 private:
 	void OnShotOutcome(const FGolfEvent& Event);
 	void ApplyStep(const GolfsimRound::FRoundStep& Step);

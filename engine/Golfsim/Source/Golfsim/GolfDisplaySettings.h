@@ -41,4 +41,10 @@ namespace GolfDisplay
 	// range-specific gameplay setting, not part of the display-settings round-trip.
 	double ReadPinDistanceYd();
 	void WritePinDistanceYd(double Yards);
+
+	// Pre-round picker player name (GOL-121). Section [GolfForge.Round], key PlayerName. Default
+	// falls back to FPlatformProcess::UserName() when the ini entry is absent. Same .ini as the
+	// pin-distance helper; the section is split so round-specific keys don't crowd range-specific.
+	FString ReadPlayerName();
+	void WritePlayerName(const FString& Name);
 }

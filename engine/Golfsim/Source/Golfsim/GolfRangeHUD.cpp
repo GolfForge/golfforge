@@ -7,6 +7,7 @@
 #include "Session/ShotHistorySubsystem.h"  // session shot history (GOL-65)
 #include "ShotHistoryPanel.h"
 #include "PreviousSessionsList.h"
+#include "PreRoundPicker.h"                 // GOL-121: pre-round picker over main menu
 #include "CheatSheetPanel.h"
 #include "SwingMeterWidget.h"   // GOL-67
 #include "Events/EventBusSubsystem.h"      // publish shot.taken / subscribe shot.outcome (GOL-7)
@@ -496,7 +497,13 @@ void AGolfRangeHUD::EnsureInputBound()
 	InputComponent->BindKey(EKeys::RightMouseButton, IE_Released, this, &AGolfRangeHUD::OrbitReleased);
 	InputComponent->BindAxisKey(EKeys::MouseX, this, &AGolfRangeHUD::OnOrbitYaw);
 	InputComponent->BindAxisKey(EKeys::MouseY, this, &AGolfRangeHUD::OnOrbitPitch);
-	ShowMainMenu();   // greet on the already-loaded range; gameplay stays gated until "Range"
+	// GOL-121: skip the menu greet when the HUD is spawning on the auto-loaded course map mid
+	// round-start. Otherwise the menu pops up over Black 1's first tee and the player has to
+	// click Range just to dismiss it.
+	if (URoundSubsystem* Round = URoundSubsystem::Get(this); !Round || !Round->IsPendingStart())
+	{
+		ShowMainMenu();   // greet on the already-loaded range; gameplay stays gated until "Range"
+	}
 	bInputBound = true;
 }
 
@@ -1098,6 +1105,71 @@ void AGolfRangeHUD::CloseSessionsList()
 	// Main menu is still mounted underneath -- nothing to do; control returns to it automatically.
 }
 
+void AGolfRangeHUD::EnsurePreRoundPicker()
+{
+	if (PreRoundPicker) { return; }
+	APlayerController* PC = GetOwningPlayerController();
+	if (!PC) { return; }
+	PreRoundPicker = CreateWidget<UPreRoundPicker>(PC, UPreRoundPicker::StaticClass());
+	if (!PreRoundPicker) { return; }
+
+	// Seed the course list -- one entry today; future courses just append to both arrays. Display
+	// label is trademark-safe per GOL-20 (the demo course is geographically inspired but the name
+	// stays neutral).
+	PreRoundPicker->SetCourses(
+		{ TEXT("GolfForge Demo Black") },
+		{ TEXT("golfforge-demo-black") });
+	PreRoundPicker->SetPlayerName(GolfDisplay::ReadPlayerName());
+
+	TWeakObjectPtr<AGolfRangeHUD> WeakThis(this);
+	PreRoundPicker->OnStartRound = [WeakThis](const FString& CourseId, EGolfDifficulty D, const FString& PlayerName)
+	{
+		AGolfRangeHUD* HUD = WeakThis.Get();
+		if (!HUD) { return; }
+		// Persist the chosen name so the next launch's picker pre-fills it.
+		if (!PlayerName.IsEmpty()) { GolfDisplay::WritePlayerName(PlayerName); }
+		// Close both modals before kicking off the round so the load-map transition starts clean.
+		HUD->ClosePreRoundPicker();
+		HUD->DismissMainMenu();
+		if (URoundSubsystem* Sub = URoundSubsystem::Get(HUD))
+		{
+			Sub->StartRound(CourseId, D);
+		}
+		else
+		{
+			UE_LOG(LogTemp, Warning, TEXT("PreRoundPicker: no URoundSubsystem; round not started"));
+		}
+	};
+	PreRoundPicker->OnBack = [WeakThis]()
+	{
+		if (AGolfRangeHUD* HUD = WeakThis.Get()) { HUD->ClosePreRoundPicker(); }
+	};
+
+	PreRoundPicker->AddToViewport(35);   // above the main menu (30) + sessions list (32)
+	PreRoundPicker->SetVisibility(ESlateVisibility::Collapsed);
+}
+
+void AGolfRangeHUD::OpenPreRoundPicker()
+{
+	EnsurePreRoundPicker();
+	if (!PreRoundPicker) { return; }
+	// Refresh the player name in case it changed via a prior round start (or another widget).
+	PreRoundPicker->SetPlayerName(GolfDisplay::ReadPlayerName());
+	bPreRoundOpen = true;
+	PreRoundPicker->SetVisibility(ESlateVisibility::Visible);
+}
+
+void AGolfRangeHUD::ClosePreRoundPicker()
+{
+	if (!PreRoundPicker || !bPreRoundOpen) { return; }
+	bPreRoundOpen = false;
+	PreRoundPicker->SetVisibility(ESlateVisibility::Collapsed);
+	if (FSlateApplication::IsInitialized())
+	{
+		FSlateApplication::Get().SetAllUserFocusToGameViewport();
+	}
+}
+
 #if WITH_EDITOR
 void AGolfRangeHUD::ToggleMainMenuDev()
 {
@@ -1320,6 +1392,12 @@ void AGolfRangeHUD::EnsureMainMenu()
 	MainMenu->OnPreviousSessions = [WeakThis]()
 	{
 		if (AGolfRangeHUD* HUD = WeakThis.Get()) { HUD->OpenPreviousSessionsList(); }
+	};
+	// GOL-121: Play Course opens the pre-round picker over the main menu. Picker callback starts
+	// the round via URoundSubsystem; auto-load (GOL-117) handles the level transition.
+	MainMenu->OnPlayCourse = [WeakThis]()
+	{
+		if (AGolfRangeHUD* HUD = WeakThis.Get()) { HUD->OpenPreRoundPicker(); }
 	};
 	MainMenu->AddToViewport(30);   // above the panel, manual dialog, and settings modal
 	MainMenu->SetVisibility(ESlateVisibility::Collapsed);

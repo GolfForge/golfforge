@@ -120,6 +120,61 @@ bool FGolfsimSettingsPinDistanceRoundTripTest::RunTest(const FString&)
 	return true;
 }
 
+// GOL-121: player-name round-trip + default fallback.
+namespace
+{
+	struct FPlayerNameKeyGuard
+	{
+		bool bHadKey = false;
+		FString PriorValue;
+
+		FPlayerNameKeyGuard()
+		{
+			if (GConfig)
+			{
+				bHadKey = GConfig->GetString(TEXT("GolfForge.Round"), TEXT("PlayerName"),
+					PriorValue, GGameUserSettingsIni);
+			}
+		}
+		~FPlayerNameKeyGuard()
+		{
+			if (!GConfig) { return; }
+			if (bHadKey)
+			{
+				GConfig->SetString(TEXT("GolfForge.Round"), TEXT("PlayerName"), *PriorValue, GGameUserSettingsIni);
+			}
+			else
+			{
+				GConfig->RemoveKey(TEXT("GolfForge.Round"), TEXT("PlayerName"), GGameUserSettingsIni);
+			}
+			GConfig->Flush(/*bRead=*/false, GGameUserSettingsIni);
+		}
+	};
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FGolfsimSettingsPlayerNameRoundTripTest, "Golfsim.Settings.PlayerNameRoundTrip",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FGolfsimSettingsPlayerNameRoundTripTest::RunTest(const FString&)
+{
+	FPlayerNameKeyGuard Guard;
+
+	GolfDisplay::WritePlayerName(TEXT("Bryson"));
+	TestTrue(TEXT("simple ASCII name round-trips"), GolfDisplay::ReadPlayerName() == TEXT("Bryson"));
+
+	GolfDisplay::WritePlayerName(TEXT("Rory McIlroy"));
+	TestTrue(TEXT("name with space round-trips"), GolfDisplay::ReadPlayerName() == TEXT("Rory McIlroy"));
+
+	// Wipe the key -> ReadPlayerName falls back to the system username (non-empty on any sane env).
+	if (GConfig)
+	{
+		GConfig->RemoveKey(TEXT("GolfForge.Round"), TEXT("PlayerName"), GGameUserSettingsIni);
+		GConfig->Flush(/*bRead=*/false, GGameUserSettingsIni);
+	}
+	const FString Fallback = GolfDisplay::ReadPlayerName();
+	TestFalse(TEXT("missing key falls back to non-empty username"), Fallback.IsEmpty());
+	return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FGolfsimSettingsPinDistanceDefaultTest, "Golfsim.Settings.PinDistanceDefault",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 bool FGolfsimSettingsPinDistanceDefaultTest::RunTest(const FString&)

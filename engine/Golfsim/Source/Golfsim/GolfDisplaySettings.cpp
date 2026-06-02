@@ -4,6 +4,7 @@
 #include "Kismet/KismetSystemLibrary.h"
 #include "HAL/IConsoleManager.h"
 #include "Misc/ConfigCacheIni.h"   // GConfig + GGameUserSettingsIni for the pin-distance helpers
+#include "HAL/PlatformProcess.h"   // FPlatformProcess::UserName for the player-name default (GOL-121)
 #include "RHI.h"   // IsRHIDeviceNVIDIA() -- gate DLSS to NVIDIA GPUs
 
 namespace GolfDisplay
@@ -249,6 +250,28 @@ namespace GolfDisplay
 		if (!GConfig) { return; }
 		const double Clamped = FMath::Clamp(Yards, 0.0, PinMaxYd);
 		GConfig->SetDouble(PinSection, PinKey, Clamped, GGameUserSettingsIni);
+		GConfig->Flush(/*bRead=*/false, GGameUserSettingsIni);
+	}
+
+	// GOL-121 pre-round picker player name. Default = system user, persisted across launches.
+	static const TCHAR* PlayerNameSection = TEXT("GolfForge.Round");
+	static const TCHAR* PlayerNameKey = TEXT("PlayerName");
+
+	FString ReadPlayerName()
+	{
+		FString V;
+		if (GConfig && GConfig->GetString(PlayerNameSection, PlayerNameKey, V, GGameUserSettingsIni)
+			&& !V.IsEmpty())
+		{
+			return V;
+		}
+		return FString(FPlatformProcess::UserName());
+	}
+
+	void WritePlayerName(const FString& Name)
+	{
+		if (!GConfig) { return; }
+		GConfig->SetString(PlayerNameSection, PlayerNameKey, *Name, GGameUserSettingsIni);
 		GConfig->Flush(/*bRead=*/false, GGameUserSettingsIni);
 	}
 }

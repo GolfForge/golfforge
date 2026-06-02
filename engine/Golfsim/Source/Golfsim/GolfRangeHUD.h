@@ -16,6 +16,9 @@
 class UManualShotDialog;
 class USettingsMenu;
 class UMainMenu;
+class UShotHistoryPanel;
+class UPreviousSessionsList;
+class UCheatSheetPanel;
 class AGolfBallActor;
 class AGolfPinActor;
 class ACameraActor;
@@ -47,6 +50,17 @@ private:
 	void ToggleManualDialog();
 	void FireManualShot(const FManualShotValues& Values);
 
+	// GOL-65: H toggles the in-range history view (current session only).
+	void ToggleHistoryFromKey() { ToggleHistoryPanel(); }
+
+	// Lazy mount + show/close for the two history widgets. The panel is single-session (caller fills
+	// it with whichever session's data); the list is shown only from the main menu.
+	void EnsureHistoryPanel();
+	void EnsureSessionsList();
+	void OpenHistoryForSession(const FString& SessionId, bool bFromList);
+	void CloseHistoryPanel();
+	void CloseSessionsList();
+
 	// Settings/credits menu (GOL-52/GOL-59): Esc/Tab toggles a centered modal; gameplay keys are gated
 	// while it's open. ApplyDisplaySettings runs the chosen values through UGameUserSettings.
 	void EnsureSettingsMenu();
@@ -62,6 +76,19 @@ public:
 	// restores the tee + previous club on off. Console + checkbox both call into these.
 	void ApplyPinDistance(double Yards);
 	void SetPuttMode(bool bEnabled);
+
+	// GOL-65: shot-history table for the live session (H key entry point).
+	void ToggleHistoryPanel();
+	// Main-menu entry: open the previous-sessions list over the menu. Selecting one opens the table.
+	void OpenPreviousSessionsList();
+	// Tab cheat sheet (dev convenience; replaced when a real keybindings UI lands).
+	void ToggleCheatSheet();
+
+#if WITH_EDITOR
+	// Z: re-open the main menu mid-session. Editor / PIE only -- cooked builds don't bind this.
+	// Lets a developer reach "Previous Sessions" etc. without quitting back to launch.
+	void ToggleMainMenuDev();
+#endif
 private:
 
 	// Startup main menu (Range / Play Course [disabled] / Exit). Shown over the already-loaded range
@@ -70,8 +97,10 @@ private:
 	void ShowMainMenu();
 	void DismissMainMenu();
 
-	// Gameplay keys (club select, fire, aim) are dead while either modal is up.
-	bool InputGated() const { return bSettingsOpen || bMenuOpen; }
+	// Gameplay keys (club select, fire, aim) are dead while any modal is up (settings / main menu /
+	// shot-history table / previous-sessions list / cheat sheet). The manual-shot dialog has its
+	// own visibility flip but does not gate Q/E/Space.
+	bool InputGated() const { return bSettingsOpen || bMenuOpen || bHistoryOpen || bSessionsListOpen || bCheatOpen; }
 
 	// Follow camera: the "Camera" dropdown picks Tee (0, fixed pawn view) or Follow (1, chase cam).
 	// SetCameraMode switches the view target; UpdateFollowCam (from Tick) chases the active ball and
@@ -115,6 +144,10 @@ private:
 	bool bManualOpen = false;            // is the manual-shot dialog showing (auto-fire panel hidden)
 	bool bSettingsOpen = false;          // is the settings/credits modal showing (gameplay keys gated)
 	bool bMenuOpen = false;              // is the startup main menu showing (gameplay keys gated)
+	bool bHistoryOpen = false;           // GOL-65: shot-history table showing (gameplay keys gated)
+	bool bHistoryFromList = false;       // GOL-65: opened from the previous-sessions list -> close returns to list
+	bool bSessionsListOpen = false;      // GOL-65: previous-sessions list overlaying the main menu
+	bool bCheatOpen = false;             // Tab cheat sheet showing
 
 	// Carry counts up during flight. On shot.outcome the static metrics + final carry/offline are
 	// cached; Tick then pushes the in-flight ball's live downrange distance into the panel's Carry
@@ -152,6 +185,9 @@ private:
 	UPROPERTY(Transient) TObjectPtr<UManualShotDialog> ManualDialog;
 	UPROPERTY(Transient) TObjectPtr<USettingsMenu> SettingsMenu;
 	UPROPERTY(Transient) TObjectPtr<UMainMenu> MainMenu;
+	UPROPERTY(Transient) TObjectPtr<UShotHistoryPanel> HistoryPanel;          // GOL-65
+	UPROPERTY(Transient) TObjectPtr<UPreviousSessionsList> SessionsList;      // GOL-65
+	UPROPERTY(Transient) TObjectPtr<UCheatSheetPanel> CheatSheet;
 
 	// GOL-29 state. Pin is find-or-spawned (cached weakly so the PIE-spawned actor goes away with
 	// the world). Putt mode caches the tee pawn pose + club so the toggle is reversible.

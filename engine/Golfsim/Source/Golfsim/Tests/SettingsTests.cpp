@@ -64,10 +64,48 @@ bool FGolfsimSettingsUpscaleModeTest::RunTest(const FString&)
 }
 
 // GOL-29 pin-distance persistence (GConfig round-trip via GGameUserSettingsIni).
+//
+// The Read/Write helpers touch the SAME GameUserSettings.ini the live game writes -- there is no
+// test-isolated config file. Each test that mutates the key captures the prior value at entry and
+// restores it before returning so a CI run doesn't leave the editor's pin distance at, e.g., 0
+// (which renders as "pin teleports to the tee" on the next PIE entry -- ugly + confusing).
+namespace
+{
+	struct FPinKeyGuard
+	{
+		bool bHadKey = false;
+		double PriorValue = 150.0;
+
+		FPinKeyGuard()
+		{
+			if (GConfig)
+			{
+				bHadKey = GConfig->GetDouble(TEXT("GolfForge.Range"), TEXT("PinDistanceYd"),
+					PriorValue, GGameUserSettingsIni);
+			}
+		}
+		~FPinKeyGuard()
+		{
+			if (!GConfig) { return; }
+			if (bHadKey)
+			{
+				GConfig->SetDouble(TEXT("GolfForge.Range"), TEXT("PinDistanceYd"), PriorValue, GGameUserSettingsIni);
+			}
+			else
+			{
+				GConfig->RemoveKey(TEXT("GolfForge.Range"), TEXT("PinDistanceYd"), GGameUserSettingsIni);
+			}
+			GConfig->Flush(/*bRead=*/false, GGameUserSettingsIni);
+		}
+	};
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FGolfsimSettingsPinDistanceRoundTripTest, "Golfsim.Settings.PinDistanceRoundTrip",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 bool FGolfsimSettingsPinDistanceRoundTripTest::RunTest(const FString&)
 {
+	FPinKeyGuard Guard;   // restores the user's pre-test value on return
+
 	GolfDisplay::WritePinDistanceYd(175.0);
 	TestTrue(TEXT("175 round-trips"), FMath::IsNearlyEqual(GolfDisplay::ReadPinDistanceYd(), 175.0));
 
@@ -86,8 +124,9 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FGolfsimSettingsPinDistanceDefaultTest, "Golfsi
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 bool FGolfsimSettingsPinDistanceDefaultTest::RunTest(const FString&)
 {
-	// Wipe the key so ReadPinDistanceYd has to fall back to the default. Other tests in this file
-	// may have written it; flush so the unset state is observable.
+	FPinKeyGuard Guard;   // restores the user's pre-test value on return
+
+	// Wipe the key so ReadPinDistanceYd has to fall back to the default.
 	if (GConfig)
 	{
 		GConfig->RemoveKey(TEXT("GolfForge.Range"), TEXT("PinDistanceYd"), GGameUserSettingsIni);

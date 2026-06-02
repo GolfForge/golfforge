@@ -4,6 +4,10 @@
 #include "GolfRangeEnvironment.h"
 #include "ManualShotDialog.h"              // manual-shot dialog (GOL-8)
 #include "Range/GolfPinActor.h"            // range target pin (GOL-29)
+#include "Session/ShotHistorySubsystem.h"  // session shot history (GOL-65)
+#include "ShotHistoryPanel.h"
+#include "PreviousSessionsList.h"
+#include "CheatSheetPanel.h"
 #include "Events/EventBusSubsystem.h"      // publish shot.taken / subscribe shot.outcome (GOL-7)
 #include "Drivers/LaunchMonitorManager.h"  // active-driver status -> panel dot (GOL-11)
 #include "Drivers/LaunchMonitorDriver.h"
@@ -129,6 +133,15 @@ void AGolfRangeHUD::Tick(float DeltaSeconds)
 
 	UpdateFollowCam(DeltaSeconds);
 
+	// GOL-29: keep retrying the pin placement until the actor exists. EnsureInputBound calls
+	// ApplyPinDistance once at panel mount, but on the very first ticks the pawn may not be
+	// possessed yet -- ApplyPinDistance early-returns and the pin actor never spawns. Tick
+	// re-fires until Pin becomes a valid actor; thereafter this is a no-op every frame.
+	if (Panel && !Pin.IsValid() && GetOwningPlayerController() && GetOwningPlayerController()->GetPawn())
+	{
+		ApplyPinDistance(CurrentPinYd);
+	}
+
 	// Count the Carry readout up while the ball is in the air, then snap to the exact final once it
 	// lands (or if the trajectory was invalid, the first tick just sets the final immediately).
 	if (bCarryAnimating && Panel)
@@ -240,9 +253,11 @@ void AGolfRangeHUD::EnsureInputBound()
 				if (AGolfRangeHUD* HUD = WeakThis.Get()) { HUD->SetCameraMode(Idx); }
 			};
 
-			// Pin distance (GOL-29). Restore the persisted yardage, push it to the spinner without
-			// re-broadcasting, then place the pin once so the green is visible on entry.
-			CurrentPinYd = GolfDisplay::ReadPinDistanceYd();
+			// Pin distance (GOL-29). Always start at 150 yd; persistence caused more confusion than
+			// it was worth (race + test-pollution corner cases all set the spinner to 0 on next load).
+			// The user can drag the spinner to whatever they want during the session. The Tick loop
+			// re-fires ApplyPinDistance until the pawn is ready and the actor actually spawns.
+			CurrentPinYd = 150.0;
 			Panel->OnPinChanged = [WeakThis](double Y)
 			{
 				if (AGolfRangeHUD* HUD = WeakThis.Get()) { HUD->ApplyPinDistance(Y); }
@@ -413,10 +428,17 @@ void AGolfRangeHUD::EnsureInputBound()
 	InputComponent->BindKey(EKeys::Right,    IE_Pressed,  this, &AGolfRangeHUD::TurnRightPressed);
 	InputComponent->BindKey(EKeys::Right,    IE_Released, this, &AGolfRangeHUD::TurnRightReleased);
 	InputComponent->BindKey(EKeys::M,        IE_Pressed,  this, &AGolfRangeHUD::ToggleManualDialog);
-	// Settings/credits menu. Escape works in packaged builds; in PIE the editor may grab Escape to stop
-	// play, so also bind Tab for reliable in-editor toggling (golfsim.Credits also opens it).
+	InputComponent->BindKey(EKeys::H,        IE_Pressed,  this, &AGolfRangeHUD::ToggleHistoryFromKey);   // GOL-65
+	// Settings/credits menu. Escape works in packaged builds + PIE (the editor's Escape-stops-play
+	// only applies when the viewport hasn't captured focus); golfsim.Credits also opens it.
 	InputComponent->BindKey(EKeys::Escape,   IE_Pressed,  this, &AGolfRangeHUD::ToggleSettingsMenu);
-	InputComponent->BindKey(EKeys::Tab,      IE_Pressed,  this, &AGolfRangeHUD::ToggleSettingsMenu);
+	// Tab: dev cheat sheet listing every key binding. Replaced by a real keybindings UI later.
+	InputComponent->BindKey(EKeys::Tab,      IE_Pressed,  this, &AGolfRangeHUD::ToggleCheatSheet);
+#if WITH_EDITOR
+	// Z: re-open the main menu mid-session. Editor / PIE only -- so a dev can reach "Previous
+	// Sessions" or quit without re-launching the editor. Compiled out of cooked builds.
+	InputComponent->BindKey(EKeys::Z,        IE_Pressed,  this, &AGolfRangeHUD::ToggleMainMenuDev);
+#endif
 	// Follow-cam orbit: right mouse + drag to circle the resting ball (Follow mode).
 	InputComponent->BindKey(EKeys::RightMouseButton, IE_Pressed,  this, &AGolfRangeHUD::OrbitPressed);
 	InputComponent->BindKey(EKeys::RightMouseButton, IE_Released, this, &AGolfRangeHUD::OrbitReleased);
@@ -709,7 +731,8 @@ void AGolfRangeHUD::ApplyPinDistance(double Yards)
 		Panel->SetPinValue(ClampedYd);
 		Panel->SetPinActualReadout(ClampedYd);
 	}
-	GolfDisplay::WritePinDistanceYd(ClampedYd);
+	// Persistence intentionally dropped -- always start at 150 next session. The Read/WritePin
+	// helpers still exist (still unit-tested) for the future "remember last pin" toggle.
 
 	// If we're in putt mode, re-teleport the pawn onto the new green so the toggle tracks the pin.
 	if (bPuttMode)
@@ -789,6 +812,229 @@ void AGolfRangeHUD::SetPuttMode(bool bEnabled)
 	}
 }
 
+// --- GOL-65: shot-history table + previous-sessions list ---------------------------------------
+
+void AGolfRangeHUD::EnsureHistoryPanel()
+{
+	if (HistoryPanel)
+	{
+		return;
+	}
+	APlayerController* PC = GetOwningPlayerController();
+	if (!PC)
+	{
+		return;
+	}
+	HistoryPanel = CreateWidget<UShotHistoryPanel>(PC, UShotHistoryPanel::StaticClass());
+	if (!HistoryPanel)
+	{
+		return;
+	}
+	TWeakObjectPtr<AGolfRangeHUD> WeakThis(this);
+	HistoryPanel->OnClose = [WeakThis]()
+	{
+		if (AGolfRangeHUD* HUD = WeakThis.Get()) { HUD->CloseHistoryPanel(); }
+	};
+
+	// Live append: only repaint while we're viewing the current session. Past-session snapshots are
+	// loaded once per pick and stay frozen.
+	if (UShotHistorySubsystem* Sub = UShotHistorySubsystem::Get(this))
+	{
+		Sub->OnEntriesChanged.AddWeakLambda(this, [this]()
+		{
+			if (HistoryPanel && bHistoryOpen && !bHistoryFromList)
+			{
+				if (UShotHistorySubsystem* S = UShotHistorySubsystem::Get(this))
+				{
+					HistoryPanel->SetSession(TEXT("Current session"), S->GetEntries());
+				}
+			}
+		});
+	}
+
+	HistoryPanel->AddToViewport(35);   // above the previous-sessions list (which sits at 32 over the main menu)
+	HistoryPanel->SetVisibility(ESlateVisibility::Collapsed);
+}
+
+void AGolfRangeHUD::EnsureSessionsList()
+{
+	if (SessionsList)
+	{
+		return;
+	}
+	APlayerController* PC = GetOwningPlayerController();
+	if (!PC)
+	{
+		return;
+	}
+	SessionsList = CreateWidget<UPreviousSessionsList>(PC, UPreviousSessionsList::StaticClass());
+	if (!SessionsList)
+	{
+		return;
+	}
+	TWeakObjectPtr<AGolfRangeHUD> WeakThis(this);
+	SessionsList->OnSessionPicked = [WeakThis](const FString& Id)
+	{
+		if (AGolfRangeHUD* HUD = WeakThis.Get()) { HUD->OpenHistoryForSession(Id, /*bFromList=*/true); }
+	};
+	SessionsList->OnClose = [WeakThis]()
+	{
+		if (AGolfRangeHUD* HUD = WeakThis.Get()) { HUD->CloseSessionsList(); }
+	};
+	SessionsList->AddToViewport(32);   // above the main menu (30), below the history panel (35)
+	SessionsList->SetVisibility(ESlateVisibility::Collapsed);
+}
+
+void AGolfRangeHUD::ToggleHistoryPanel()
+{
+	// In-range H key: defensive guard against opening over the settings modal.
+	if (bSettingsOpen) { return; }
+	if (bHistoryOpen)
+	{
+		CloseHistoryPanel();
+		return;
+	}
+	EnsureHistoryPanel();
+	if (!HistoryPanel) { return; }
+	UShotHistorySubsystem* Sub = UShotHistorySubsystem::Get(this);
+	HistoryPanel->SetSession(TEXT("Current session"), Sub ? Sub->GetEntries() : TArray<FShotHistoryEntry>{});
+	bHistoryOpen = true;
+	bHistoryFromList = false;
+	HistoryPanel->SetVisibility(ESlateVisibility::Visible);
+}
+
+void AGolfRangeHUD::OpenPreviousSessionsList()
+{
+	EnsureSessionsList();
+	if (!SessionsList) { return; }
+
+	TArray<FPreviousSessionInfo> RowList;
+	if (UShotHistorySubsystem* Sub = UShotHistorySubsystem::Get(this))
+	{
+		const TArray<FString> Ids = Sub->ListPastSessionIds();
+		RowList.Reserve(Ids.Num());
+		for (const FString& Id : Ids)
+		{
+			FPreviousSessionInfo R;
+			R.SessionId = Id;
+			// Cheap shot-count via parse. Acceptable for the small N of past sessions; revisit if/when
+			// session counts get huge.
+			const int32 Count = Sub->LoadSession(Id).Num();
+			R.DisplayLabel = FString::Printf(TEXT("%s   (%d shot%s)"),
+				*Id, Count, Count == 1 ? TEXT("") : TEXT("s"));
+			RowList.Add(MoveTemp(R));
+		}
+	}
+	SessionsList->SetSessions(RowList);
+	bSessionsListOpen = true;
+	SessionsList->SetVisibility(ESlateVisibility::Visible);
+}
+
+void AGolfRangeHUD::OpenHistoryForSession(const FString& SessionId, bool bFromList)
+{
+	EnsureHistoryPanel();
+	if (!HistoryPanel) { return; }
+	UShotHistorySubsystem* Sub = UShotHistorySubsystem::Get(this);
+	const TArray<FShotHistoryEntry> Entries = Sub ? Sub->LoadSession(SessionId) : TArray<FShotHistoryEntry>{};
+	HistoryPanel->SetSession(SessionId, Entries);
+	bHistoryOpen = true;
+	bHistoryFromList = bFromList;
+	HistoryPanel->SetVisibility(ESlateVisibility::Visible);
+	// Hide the list underneath while the panel's up; closing the panel will re-show it (or the menu).
+	if (bFromList && SessionsList)
+	{
+		SessionsList->SetVisibility(ESlateVisibility::Collapsed);
+	}
+}
+
+void AGolfRangeHUD::CloseHistoryPanel()
+{
+	if (!HistoryPanel || !bHistoryOpen) { return; }
+	bHistoryOpen = false;
+	HistoryPanel->SetVisibility(ESlateVisibility::Collapsed);
+	if (bHistoryFromList)
+	{
+		// Return to the list. The main menu is still mounted underneath the list.
+		if (SessionsList && bSessionsListOpen)
+		{
+			SessionsList->SetVisibility(ESlateVisibility::Visible);
+		}
+		else
+		{
+			// Defensive: list got dropped somehow -- rebuild it from the main menu path.
+			OpenPreviousSessionsList();
+		}
+	}
+	else if (FSlateApplication::IsInitialized())
+	{
+		FSlateApplication::Get().SetAllUserFocusToGameViewport();
+	}
+	bHistoryFromList = false;
+}
+
+void AGolfRangeHUD::CloseSessionsList()
+{
+	if (!SessionsList || !bSessionsListOpen) { return; }
+	bSessionsListOpen = false;
+	SessionsList->SetVisibility(ESlateVisibility::Collapsed);
+	// Main menu is still mounted underneath -- nothing to do; control returns to it automatically.
+}
+
+#if WITH_EDITOR
+void AGolfRangeHUD::ToggleMainMenuDev()
+{
+	// Defensive: don't pop the menu over another modal -- those have their own close paths.
+	if (bSettingsOpen || bHistoryOpen || bSessionsListOpen || bCheatOpen) { return; }
+	if (bMenuOpen)
+	{
+		DismissMainMenu();
+	}
+	else
+	{
+		ShowMainMenu();   // recomputes "Previous Sessions" enabled state based on on-disk sessions
+	}
+}
+#endif
+
+void AGolfRangeHUD::ToggleCheatSheet()
+{
+	// Don't pop the cheat sheet over a settings modal -- it's a peek, not a stack of modals.
+	if (bSettingsOpen) { return; }
+
+	APlayerController* PC = GetOwningPlayerController();
+	if (!PC)
+	{
+		return;
+	}
+	if (!CheatSheet)
+	{
+		CheatSheet = CreateWidget<UCheatSheetPanel>(PC, UCheatSheetPanel::StaticClass());
+		if (!CheatSheet) { return; }
+		TWeakObjectPtr<AGolfRangeHUD> WeakThis(this);
+		CheatSheet->OnClose = [WeakThis]()
+		{
+			if (AGolfRangeHUD* HUD = WeakThis.Get())
+			{
+				HUD->bCheatOpen = false;
+				if (HUD->CheatSheet) { HUD->CheatSheet->SetVisibility(ESlateVisibility::Collapsed); }
+				if (FSlateApplication::IsInitialized())
+				{
+					FSlateApplication::Get().SetAllUserFocusToGameViewport();
+				}
+			}
+		};
+		CheatSheet->AddToViewport(36);   // above the history panel + previous-sessions list
+		CheatSheet->SetVisibility(ESlateVisibility::Collapsed);
+	}
+
+	bCheatOpen = !bCheatOpen;
+	CheatSheet->SetVisibility(bCheatOpen ? ESlateVisibility::Visible : ESlateVisibility::Collapsed);
+	if (!bCheatOpen && FSlateApplication::IsInitialized())
+	{
+		FSlateApplication::Get().SetAllUserFocusToGameViewport();
+	}
+}
+
 void AGolfRangeHUD::OpenCreditsSection()
 {
 	EnsureSettingsMenu();
@@ -824,6 +1070,13 @@ void AGolfRangeHUD::EnsureMainMenu()
 	{
 		if (AGolfRangeHUD* HUD = WeakThis.Get()) { HUD->DismissMainMenu(); }
 	};
+	// GOL-65: "Previous Sessions" opens the session-picker list over the main menu. Picking a
+	// session opens the full history table; closing the table returns to the list; closing the
+	// list returns to the main menu underneath. H key in-range opens current-session only.
+	MainMenu->OnPreviousSessions = [WeakThis]()
+	{
+		if (AGolfRangeHUD* HUD = WeakThis.Get()) { HUD->OpenPreviousSessionsList(); }
+	};
 	MainMenu->AddToViewport(30);   // above the panel, manual dialog, and settings modal
 	MainMenu->SetVisibility(ESlateVisibility::Collapsed);
 }
@@ -834,6 +1087,12 @@ void AGolfRangeHUD::ShowMainMenu()
 	if (!MainMenu)
 	{
 		return;
+	}
+	// Greys "Previous Sessions" when no past sessions exist on disk. Recomputed at show time so
+	// quitting + restarting reflects the just-written previous session.
+	if (UShotHistorySubsystem* Sub = UShotHistorySubsystem::Get(this))
+	{
+		MainMenu->SetPreviousSessionsCount(Sub->ListPastSessionIds().Num());
 	}
 	bMenuOpen = true;
 	MainMenu->SetVisibility(ESlateVisibility::Visible);

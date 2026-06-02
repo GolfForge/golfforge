@@ -16,15 +16,22 @@ class GOLFSIM_API UMainMenu : public UUserWidget
 	GENERATED_BODY()
 
 public:
-	TFunction<void()> OnPlayRange;   // set by the HUD: dismiss the menu, hand control to the live range
+	TFunction<void()> OnPlayRange;          // set by the HUD: dismiss the menu, hand control to the live range
+	TFunction<void()> OnPreviousSessions;   // set by the HUD: overlay the shot-history panel over the menu (GOL-65)
+
+	/** Greys the "Previous Sessions" button when 0; enables otherwise. Called by HUD when the menu mounts. */
+	void SetPreviousSessionsCount(int32 Count);
 
 protected:
 	virtual void NativeOnInitialized() override;
 
 	UFUNCTION() void HandleRangeClicked();
+	UFUNCTION() void HandlePreviousSessionsClicked();
 	UFUNCTION() void HandleQuitClicked();
 
 private:
 	void BuildTree();
 	UButton* MakeButton(const TCHAR* Label, bool bEnabled = true);   // light button + black centered label
+
+	UPROPERTY(Transient) TObjectPtr<UButton> PreviousSessionsBtn;
 };

@@ -16,7 +16,8 @@ public class Golfsim : ModuleRules
 		// WebSockets + Json: the OpenFlight launch-monitor driver (GOL-11) talks to OpenFlight's
 		// WebSocket and parses its shot JSON. Both are engine runtime modules (no uproject plugin).
 		// ImageWrapper: runtime PNG decode for the course splatmaps (GOL-40, Physics/CourseSurface).
-		PrivateDependencyModuleNames.AddRange(new string[] { "WebSockets", "Json", "RHI", "ImageWrapper" });
+		// JsonUtilities: FJsonObjectConverter for the ShotHistory JSONL round-trip (GOL-65).
+		PrivateDependencyModuleNames.AddRange(new string[] { "WebSockets", "Json", "JsonUtilities", "RHI", "ImageWrapper" });
 
 		// Uncomment if you are using online features
 		// PrivateDependencyModuleNames.Add("OnlineSubsystem");

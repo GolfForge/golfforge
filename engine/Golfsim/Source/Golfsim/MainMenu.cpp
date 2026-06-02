@@ -74,6 +74,13 @@ void UMainMenu::BuildTree()
 	UVerticalBoxSlot* RangeSlot = Col->AddChildToVerticalBox(RangeBtn);
 	RangeSlot->SetPadding(FMargin(0.f, 4.f));
 
+	// Previous Sessions (GOL-65): overlay the shot-history panel over this menu (which stays mounted
+	// underneath). HUD passes the count via SetPreviousSessionsCount; greyed when 0.
+	PreviousSessionsBtn = MakeButton(TEXT("Previous Sessions"), /*bEnabled*/ false);
+	PreviousSessionsBtn->OnClicked.AddDynamic(this, &UMainMenu::HandlePreviousSessionsClicked);
+	UVerticalBoxSlot* PrevSlot = Col->AddChildToVerticalBox(PreviousSessionsBtn);
+	PrevSlot->SetPadding(FMargin(0.f, 4.f));
+
 	UButton* CourseBtn = MakeButton(TEXT("Play Course"), /*bEnabled*/ false);
 	UVerticalBoxSlot* CourseSlot = Col->AddChildToVerticalBox(CourseBtn);
 	CourseSlot->SetPadding(FMargin(0.f, 4.f, 0.f, 0.f));
@@ -98,7 +105,20 @@ void UMainMenu::HandleRangeClicked()
 	if (OnPlayRange) { OnPlayRange(); }
 }
 
+void UMainMenu::HandlePreviousSessionsClicked()
+{
+	if (OnPreviousSessions) { OnPreviousSessions(); }
+}
+
 void UMainMenu::HandleQuitClicked()
 {
 	UKismetSystemLibrary::QuitGame(this, GetOwningPlayer(), EQuitPreference::Quit, false);
+}
+
+void UMainMenu::SetPreviousSessionsCount(int32 Count)
+{
+	if (PreviousSessionsBtn)
+	{
+		PreviousSessionsBtn->SetIsEnabled(Count > 0);
+	}
 }

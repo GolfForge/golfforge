@@ -18,6 +18,7 @@
 #include "Drivers/LaunchMonitorManager.h"
 #include "Drivers/LaunchMonitorDriver.h"
 #include "Course/CourseSurfaceSubsystem.h"
+#include "Session/ShotHistorySubsystem.h"
 
 namespace
 {
@@ -444,6 +445,33 @@ namespace
 		UE_LOG(LogTemp, Warning, TEXT("golfsim.Credits: no AGolfRangeHUD in this level"));
 	}
 
+	// golfsim.ShotHistory.Show / .Clear  -- GOL-65. Show toggles the in-range table; Clear empties
+	// the in-memory + on-disk current session. Range-only (no AGolfRangeHUD on other levels).
+	void ShotHistoryShowCmd(const TArray<FString>& /*Args*/, UWorld* World)
+	{
+		if (!World) { return; }
+		APlayerController* PC = World->GetFirstPlayerController();
+		AGolfRangeHUD* HUD = PC ? Cast<AGolfRangeHUD>(PC->GetHUD()) : nullptr;
+		if (!HUD)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("golfsim.ShotHistory.Show: no AGolfRangeHUD (range only)"));
+			return;
+		}
+		HUD->ToggleHistoryPanel();
+	}
+
+	void ShotHistoryClearCmd(const TArray<FString>& /*Args*/, UWorld* World)
+	{
+		UShotHistorySubsystem* Sub = UShotHistorySubsystem::Get(World);
+		if (!Sub)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("golfsim.ShotHistory.Clear: no UShotHistorySubsystem (need a running game/PIE world)"));
+			return;
+		}
+		Sub->Clear();
+		UE_LOG(LogTemp, Display, TEXT("golfsim.ShotHistory.Clear: in-memory + JSONL truncated"));
+	}
+
 	// golfsim.SetPin <yards>  -- range target distance (GOL-29). Drives the spinner via the HUD,
 	// which spawns/moves the AGolfPinActor down the corridor centerline. Range-only; on other
 	// levels the AGolfRangeHUD cast fails and the command logs a hint.
@@ -525,6 +553,16 @@ static FAutoConsoleCommandWithWorldAndArgs GSetPinCmd(
 	TEXT("golfsim.SetPin"),
 	TEXT("Range target distance: golfsim.SetPin <yards>  (0-400; clamped, persisted, syncs the panel spinner)."),
 	FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&SetPinCmd));
+
+static FAutoConsoleCommandWithWorldAndArgs GShotHistoryShowCmd(
+	TEXT("golfsim.ShotHistory.Show"),
+	TEXT("Toggle the session shot-history table (range only). Mirrors the H key."),
+	FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&ShotHistoryShowCmd));
+
+static FAutoConsoleCommandWithWorldAndArgs GShotHistoryClearCmd(
+	TEXT("golfsim.ShotHistory.Clear"),
+	TEXT("Empty the in-memory history list AND truncate the current session's JSONL on disk."),
+	FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&ShotHistoryClearCmd));
 
 static FAutoConsoleCommandWithWorldAndArgs GPublishTestShotCmd(
 	TEXT("golfsim.PublishTestShot"),

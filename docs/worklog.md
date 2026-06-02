@@ -2,6 +2,26 @@
 
 > Dated milestone summaries, newest on top. The durable outcome + the committed artifact, not the blow-by-blow — process detail lives in git history, `docs/ue5-cookbook.md`, and the scripts themselves.
 
+## 2026-06-02 — Alpha-3 Linear restructure: practice modes + GOL-112 lit up, perf deferred to beta (Mac)
+
+- **"Make it work" alpha framing locked in.** Goal: a Reddit-worthy alpha that runs at sub-par perf on most hardware but plays well enough to share. Perf + lighting + Mac signing get a beta home; gameplay loops + ball physics + single-player on real courses are the alpha-3 focus.
+- **GOL-92 closed Done.** Alpha-2 range polish achieved (3 of 9 children shipped in v0.0.2: GOL-29 pin, GOL-65 shot history, GOL-67 game-mode swing). Remaining 6 children reparented:
+  - GOL-114 [Epic] Range polish (beta) created P3 — gathers GOL-27 / 30 / 31 / 41 / 66.
+  - GOL-42 (bunker + green regions on range) reparented to GOL-73 (closest-to-pin practice mode) where it's a direct dependency.
+- **Alpha-3 priority bumps (P4 → P2):** GOL-73 closest-to-pin, GOL-74 practice islands, GOL-75 putting practice. These three sibling epics are the alpha-3 differentiator.
+- **GOL-112 (single-player on real courses) lit up.** Filed all 8 children sketched in its description:
+  - GOL-115 round events on the EventBus (foundation)
+  - GOL-116 URoundSubsystem hole state machine
+  - GOL-117 per-hole pin placement on course (reuses AGolfPinActor from GOL-29)
+  - GOL-118 tee-up between holes
+  - GOL-119 hole-out detection (gimme radius)
+  - GOL-120 end-of-round scorecard panel
+  - GOL-121 Play Course button + pre-round picker
+  - GOL-122 swing meter difficulty profiles (Easy / Normal / Pro)
+  Dependency chain: GOL-115 → GOL-116 + GOL-122 → others.
+- **Perf + lighting + Mac parity deferred to beta (P2 → P4):** GOL-100 perf epic, GOL-101 course lighting bake, GOL-102 scalability INI, GOL-95 Mac platform parity. Mac M4 at 15–20 FPS is acceptable for alpha shareability; the playable round + practice modes matter more right now.
+- **Top of queue going forward** is `machine/windows`, P2: GOL-93 ball physics + surface interaction, GOL-73 / 74 / 75 practice modes, GOL-115–122 single-player round flow. ~12 tickets that together represent the "make it work" alpha-3 surface.
+
 ## 2026-06-02 — v0.0.2-alpha SHIPPED cross-platform (Both)
 
 - **Release published** at [github.com/GolfForge/golfforge/releases/tag/v0.0.2-alpha](https://github.com/GolfForge/golfforge/releases/tag/v0.0.2-alpha): `GolfForge-macos-arm64.zip` (672.65 MiB) + `GolfForge-windows-x64-v0.0.2-alpha.zip` (758.33 MiB).

@@ -63,6 +63,9 @@ engine/UnrealClaudeMCP-upstream/
 engine/**/Content/Megaplant_Library/
 engine/**/Content/Megascans/
 engine/**/Content/Fab/
+# Fab plugin also drops Megascans under engine/Fab/ at the project root
+# (separate cache from Content/Fab/) — same re-downloadable rationale.
+engine/Fab/
 # Marketplace foliage packs that import to their own top-level Content
 # folder (not under /Fab) - same re-downloadable rationale, huge LFS cost
 # (PC3D Kentucky Bluegrass = 112 meshes + 546 MIs + Pivot-Painter textures).

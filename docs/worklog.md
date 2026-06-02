@@ -2,6 +2,13 @@
 
 > Dated milestone summaries, newest on top. The durable outcome + the committed artifact, not the blow-by-blow — process detail lives in git history, `docs/ue5-cookbook.md`, and the scripts themselves.
 
+## 2026-06-02 — v0.0.2-alpha SHIPPED cross-platform (Both)
+
+- **Release published** at [github.com/GolfForge/golfforge/releases/tag/v0.0.2-alpha](https://github.com/GolfForge/golfforge/releases/tag/v0.0.2-alpha): `GolfForge-macos-arm64.zip` (672.65 MiB) + `GolfForge-windows-x64-v0.0.2-alpha.zip` (758.33 MiB).
+- **What's new since v0.0.1-alpha:** game-mode swing meter (3-press Power → Accuracy, no LM required, GOL-67) + Mode dropdown Game/Simulation; session shot history + Previous Sessions main-menu picker (GOL-65); range target pin + putt-from-green toggle (GOL-29); stimp-aware putting model (GOL-109); trajectory tracks terrain Z (flight + bounce + roll snap to landscape, GOL-110); course lie detection from splatmap PNGs (GOL-40); demo course pipeline with `hole.geojson` sidecar + bbox widened to land all 18 Black hole endpoints on the landscape (GOL-33 + GOL-108). Tab is now the keybindings cheat sheet (replaced the duplicate settings-modal binding); Esc is sole settings entry; Z opens main menu mid-PIE in editor builds.
+- **Cook stats — Mac M4 base, warm cache:** BuildCookRun 1m 27s clean (no editor regression). GOL-71 dylib fixup still needed: `libtbb.12.dylib` + `libtbbmalloc.2.dylib` copied into `Contents/MacOS/` post-package (`libmetalirconverter.dylib` referenced by GOL-71 not present in this UE5.7 install, not required at runtime).
+- **Mac-side per-machine-content gotcha resolved (GOL-113):** post-GOL-80 history rewrite, the fresh Mac clone never had the gitignored `Fab/` + `Megaplant_Library/` + `PC3D_Kentucky_Bluegrass_v13/` content. v0.0.1 had been cooked on the pre-rewrite repo earlier so the gap was invisible until v0.0.2's cook attempt. Recovered by `cp -R` from `~/code/golfsim.prerewrite/engine/Golfsim/Content/`. Note this should be folded into the `docs/ue5-cookbook.md` fresh-clone recipe (GOL-84) so the next time someone hits this they know.
+
 ## 2026-06-01 — GOL-67 Game-mode swing meter + Mode dropdown (Windows)
 
 - **New `Input/KeyboardSwingComponent.{h,cpp}`** — pure C++ (no UObject) state machine + modulation math. 3 states (Idle → Power → Accuracy → Idle), 3 Space presses per shot. Power bar **triangle-wave oscillates 0 → 1 → 0** (so the natural peak is the rhythmic target for Space-2); accuracy bar same, slower period (1.5s). `ResolveShot(Power, Accuracy, ClubPreset)` is the deterministic core that maps locked-bar values → `FShotTakenEvent` fields. Whiff threshold = power < 0.10 → no shot (chuff log).

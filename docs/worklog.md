@@ -2,6 +2,33 @@
 
 > Dated milestone summaries, newest on top. The durable outcome + the committed artifact, not the blow-by-blow — process detail lives in git history, `docs/ue5-cookbook.md`, and the scripts themselves.
 
+## 2026-06-02 — GOL-124 + GOL-125 — Cook-blockers + alpha-3 polish; cooked Win64 build verified (Windows)
+
+Closed every gap between the PIE-verified GOL-112 flow and a shippable cooked binary. Two tickets bundled in one commit since they all gate the alpha-3 cook.
+
+### GOL-124 — Cook-blockers
+
+- **`DefaultGame.ini` — `+MapsToCook` for both `PracticeRange` + `GolfForgeDemoBlack`.** Without this, the picker's `UGameplayStatics::OpenLevel("GolfForgeDemoBlack")` errors in cooked builds (map not in the cook).
+- **`Game/CoursePaths.{h,cpp}` — shared path resolver.** `GolfsimPaths::ResolveCourseDataDir(CourseId)` walks a candidate list (editor `<repo>/courses/`, cooked `<stage>/courses/`, defensive fallbacks) using `heightmap.json` as the existence sentinel. Replaces the duplicated `DeriveRepoRoot()` in `Physics/CourseSurface.cpp` + `Round/RoundState.cpp`. Both call sites now go through the single helper.
+- **Stage hook deferred to a manual `cp -R`.** UAT's `DirectoriesToAlwaysStageAsNonUFS` rejects paths that escape the project root with `Staged filesystem reference cannot reference outside the staging root`. The `<repo>/courses/` tree lives above `engine/Golfsim/`, so the ini route doesn't work. v0.0.3 ships with a post-cook `cp -R courses/golfforge-demo-black/ Build/Win64/v0.0.3-alpha/courses/`. Future `engine/scripts/package.sh` (GOL-49) will roll this into a single script.
+
+### GOL-125 — Round-flow polish
+
+- **Tracer cleanup at the right moment.** First cut flushed on the next `OnSpaceForCurrentMode` (start of next swing) — too late; the previous arc still obstructed the view of the pin between settle and the next Press 1. Moved the `FlushPersistentDebugLines` into `URoundTeeUpSubsystem::ApplyBetweenShotTeleport` after the pawn is repositioned + camera reoriented toward the pin. Tracer persists through flight + the settle window (the "did I hit it well?" feedback), then clears the instant the player is ready to swing again. Range play unchanged (no between-shot teleport off-round; Toptracer-style accumulation continues as designed).
+- **VSM page pool bump.** `r.Shadow.Virtual.MaxPhysicalPages` raised 4096 → 8192 in `Config/DefaultEngine.ini`. The course's PCG-scattered tree canopy + 2 km² landscape overflowed the default budget (`page pool overflow detected` in cooked logs). Doubles the VSM page atlas VRAM (~25 → ~50 MB) for clean shadows.
+- **Main Menu access mid-game.** New "Main Menu" button in `USettingsMenu` between Close + Quit Game. Wired through new `AGolfRangeHUD::ReturnToMainMenu()` shared helper (the scorecard's Back-to-Menu lambda refactored to use the same path). Closes any modal + `URoundSubsystem::AbandonRound` defensively + `UGameplayStatics::OpenLevel("PracticeRange")`. Post-load `EnsureInputBound -> ShowMainMenu` reveals the main menu. Reachable from anywhere: range, course mid-round, scorecard.
+
+### Cook + smoke test
+
+- BuildCookRun Win64 Development clean (45 s). Stage at `Build/Win64/v0.0.3-alpha/`. Manual `cp -R courses/golfforge-demo-black/` into the stage. Stage total 1.6 GB.
+- User-verified end-to-end on the cooked .exe: tracer clears at the right moment; no page-pool overflow logs; Esc → Settings → Main Menu loads cleanly from both range + course-mid-round.
+
+### State
+
+- **GOL-112 epic 100% closed** — 9 children + 2 polish tickets (GOL-124 + GOL-125) all shipped in this single Windows session.
+- **Cook ready to tag** as `v0.0.3-alpha` once the Mac cook lands.
+- **Next:** zip the Win64 stage → push → Mac-side cook (handoff via this worklog) → GitHub Release.
+
 ## 2026-06-02 — GOL-120 — Live round HUD + end-of-round scorecard; alpha-3 demo arc COMPLETE (Windows)
 
 Closes the last gap in the GOL-112 single-player flow. Player now gets continuous in-round feedback + proper round-end recap.

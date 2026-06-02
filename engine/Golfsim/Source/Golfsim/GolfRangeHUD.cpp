@@ -752,6 +752,11 @@ void AGolfRangeHUD::EnsureSettingsMenu()
 	{
 		if (AGolfRangeHUD* HUD = WeakThis.Get()) { HUD->ToggleSettingsMenu(); }
 	};
+	// GOL-125: Main Menu button -- abandon active round + LoadMap PracticeRange + show main menu.
+	SettingsMenu->OnMainMenu = [WeakThis]()
+	{
+		if (AGolfRangeHUD* HUD = WeakThis.Get()) { HUD->ReturnToMainMenu(); }
+	};
 	SettingsMenu->AddToViewport(20);   // above the range panel + manual dialog
 	SettingsMenu->SetVisibility(ESlateVisibility::Collapsed);
 }
@@ -1202,16 +1207,7 @@ void AGolfRangeHUD::EnsureScorecardPanel()
 	TWeakObjectPtr<AGolfRangeHUD> WeakThis(this);
 	Scorecard->OnBackToMenu = [WeakThis]()
 	{
-		AGolfRangeHUD* HUD = WeakThis.Get();
-		if (!HUD) { return; }
-		// Clear scorecard state, drop any lingering subsystem state, then load the range. The new
-		// world's HUD will run EnsureInputBound -> ShowMainMenu via the existing post-load path.
-		HUD->CloseScorecardPanel();
-		if (URoundSubsystem* Sub = URoundSubsystem::Get(HUD))
-		{
-			Sub->AbandonRound();   // defensive: round.complete already deactivated, but Schedule + ids stay until next StartRound
-		}
-		UGameplayStatics::OpenLevel(HUD, FName(TEXT("PracticeRange")));
+		if (AGolfRangeHUD* HUD = WeakThis.Get()) { HUD->ReturnToMainMenu(); }
 	};
 
 	Scorecard->AddToViewport(36);   // above sessions list (32), picker (35), main menu (30)
@@ -1240,6 +1236,20 @@ void AGolfRangeHUD::CloseScorecardPanel()
 	{
 		FSlateApplication::Get().SetAllUserFocusToGameViewport();
 	}
+}
+
+void AGolfRangeHUD::ReturnToMainMenu()
+{
+	// Close any open modal so the next world's HUD doesn't inherit stale state.
+	CloseScorecardPanel();
+	if (bSettingsOpen) { ToggleSettingsMenu(); }
+	ClosePreRoundPicker();
+	// Defensive: round may or may not be active. AbandonRound is a no-op when !bActive.
+	if (URoundSubsystem* Sub = URoundSubsystem::Get(this))
+	{
+		Sub->AbandonRound();
+	}
+	UGameplayStatics::OpenLevel(this, FName(TEXT("PracticeRange")));
 }
 
 #if WITH_EDITOR

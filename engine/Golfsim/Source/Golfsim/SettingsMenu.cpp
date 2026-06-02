@@ -124,6 +124,12 @@ void USettingsMenu::BuildTree()
 	UVerticalBoxSlot* CloseSlot = Col->AddChildToVerticalBox(CloseBtn);
 	CloseSlot->SetPadding(FMargin(0.f, 12.f, 0.f, 0.f));
 
+	// GOL-125: Main Menu -- always visible so the player can exit a round or the range without alt-f4.
+	UButton* MenuBtn = MakeButton(TEXT("Main Menu"));
+	MenuBtn->OnClicked.AddDynamic(this, &USettingsMenu::HandleMainMenuClicked);
+	UVerticalBoxSlot* MenuSlot = Col->AddChildToVerticalBox(MenuBtn);
+	MenuSlot->SetPadding(FMargin(0.f, 6.f, 0.f, 0.f));
+
 	UButton* QuitBtn = MakeButton(TEXT("Quit Game"));
 	QuitBtn->OnClicked.AddDynamic(this, &USettingsMenu::HandleQuitClicked);
 	UVerticalBoxSlot* QuitSlot = Col->AddChildToVerticalBox(QuitBtn);
@@ -243,6 +249,11 @@ void USettingsMenu::HandleApplyClicked()
 void USettingsMenu::HandleCloseClicked()
 {
 	if (OnClose) { OnClose(); }
+}
+
+void USettingsMenu::HandleMainMenuClicked()
+{
+	if (OnMainMenu) { OnMainMenu(); }
 }
 
 void USettingsMenu::HandleQuitClicked()

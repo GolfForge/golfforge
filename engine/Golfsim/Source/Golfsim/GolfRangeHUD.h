@@ -84,6 +84,11 @@ private:
 	void OpenScorecardForState(const TArray<int32>& Pars, const TArray<int32>& Strokes);
 	void CloseScorecardPanel();
 
+	// GOL-125: closes any open modal + abandons the active round + LoadMaps PracticeRange. Used by
+	// the scorecard's Back-to-Menu AND the settings modal's new Main Menu button. The standard
+	// post-load EnsureInputBound -> ShowMainMenu path takes over once the range world is up.
+	void ReturnToMainMenu();
+
 	// Settings/credits menu (GOL-52/GOL-59): Esc/Tab toggles a centered modal; gameplay keys are gated
 	// while it's open. ApplyDisplaySettings runs the chosen values through UGameUserSettings.
 	void EnsureSettingsMenu();

@@ -253,6 +253,11 @@ void URoundTeeUpSubsystem::ApplyBetweenShotTeleport(AGolfBallActor* Ball)
 				const FRotator Aim(0.f, Dir.ToOrientationRotator().Yaw, 0.f);
 				Pawn->SetActorRotation(Aim);
 				PC->SetControlRotation(Aim);
+				// GOL-125: clear the just-flown tracer NOW (pawn repositioned + camera aimed at
+				// pin). Player can swing again any moment; the arc was obstructing the FoV when
+				// the cam rotated back over an overshot ball. Tracer was visible during flight +
+				// the settle period -- that's the player's "did I hit it well?" feedback window.
+				FlushPersistentDebugLines(World);
 				UE_LOG(LogTemp, Display,
 					TEXT("RoundTeeUpSubsystem: ball settled, teleported pawn to (%.0f, %.0f, %.0f), aimed at pin yaw=%.1f"),
 					Target.X, Target.Y, Target.Z, Aim.Yaw);
@@ -261,6 +266,7 @@ void URoundTeeUpSubsystem::ApplyBetweenShotTeleport(AGolfBallActor* Ball)
 		}
 	}
 
+	FlushPersistentDebugLines(World);   // same intent on the degenerate (tee==green) path
 	UE_LOG(LogTemp, Display,
 		TEXT("RoundTeeUpSubsystem: ball settled, teleported pawn to (%.0f, %.0f, %.0f)"),
 		Target.X, Target.Y, Target.Z);

@@ -1,5 +1,6 @@
 #include "Round/RoundState.h"
 
+#include "Game/CoursePaths.h"   // GOL-124: cooked-vs-editor course data path resolver
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
 #include "HAL/FileManager.h"
@@ -32,12 +33,6 @@ namespace GolfsimRound
 			const double X = (Ux * 2.0 - 1.0) * HalfXYCm;
 			const double Y = (Vy * 2.0 - 1.0) * HalfXYCm;
 			return FVector(X, Y, 0.0);
-		}
-
-		FString DeriveRepoRoot()
-		{
-			// engine/Golfsim/Golfsim.uproject -> ../.. == <repo>. Mirrors Physics/CourseSurface.cpp.
-			return FPaths::ConvertRelativePathToFull(FPaths::ProjectDir() / TEXT("..") / TEXT(".."));
 		}
 
 		bool ReadBboxFromHeightmapJson(const FString& JsonText,
@@ -221,7 +216,12 @@ namespace GolfsimRound
 	bool LoadHoleSchedule(const FString& CourseId, TArray<FHoleSpec>& Out, FString& OutErr)
 	{
 		Out.Reset();
-		const FString CourseDir = DeriveRepoRoot() / TEXT("courses") / CourseId;
+		const FString CourseDir = GolfsimPaths::ResolveCourseDataDir(CourseId);
+		if (CourseDir.IsEmpty())
+		{
+			OutErr = FString::Printf(TEXT("no courses/%s data dir found in any candidate base (editor / cooked)"), *CourseId);
+			return false;
+		}
 		const FString HeightmapPath = CourseDir / TEXT("heightmap.json");
 		const FString HolePath      = CourseDir / TEXT("hole.geojson");
 

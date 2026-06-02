@@ -1,5 +1,6 @@
 #include "Physics/CourseSurface.h"
 
+#include "Game/CoursePaths.h"   // GOL-124: cooked-vs-editor course data path resolver
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
 #include "IImageWrapperModule.h"
@@ -25,12 +26,6 @@ namespace
 		{ TEXT("layer_cart_path.png"), EGolfLie::CartPath },
 		{ TEXT("layer_trees.png"),   EGolfLie::Rough    },   // trees collapse to Rough at classify time
 	};
-
-	FString DeriveRepoRoot()
-	{
-		// Project dir is <repo>/engine/Golfsim/. Two parents up == <repo>.
-		return FPaths::ConvertRelativePathToFull(FPaths::ProjectDir() / TEXT("..") / TEXT(".."));
-	}
 
 	bool DecodeGrayscalePng(const TArray<uint8>& Compressed, int32 ExpectedSize, TArray<uint8>& OutGray, FString& OutErr)
 	{
@@ -69,7 +64,12 @@ bool FCourseSurfaceSampler::Load(const FString& CourseId)
 	SizePx = 0;
 	Layers.Reset();
 
-	const FString CourseDir = DeriveRepoRoot() / TEXT("courses") / CourseId;
+	const FString CourseDir = GolfsimPaths::ResolveCourseDataDir(CourseId);
+	if (CourseDir.IsEmpty())
+	{
+		UE_LOG(LogTemp, Warning, TEXT("CourseSurface: no courses/%s data dir found in any candidate base"), *CourseId);
+		return false;
+	}
 
 	// splatmap.json: pull size_px (and bbox, informationally).
 	const FString JsonPath = CourseDir / TEXT("splatmap.json");

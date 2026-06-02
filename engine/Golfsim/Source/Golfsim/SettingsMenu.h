@@ -31,12 +31,14 @@ public:
 	// Set by the owning HUD.
 	TFunction<void(const FGolfDisplaySettings&)> OnApplyDisplay;
 	TFunction<void()> OnClose;
+	TFunction<void()> OnMainMenu;   // GOL-125: exit to main menu (loads PracticeRange + abandons round)
 
 protected:
 	virtual void NativeOnInitialized() override;
 
 	UFUNCTION() void HandleApplyClicked();
 	UFUNCTION() void HandleCloseClicked();
+	UFUNCTION() void HandleMainMenuClicked();
 	UFUNCTION() void HandleQuitClicked();
 	UFUNCTION() void HandleDisplayNavClicked();
 	UFUNCTION() void HandleCreditsNavClicked();

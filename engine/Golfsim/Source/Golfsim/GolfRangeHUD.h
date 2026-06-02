@@ -21,6 +21,7 @@ class UMainMenu;
 class UShotHistoryPanel;
 class UPreviousSessionsList;
 class UPreRoundPicker;
+class UScorecardPanel;
 class UCheatSheetPanel;
 class USwingMeterWidget;
 class AGolfBallActor;
@@ -76,6 +77,12 @@ private:
 	// chosen course + difficulty + name via TFunction wired in EnsureMainMenu.
 	void EnsurePreRoundPicker();
 	void ClosePreRoundPicker();
+
+	// GOL-120 end-of-round scorecard. Auto-opens when round.complete fires; "Back to Menu" loads
+	// PracticeRange + shows main menu via the standard EnsureInputBound -> ShowMainMenu path.
+	void EnsureScorecardPanel();
+	void OpenScorecardForState(const TArray<int32>& Pars, const TArray<int32>& Strokes);
+	void CloseScorecardPanel();
 
 	// Settings/credits menu (GOL-52/GOL-59): Esc/Tab toggles a centered modal; gameplay keys are gated
 	// while it's open. ApplyDisplaySettings runs the chosen values through UGameUserSettings.
@@ -154,7 +161,7 @@ private:
 	// Gameplay keys (club select, fire, aim) are dead while any modal is up (settings / main menu /
 	// shot-history table / previous-sessions list / cheat sheet). The manual-shot dialog has its
 	// own visibility flip but does not gate Q/E/Space.
-	bool InputGated() const { return bSettingsOpen || bMenuOpen || bHistoryOpen || bSessionsListOpen || bCheatOpen || bPreRoundOpen; }
+	bool InputGated() const { return bSettingsOpen || bMenuOpen || bHistoryOpen || bSessionsListOpen || bCheatOpen || bPreRoundOpen || bScorecardOpen; }
 
 	// Follow camera: the "Camera" dropdown picks Tee (0, fixed pawn view) or Follow (1, chase cam).
 	// SetCameraMode switches the view target; UpdateFollowCam (from Tick) chases the active ball and
@@ -194,6 +201,7 @@ private:
 	// world-context at teardown can return null, which would leave the dead subscriber in the bus.
 	TWeakObjectPtr<UEventBusSubsystem> EventBusWeak;
 	FGolfEventSubscription OutcomeSub;   // shot.outcome subscription; released in EndPlay
+	FGolfEventSubscription RoundCompleteSub;   // GOL-120: round.complete -> open scorecard
 
 	bool bManualOpen = false;            // is the manual-shot dialog showing (auto-fire panel hidden)
 	bool bSettingsOpen = false;          // is the settings/credits modal showing (gameplay keys gated)
@@ -202,6 +210,7 @@ private:
 	bool bHistoryFromList = false;       // GOL-65: opened from the previous-sessions list -> close returns to list
 	bool bSessionsListOpen = false;      // GOL-65: previous-sessions list overlaying the main menu
 	bool bPreRoundOpen = false;          // GOL-121: pre-round picker overlaying the main menu
+	bool bScorecardOpen = false;         // GOL-120: end-of-round scorecard modal
 	bool bCheatOpen = false;             // Tab cheat sheet showing
 
 	// Carry counts up during flight. On shot.outcome the static metrics + final carry/offline are
@@ -243,6 +252,7 @@ private:
 	UPROPERTY(Transient) TObjectPtr<UShotHistoryPanel> HistoryPanel;          // GOL-65
 	UPROPERTY(Transient) TObjectPtr<UPreviousSessionsList> SessionsList;      // GOL-65
 	UPROPERTY(Transient) TObjectPtr<UPreRoundPicker> PreRoundPicker;          // GOL-121
+	UPROPERTY(Transient) TObjectPtr<UScorecardPanel> Scorecard;               // GOL-120
 	UPROPERTY(Transient) TObjectPtr<UCheatSheetPanel> CheatSheet;
 	UPROPERTY(Transient) TObjectPtr<USwingMeterWidget> SwingMeter;            // GOL-67 (Game mode only)
 	EInputMode CurrentInputMode = EInputMode::Game;                           // default Game (renamed to avoid shadowing FInputModeGameAndUI local)

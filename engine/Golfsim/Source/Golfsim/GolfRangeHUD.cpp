@@ -8,6 +8,8 @@
 #include "ShotHistoryPanel.h"
 #include "PreviousSessionsList.h"
 #include "PreRoundPicker.h"                 // GOL-121: pre-round picker over main menu
+#include "ScorecardPanel.h"                 // GOL-120: end-of-round scorecard modal
+#include "Kismet/GameplayStatics.h"        // OpenLevel for the scorecard's Back-to-Menu
 #include "CheatSheetPanel.h"
 #include "SwingMeterWidget.h"   // GOL-67
 #include "Events/EventBusSubsystem.h"      // publish shot.taken / subscribe shot.outcome (GOL-7)
@@ -123,9 +125,11 @@ void AGolfRangeHUD::EndPlay(const EEndPlayReason::Type EndPlayReason)
 	if (UEventBusSubsystem* EBus = EventBusWeak.Get())
 	{
 		EBus->Unsubscribe(OutcomeSub);   // weak-captured anyway, but don't leave a dead entry
+		EBus->Unsubscribe(RoundCompleteSub);   // GOL-120
 		EBus->SurfaceProvider = nullptr; // the subsystem outlives this HUD; drop the lie source (GOL-9)
 	}
 	OutcomeSub = FGolfEventSubscription{};
+	RoundCompleteSub = FGolfEventSubscription{};
 	EventBusWeak = nullptr;
 	Super::EndPlay(EndPlayReason);
 }
@@ -350,6 +354,23 @@ void AGolfRangeHUD::EnsureInputBound()
 				[WeakThis](const FGolfEvent& Event)
 				{
 					if (AGolfRangeHUD* HUD = WeakThis.Get()) { HUD->OnShotOutcome(Event); }
+				});
+			// GOL-120: round.complete -> auto-open the scorecard. Reads par from URoundSubsystem
+			// state (Schedule survives until next StartRound). Event itself carries PerHoleStrokes.
+			RoundCompleteSub = EBus->Subscribe(EEventKind::RoundComplete,
+				[WeakThis](const FGolfEvent& Event)
+				{
+					AGolfRangeHUD* HUD = WeakThis.Get();
+					if (!HUD || Event.Kind != EEventKind::RoundComplete) { return; }
+					const FRoundCompleteEvent& RC = static_cast<const FRoundCompleteEvent&>(Event);
+					TArray<int32> Pars;
+					if (const URoundSubsystem* Sub = URoundSubsystem::Get(HUD))
+					{
+						const GolfsimRound::FRoundState& S = Sub->GetState();
+						Pars.Reserve(S.Schedule.Num());
+						for (const GolfsimRound::FHoleSpec& H : S.Schedule) { Pars.Add(H.Par); }
+					}
+					HUD->OpenScorecardForState(Pars, RC.PerHoleStrokes);
 				});
 			EventBusWeak = EBus;   // cache for a reliable Unsubscribe in EndPlay
 
@@ -1170,6 +1191,57 @@ void AGolfRangeHUD::ClosePreRoundPicker()
 	}
 }
 
+void AGolfRangeHUD::EnsureScorecardPanel()
+{
+	if (Scorecard) { return; }
+	APlayerController* PC = GetOwningPlayerController();
+	if (!PC) { return; }
+	Scorecard = CreateWidget<UScorecardPanel>(PC, UScorecardPanel::StaticClass());
+	if (!Scorecard) { return; }
+
+	TWeakObjectPtr<AGolfRangeHUD> WeakThis(this);
+	Scorecard->OnBackToMenu = [WeakThis]()
+	{
+		AGolfRangeHUD* HUD = WeakThis.Get();
+		if (!HUD) { return; }
+		// Clear scorecard state, drop any lingering subsystem state, then load the range. The new
+		// world's HUD will run EnsureInputBound -> ShowMainMenu via the existing post-load path.
+		HUD->CloseScorecardPanel();
+		if (URoundSubsystem* Sub = URoundSubsystem::Get(HUD))
+		{
+			Sub->AbandonRound();   // defensive: round.complete already deactivated, but Schedule + ids stay until next StartRound
+		}
+		UGameplayStatics::OpenLevel(HUD, FName(TEXT("PracticeRange")));
+	};
+
+	Scorecard->AddToViewport(36);   // above sessions list (32), picker (35), main menu (30)
+	Scorecard->SetVisibility(ESlateVisibility::Collapsed);
+}
+
+void AGolfRangeHUD::OpenScorecardForState(const TArray<int32>& Pars, const TArray<int32>& Strokes)
+{
+	EnsureScorecardPanel();
+	if (!Scorecard) { return; }
+	Scorecard->SetScorecard(GolfDisplay::ReadPlayerName(), Pars, Strokes);
+	bScorecardOpen = true;
+	Scorecard->SetVisibility(ESlateVisibility::Visible);
+	int32 TotalStrokes = 0;
+	for (int32 S : Strokes) { TotalStrokes += S; }
+	UE_LOG(LogTemp, Display, TEXT("AGolfRangeHUD: scorecard opened (%d holes, %d total strokes)"),
+		Strokes.Num(), TotalStrokes);
+}
+
+void AGolfRangeHUD::CloseScorecardPanel()
+{
+	if (!Scorecard || !bScorecardOpen) { return; }
+	bScorecardOpen = false;
+	Scorecard->SetVisibility(ESlateVisibility::Collapsed);
+	if (FSlateApplication::IsInitialized())
+	{
+		FSlateApplication::Get().SetAllUserFocusToGameViewport();
+	}
+}
+
 #if WITH_EDITOR
 void AGolfRangeHUD::ToggleMainMenuDev()
 {
@@ -1258,6 +1330,18 @@ void AGolfRangeHUD::SetSwingDifficulty(EGolfDifficulty D)
 void AGolfRangeHUD::OnSpaceForCurrentMode()
 {
 	if (InputGated()) { return; }
+	// GOL-120: no turbo-firing -- block Space while a ball is mid-flight. Without this you can
+	// rapid-fire the swing meter and the visualizer's previous trajectory gets cut short by the
+	// next shot's PlayTrajectory. Also implicitly waits for URoundTeeUpSubsystem's between-shot
+	// teleport (which fires on settle) so the next swing actually launches from the new rest spot.
+	if (UWorld* World = GetWorld())
+	{
+		for (TActorIterator<AGolfBallActor> It(World); It; ++It)
+		{
+			if (It->IsPlaying()) { return; }
+			break;   // one ball
+		}
+	}
 	if (CurrentInputMode == EInputMode::Simulation)
 	{
 		FireRandom();
@@ -1727,6 +1811,64 @@ void AGolfRangeHUD::DrawHUD()
 		{
 			const FString Hint(TEXT("Tab: Key bindings"));
 			DrawText(Hint, FLinearColor(0.85f, 0.78f, 0.30f), 20.0f, (float)Canvas->SizeY - 30.0f);
+		}
+
+		// GOL-120: live round HUD top-left under the res readout. Hidden when no round is active
+		// (range play) or when a modal is up.
+		if (!InputGated())
+		{
+			const URoundSubsystem* Round = URoundSubsystem::Get(this);
+			if (Round && Round->IsActive())
+			{
+				const GolfsimRound::FRoundState& S = Round->GetState();
+				if (S.Schedule.IsValidIndex(S.HoleIndex))
+				{
+					const GolfsimRound::FHoleSpec& Hole = S.Schedule[S.HoleIndex];
+
+					// Total = strokes already in PerHoleStrokes + current StrokesThisHole.
+					int32 PriorTotal = 0;
+					int32 PriorPar = 0;
+					for (int32 i = 0; i < S.PerHoleStrokes.Num(); ++i)
+					{
+						PriorTotal += S.PerHoleStrokes[i];
+						if (S.Schedule.IsValidIndex(i)) { PriorPar += S.Schedule[i].Par; }
+					}
+					const int32 RunningTotal = PriorTotal + S.StrokesThisHole;
+					// vs par considers holes completed + current par for the active hole's at-par target.
+					const int32 RunningParTarget = PriorPar + Hole.Par;
+					const int32 VsParRunning = RunningTotal - PriorPar;   // strokes - completed-hole par
+					(void)RunningParTarget;
+
+					// Distance from pawn (= next launch point post-teleport) to pin XY, in yards.
+					FString DistText(TEXT("--"));
+					if (APlayerController* PC = GetOwningPlayerController())
+					{
+						if (APawn* Pawn = PC->GetPawn())
+						{
+							const FVector P = Pawn->GetActorLocation();
+							const FVector2D Delta(Hole.PinWorldLoc.X - P.X, Hole.PinWorldLoc.Y - P.Y);
+							const double Yards = Delta.Size() / CmPerYd;   // file-scope constant
+							DistText = FString::Printf(TEXT("%.0f yd"), Yards);
+						}
+					}
+
+					const FLinearColor LiveColor(0.95f, 0.95f, 0.95f);
+					const float X = 20.f;
+					float Y = 50.f;
+					DrawText(FString::Printf(TEXT("Hole %d  -  par %d  -  hcp %d"),
+						Hole.Ref, Hole.Par, Hole.Handicap), LiveColor, X, Y); Y += 22.f;
+					DrawText(FString::Printf(TEXT("Strokes this hole: %d"),
+						S.StrokesThisHole), LiveColor, X, Y); Y += 22.f;
+					const FString VsParStr = (VsParRunning > 0)
+						? FString::Printf(TEXT("+%d"), VsParRunning)
+						: (VsParRunning == 0 ? FString(TEXT("E"))
+						                     : FString::Printf(TEXT("%d"), VsParRunning));
+					DrawText(FString::Printf(TEXT("Total: %d  (%s)"),
+						RunningTotal, *VsParStr), LiveColor, X, Y); Y += 22.f;
+					DrawText(FString::Printf(TEXT("Distance to pin: %s"), *DistText),
+						LiveColor, X, Y);
+				}
+			}
 		}
 	}
 }

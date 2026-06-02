@@ -2,6 +2,24 @@
 
 > Dated milestone summaries, newest on top. The durable outcome + the committed artifact, not the blow-by-blow — process detail lives in git history, `docs/ue5-cookbook.md`, and the scripts themselves.
 
+## 2026-06-02 — GOL-120 — Live round HUD + end-of-round scorecard; alpha-3 demo arc COMPLETE (Windows)
+
+Closes the last gap in the GOL-112 single-player flow. Player now gets continuous in-round feedback + proper round-end recap.
+
+- **Live HUD top-left** in `AGolfRangeHUD::DrawHUD` — 4 `DrawText` lines (existing pattern, no new widget): `Hole N - par X - hcp Y`, `Strokes this hole: M`, `Total: T (vs par)`, `Distance to pin: D yd`. Gated on `URoundSubsystem::Get(this)->IsActive() && !InputGated()` — hidden during range play and while modals are up. Distance: pawn XY → pin XY in yards. Pawn is canonical "next launch point" post-GOL-118 between-shot teleport, so pawn→pin is what the player wants to read. Running vs-par computed from completed-hole pars + strokes vs. current per-hole pars.
+- **End-of-round scorecard** — new `ScorecardPanel.{h,cpp}` (`UScorecardPanel : UUserWidget`, same `BuildTree` + `TFunction` callback idiom as `UPreRoundPicker` / `UPreviousSessionsList`). Centered modal, header "Round complete -- <PlayerName>", 18-row table (Hole / Par / Strokes / +/-) with colored vs-par cell (green under par, white at par, yellow bogey, red double+), Total footer row, "Back to Menu" button.
+- **Wiring** — `AGolfRangeHUD` subscribes to `EEventKind::RoundComplete` alongside the existing `ShotOutcome` subscription (new `RoundCompleteSub` field, released in `EndPlay`). Handler reads `PerHoleStrokes` from the event payload + per-hole `Par` from the still-populated `URoundSubsystem::GetState().Schedule` (event doesn't carry par; state survives until next StartRound), calls `OpenScorecardForState(Pars, Strokes)`. Scorecard mounted at Z 36 (above picker 35, sessions list 32, main menu 30). `bScorecardOpen` joins `InputGated()`.
+- **Back-to-Menu lambda** — `URoundSubsystem::AbandonRound()` (defensive Schedule clear since round.complete only flipped `bActive`), `CloseScorecardPanel()`, `UGameplayStatics::OpenLevel(this, "PracticeRange")`. The new world's HUD runs `EnsureInputBound` → `ShowMainMenu` via the existing post-load path. Symmetric with how the picker auto-loads the course; the round entry + exit are both OpenLevel-driven.
+- **Bug fix bundled in: "no turbo-fire"** — `OnSpaceForCurrentMode` now early-returns if any `AGolfBallActor::IsPlaying()` in the world. Without this, rapid Space presses started a new shot mid-flight + the visualizer's previous trajectory was cut short by the new `PlayTrajectory` reset. The check also implicitly waits for `URoundTeeUpSubsystem`'s between-shot teleport (which fires when `IsPlaying()` flips to false), so the next swing actually launches from the new rest position.
+- **Build clean 22 s; 60/60 automation tests pass.** No new tests — pure UWidget + DrawHUD + a single-line input gate; logic-side state-machine coverage from GOL-116's `Golfsim.Round.*` carries through.
+- **PIE end-to-end verified by user**: live HUD updates per shot, distance shrinks as you approach the pin, scorecard auto-shows on hole 18 hole-out with correct totals + colored cells, Back to Menu loads the range cleanly + main menu greets normally. No turbo-fire on Space.
+
+**GOL-112 epic now has 0 open children. Alpha-3 single-player demo arc COMPLETE.** End-to-end UI flow:
+
+> Launch app → main menu → Play Course → pick course + difficulty + name → Start → auto-load → land on Black 1's tee facing the green → swing meter (auto-driver) → tracer arc → walk-up teleport with aim-at-pin → on-green auto-putter → gimme ring → auto-hole-out → next hole with reset club + tracer flush + preserved camera + live HUD updates → after 18 holes, scorecard modal → Back to Menu loads the range.
+
+**Today's GOL-112 shipping list (8 children + 1 polish, in one session):** GOL-115 events / GOL-116 URoundSubsystem / GOL-117 pin + course load / GOL-118 tee-up + ball-rest teleport / GOL-119 auto hole-out / GOL-120 live HUD + scorecard / GOL-121 Play Course button + picker / GOL-122 difficulty profiles / GOL-123 round-flow UX polish.
+
 ## 2026-06-02 — GOL-121 — Play Course button + pre-round picker (user-facing round entry) (Windows)
 
 Closes the demo-to-non-devs gap. Before today, starting a round required `golfsim.Round.Start ...` from the console; now it's main menu → Play Course → pick → swing, cold-launch.

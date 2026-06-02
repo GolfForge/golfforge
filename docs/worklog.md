@@ -2,6 +2,27 @@
 
 > Dated milestone summaries, newest on top. The durable outcome + the committed artifact, not the blow-by-blow — process detail lives in git history, `docs/ue5-cookbook.md`, and the scripts themselves.
 
+## 2026-06-02 — GOL-123 — Round-flow UX polish: 8 fixes that make the round feel like a real game (Windows)
+
+Filed mid-playthrough after surfacing UX gaps in GOL-115-119's PIE verification. Started as 2 fixes (aim-at-pin + auto-putter), grew to 8 as more issues surfaced. No new automation tests; all UWorld glue + Slate focus.
+
+1. **Aim at pin after between-shot teleport.** `URoundTeeUpSubsystem::ApplyBetweenShotTeleport` now computes `(PinWorldLoc - BallLoc).ToOrientationRotator().Yaw` (XY-projected) and sets pawn + control rotation. Overshoot the green → camera flips back toward the pin for the next swing.
+2. **Auto-putter on green.** `OnShotOutcome` checks `FinalLie == "green"` (case-insensitive); calls new public `AGolfRangeHUD::SelectPutterIfAvailable()` which walks the bag for the "Putter" entry and switches via `ApplyClubSelection` (no-op if already putter, bypasses the InputGated check). Player can still Q/E off.
+3. **Auto-driver on hole.start.** New `AGolfRangeHUD::SelectDriverIfNeeded()` resets to bag index 0 on every tee-up. Without this, you'd tee off the next hole with the putter from the previous hole-out.
+4. **HUD metrics readout in sync with club switch.** `ApplyClubSelection` now also calls new `UGolfRangePanel::SetMetricClubName()` so the "Club: X" row updates instantly on Q/E + every auto-swap (previously only the dropdown updated until a shot fired).
+5. **Ball teleports to the new tee on hole.start.** `TActorIterator<AGolfBallActor>` find + `SetActorLocation` at `(TeeXY, TeeZ + BallRestHeightUU)`. The ball was visibly orphaned on the previous green until the next swing's `GetOrSpawnBallAt` re-parented it. Ball move happens BEFORE the camera refresh so the follow cam re-frames around the new ball position.
+6. **Camera preference preserved across hole transitions.** First cut hard-reset to Tee on every hole.start (fixed "follow cam stays parked on previous green" but introduced "user picked Follow, why am I in Tee now"). User pushback → renamed `ResetCameraToTee` → `RefreshActiveCamera` which just re-invokes `SetCameraMode(bFollowCam ? 1 : 0)`. Follow stays Follow + re-frames the now-moved ball; Tee stays Tee.
+7. **Persistent tracer flush per hole.** `FlushPersistentDebugLines(World)` in `OnHoleStart` wipes the yellow Toptracer-style arcs accumulated on the previous hole. Within-hole stacking still works (each shot adds to the visible arc); only the inter-hole transition clears.
+8. **Dropdown focus release.** New `AGolfRangeHUD::ReturnFocusToGame()` calls `FSlateApplication::Get().SetAllUserFocusToGameViewport()`. Wired into every panel `OnXChosen` lambda — Club, Camera, Mode, LM, Time, Sky, Pin spinner, Putt-mode checkbox. Fixes "Space doesn't fire after using a dropdown" — `FInputModeGameAndUI` was leaving Slate focus on the combo, swallowing key input.
+
+**Bonus: gimme ring visualization.** `AGolfPinActor` gained a `GimmeRingMesh` (Plane mesh, M_GolfGreen masked material, cream tint at `GimmeRingLiftUU=4 cm` above the green disc). `SetGimmeRadiusFt(double)` scales it; `URoundPinSubsystem::OnHoleStart` calls it with `FSwingDifficultyProfile::For(State.Difficulty).GimmeRadiusFt`. Range pin gets 0 (hidden). The gimme zone is now visible on the green from the tee.
+
+**Refactor along the way.** `AGolfRangeHUD::SelectClub` split into the gated public entry + new private `ApplyClubSelection` so context-driven swaps (auto-putter/driver) bypass `InputGated()` and still update the panel.
+
+**PIE end-to-end verified** by user across all 8 fixes + gimme ring. Build clean 4.5 s; **59/59 tests pass.**
+
+**GOL-112 epic now has 2 open children:** GOL-120 (scorecard), GOL-121 (Play Course button + pre-round picker). The single-player loop now feels like a real game; only the user-facing entry (GOL-121) is left to make it demoable to a non-dev. Recommend GOL-121 next, then GOL-120 closes the alpha-3 demo arc.
+
 ## 2026-06-02 — GOL-119 — Auto hole-out detection (ball-at-rest within gimme radius) (Windows)
 
 Closes the last gameplay gap: the single-player round plays itself, no console `Round.HoleOut` needed.

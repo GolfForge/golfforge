@@ -27,8 +27,13 @@ public:
 	// Resize the green (m); flagpole + flag are unaffected.
 	void SetGreenDiameterMeters(double DiameterM);
 
+	// GOL-123: scale the gimme-ring overlay to a radius in FEET (matches FSwingDifficultyProfile).
+	// Pass 0 (or negative) to hide the ring (e.g. range pin -- no gimme to visualize).
+	void SetGimmeRadiusFt(double RadiusFt);
+
 private:
 	UPROPERTY(VisibleAnywhere, Category = "Golfsim") TObjectPtr<UStaticMeshComponent> DiscMesh;
 	UPROPERTY(VisibleAnywhere, Category = "Golfsim") TObjectPtr<UStaticMeshComponent> PoleMesh;
 	UPROPERTY(VisibleAnywhere, Category = "Golfsim") TObjectPtr<UStaticMeshComponent> FlagMesh;
+	UPROPERTY(VisibleAnywhere, Category = "Golfsim") TObjectPtr<UStaticMeshComponent> GimmeRingMesh;   // GOL-123
 };

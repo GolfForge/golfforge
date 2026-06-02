@@ -8,7 +8,9 @@
 #include "GameFramework/Pawn.h"
 #include "GameFramework/PlayerController.h"
 #include "Components/CapsuleComponent.h"
+#include "DrawDebugHelpers.h"   // FlushPersistentDebugLines (GOL-123: clear shot tracers per hole)
 #include "GolfBallActor.h"
+#include "GolfRangeHUD.h"   // GOL-123: SelectPutterIfAvailable when ball lies on green
 #include "Round/RoundSubsystem.h"
 
 namespace
@@ -98,6 +100,15 @@ void URoundTeeUpSubsystem::OnHoleStart(const FGolfEvent& Event)
 	if (Event.Kind != EEventKind::HoleStart) { return; }
 	const FHoleStartEvent& HS = static_cast<const FHoleStartEvent&>(Event);
 
+	// GOL-123: clear the previous hole's accumulated debug-arc tracers. They're persistent +
+	// infinite-lifetime (Toptracer-style on the range), but on the course they pile up across
+	// holes and clutter the new hole's view. Flush once per hole.start; tracers within the same
+	// hole still accumulate as expected.
+	if (UWorld* World = GetWorld())
+	{
+		FlushPersistentDebugLines(World);
+	}
+
 	PendingTeeLoc = HS.TeeWorldLoc;
 	// XY-only facing direction: green - tee, Z zeroed so the camera doesn't pitch toward the green's
 	// elevation (would feel like looking at the ground or into the sky depending on relative height).
@@ -137,6 +148,20 @@ void URoundTeeUpSubsystem::OnShotOutcome(const FGolfEvent& Event)
 	UWorld* World = GetWorld();
 	if (!World) { return; }
 
+	// GOL-123: auto-pick the putter when the ball lies on the green. Player can still Q/E off it.
+	const FShotOutcomeEvent& Outcome = static_cast<const FShotOutcomeEvent&>(Event);
+	if (Outcome.FinalLie.Equals(TEXT("green"), ESearchCase::IgnoreCase))
+	{
+		APlayerController* PC = World->GetFirstPlayerController();
+		if (AGolfRangeHUD* HUD = PC ? Cast<AGolfRangeHUD>(PC->GetHUD()) : nullptr)
+		{
+			if (HUD->SelectPutterIfAvailable())
+			{
+				UE_LOG(LogTemp, Display, TEXT("RoundTeeUpSubsystem: ball on green -- auto-selected Putter"));
+			}
+		}
+	}
+
 	// There's typically one AGolfBallActor in PIE -- the range HUD or console fire reuses it.
 	for (TActorIterator<AGolfBallActor> It(World); It; ++It)
 	{
@@ -168,6 +193,28 @@ bool URoundTeeUpSubsystem::TryApplyTeeUp()
 	Pawn->SetActorRotation(ClampedRot);
 	PC->SetControlRotation(ClampedRot);
 
+	// GOL-123: move the ball to the new tee FIRST. Without this it stays visibly on the previous
+	// green until the next swing's GetOrSpawnBallAt repositions it -- and the player sees a dead
+	// ball far away instead of teed up at their feet. Ball move precedes the camera refresh so
+	// follow-cam framing picks up the new position.
+	const FVector BallLoc(PendingTeeLoc.X, PendingTeeLoc.Y, PendingTeeLoc.Z + AGolfBallActor::BallRestHeightUU);
+	for (TActorIterator<AGolfBallActor> It(World); It; ++It)
+	{
+		if (!It->IsPlaying())
+		{
+			It->SetActorLocationAndRotation(BallLoc, ClampedRot);
+		}
+		break;   // one ball
+	}
+
+	// GOL-123: refresh active camera (preserves Tee vs Follow preference) + reset to driver. The
+	// follow cam re-frames around the ball at the new tee since we moved the ball above.
+	if (AGolfRangeHUD* HUD = Cast<AGolfRangeHUD>(PC->GetHUD()))
+	{
+		HUD->RefreshActiveCamera();
+		HUD->SelectDriverIfNeeded();
+	}
+
 	UE_LOG(LogTemp, Display,
 		TEXT("RoundTeeUpSubsystem: teleported pawn to tee (%.0f, %.0f, %.0f) yaw=%.1f"),
 		Target.X, Target.Y, Target.Z, ClampedRot.Yaw);
@@ -188,9 +235,31 @@ void URoundTeeUpSubsystem::ApplyBetweenShotTeleport(AGolfBallActor* Ball)
 	// pawn's half-height so the capsule sits on the same turf the ball is resting on.
 	const float GroundZ = BallLoc.Z - AGolfBallActor::BallRestHeightUU;
 	const FVector Target(BallLoc.X, BallLoc.Y, GroundZ + HalfHeight);
-	// Preserve current yaw -- the player was facing the green at tee-up; keep that aim. Future
-	// polish (auto-aim toward the pin) lives in a sibling ticket.
 	Pawn->SetActorLocation(Target, /*bSweep=*/false, /*OutSweepHitResult=*/nullptr, ETeleportType::TeleportPhysics);
+
+	// GOL-123: aim the pawn at the active hole's pin after every teleport. Without this, an
+	// overshoot leaves the player facing away from the green on the next swing.
+	const URoundSubsystem* Round = URoundSubsystem::Get(this);
+	if (Round && Round->IsActive())
+	{
+		const GolfsimRound::FRoundState& State = Round->GetState();
+		if (State.Schedule.IsValidIndex(State.HoleIndex))
+		{
+			const FVector PinLoc = State.Schedule[State.HoleIndex].PinWorldLoc;
+			FVector Dir = PinLoc - Target;
+			Dir.Z = 0.0;
+			if (!Dir.IsNearlyZero())
+			{
+				const FRotator Aim(0.f, Dir.ToOrientationRotator().Yaw, 0.f);
+				Pawn->SetActorRotation(Aim);
+				PC->SetControlRotation(Aim);
+				UE_LOG(LogTemp, Display,
+					TEXT("RoundTeeUpSubsystem: ball settled, teleported pawn to (%.0f, %.0f, %.0f), aimed at pin yaw=%.1f"),
+					Target.X, Target.Y, Target.Z, Aim.Yaw);
+				return;
+			}
+		}
+	}
 
 	UE_LOG(LogTemp, Display,
 		TEXT("RoundTeeUpSubsystem: ball settled, teleported pawn to (%.0f, %.0f, %.0f)"),

@@ -245,6 +245,7 @@ void AGolfRangeHUD::EnsureInputBound()
 				if (AGolfRangeHUD* HUD = WeakThis.Get())
 				{
 					HUD->SelectClub(Idx);
+					HUD->ReturnFocusToGame();   // GOL-123: don't let the combo swallow Space
 				}
 			};
 			// Feed the dropdown from the bag so the names can't drift from the firing presets.
@@ -265,7 +266,11 @@ void AGolfRangeHUD::EnsureInputBound()
 			Panel->SetSelectedCameraIndex(0);
 			Panel->OnCameraChosen = [WeakThis](int32 Idx)
 			{
-				if (AGolfRangeHUD* HUD = WeakThis.Get()) { HUD->SetCameraMode(Idx); }
+				if (AGolfRangeHUD* HUD = WeakThis.Get())
+				{
+					HUD->SetCameraMode(Idx);
+					HUD->ReturnFocusToGame();
+				}
 			};
 
 			// GOL-67: Mode dropdown. Default = Game (lower barrier; no LM hardware required). The
@@ -278,6 +283,7 @@ void AGolfRangeHUD::EnsureInputBound()
 				if (AGolfRangeHUD* HUD = WeakThis.Get())
 				{
 					HUD->SetInputMode(Idx == 0 ? EInputMode::Game : EInputMode::Simulation);
+					HUD->ReturnFocusToGame();
 				}
 			};
 
@@ -288,11 +294,19 @@ void AGolfRangeHUD::EnsureInputBound()
 			CurrentPinYd = 150.0;
 			Panel->OnPinChanged = [WeakThis](double Y)
 			{
-				if (AGolfRangeHUD* HUD = WeakThis.Get()) { HUD->ApplyPinDistance(Y); }
+				if (AGolfRangeHUD* HUD = WeakThis.Get())
+				{
+					HUD->ApplyPinDistance(Y);
+					HUD->ReturnFocusToGame();
+				}
 			};
 			Panel->OnPuttModeChanged = [WeakThis](bool b)
 			{
-				if (AGolfRangeHUD* HUD = WeakThis.Get()) { HUD->SetPuttMode(b); }
+				if (AGolfRangeHUD* HUD = WeakThis.Get())
+				{
+					HUD->SetPuttMode(b);
+					HUD->ReturnFocusToGame();
+				}
 			};
 			Panel->SetPinValue(CurrentPinYd);
 			ApplyPinDistance(CurrentPinYd);
@@ -305,13 +319,15 @@ void AGolfRangeHUD::EnsureInputBound()
 				if (AGolfRangeEnvironment* Env = GetOrSpawnRangeEnv(World))
 				{
 					TWeakObjectPtr<AGolfRangeEnvironment> WeakEnv(Env);
-					Panel->OnTimeChosen = [WeakEnv](int32 Idx)
+					Panel->OnTimeChosen = [WeakEnv, WeakThis](int32 Idx)
 					{
 						if (AGolfRangeEnvironment* E = WeakEnv.Get()) { E->SetTime(Idx); }
+						if (AGolfRangeHUD* HUD = WeakThis.Get()) { HUD->ReturnFocusToGame(); }
 					};
-					Panel->OnSkyChosen = [WeakEnv](int32 Idx)
+					Panel->OnSkyChosen = [WeakEnv, WeakThis](int32 Idx)
 					{
 						if (AGolfRangeEnvironment* E = WeakEnv.Get()) { E->SetSky(Idx); }
+						if (AGolfRangeHUD* HUD = WeakThis.Get()) { HUD->ReturnFocusToGame(); }
 					};
 					Panel->SetTimeOptions(Env->GetTimePresetNames());
 					Panel->SetSkyOptions(Env->GetSkyPresetNames());
@@ -406,17 +422,20 @@ void AGolfRangeHUD::EnsureInputBound()
 						AGolfRangeHUD* HUD = WeakThis.Get();
 						if (!HUD) { return; }
 						ULaunchMonitorManager* Mgr = ULaunchMonitorManager::Get(HUD);
-						if (!Mgr) { return; }
+						if (!Mgr) { HUD->ReturnFocusToGame(); return; }
 						if (Idx <= 0)
 						{
 							Mgr->DisconnectActive();   // "Off"
-							return;
 						}
-						const TArray<FLaunchMonitorDriverInfo> Avail = Mgr->GetAvailableDrivers();
-						if (Avail.IsValidIndex(Idx - 1))
+						else
 						{
-							Mgr->SetActiveDriver(Avail[Idx - 1].Id, /*bConnectNow=*/true);
+							const TArray<FLaunchMonitorDriverInfo> Avail = Mgr->GetAvailableDrivers();
+							if (Avail.IsValidIndex(Idx - 1))
+							{
+								Mgr->SetActiveDriver(Avail[Idx - 1].Id, /*bConnectNow=*/true);
+							}
 						}
+						HUD->ReturnFocusToGame();
 					};
 
 					// "Simulate Shot" button (shown by the panel only while connected) -> ask the active
@@ -496,11 +515,17 @@ void AGolfRangeHUD::NextClub()
 void AGolfRangeHUD::SelectClub(int32 Index)
 {
 	if (InputGated()) { return; }
+	ApplyClubSelection(Index);
+}
+
+void AGolfRangeHUD::ApplyClubSelection(int32 Index)
+{
 	ActiveClub = FMath::Clamp(Index, 0, GBagNum - 1);
 	UE_LOG(LogTemp, Display, TEXT("golfsim range: club -> %s"), GBag[ActiveClub].Name);
 	if (Panel)
 	{
 		Panel->SetSelectedClubIndex(ActiveClub);   // keep the dropdown in step with 1-6 keys (guarded)
+		Panel->SetMetricClubName(GBag[ActiveClub].Name);   // GOL-123: also refresh the "Club: X" readout
 	}
 	// Push our selection to the connected launch monitor so it uses our club (OpenFlight set_club ->
 	// mock distributions / hardware estimates). Harmless no-op when nothing is connected.
@@ -511,6 +536,50 @@ void AGolfRangeHUD::SelectClub(int32 Index)
 			D->SetSelectedClub(GBag[ActiveClub].Name);
 		}
 	}
+}
+
+void AGolfRangeHUD::RefreshActiveCamera()
+{
+	// Re-invoke the current mode -- SetCameraMode handles SetViewTargetWithBlend either to the
+	// pawn (Tee) or to a re-framed follow-cam around the active ball (Follow). Dropdown stays
+	// in sync since the active index doesn't change.
+	SetCameraMode(bFollowCam ? 1 : 0);
+}
+
+void AGolfRangeHUD::ReturnFocusToGame()
+{
+	if (FSlateApplication::IsInitialized())
+	{
+		FSlateApplication::Get().SetAllUserFocusToGameViewport();
+	}
+}
+
+bool AGolfRangeHUD::SelectDriverIfNeeded()
+{
+	// Driver is bag index 0 by convention; ApplyClubSelection clamps if the bag is ever empty.
+	if (ActiveClub == 0) { return false; }
+	ApplyClubSelection(0);
+	return true;
+}
+
+bool AGolfRangeHUD::SelectPutterIfAvailable()
+{
+	// Walk the bag for the "Putter" entry. The bag is small (14 clubs); a linear scan is fine.
+	int32 PutterIdx = INDEX_NONE;
+	for (int32 i = 0; i < GBagNum; ++i)
+	{
+		if (FCString::Stricmp(GBag[i].Name, TEXT("Putter")) == 0)
+		{
+			PutterIdx = i;
+			break;
+		}
+	}
+	if (PutterIdx == INDEX_NONE) { return false; }
+	if (ActiveClub == PutterIdx) { return false; }   // already on putter; no-op
+	// Bypass the input gate -- this fires from a shot-outcome subscriber, not user input. Modals
+	// being open shouldn't stop a context-driven club swap.
+	ApplyClubSelection(PutterIdx);
+	return true;
 }
 
 void AGolfRangeHUD::FireRandom()

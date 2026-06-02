@@ -20,6 +20,10 @@ namespace
 	// Lift the green plane a couple of cm so it doesn't z-fight with the splatmap-painted turf on
 	// the range's landscape. Pole + flag offsets compose on top of this.
 	constexpr float GreenLiftUU = 2.f;
+	// GOL-123: gimme ring sits just above the green plane. Same Z-fighting concern; bigger lift
+	// since both planes are flat at near-identical heights.
+	constexpr float GimmeRingLiftUU = 4.f;
+	constexpr float CmPerFt = 30.48f;
 
 	UMaterialInstanceDynamic* MakeColorMID(UMaterialInterface* Source, UObject* Outer, const FLinearColor& Color)
 	{
@@ -58,6 +62,15 @@ AGolfPinActor::AGolfPinActor()
 	FlagMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	FlagMesh->SetMobility(EComponentMobility::Movable);
 
+	// GOL-123 gimme ring: same Plane mesh + M_GolfGreen material idiom as the green disc, just
+	// a different colour. Hidden by default (SetGimmeRadiusFt(0) on construction); the round
+	// subsystem reveals + sizes it after the player picks a difficulty.
+	GimmeRingMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("GimmeRingMesh"));
+	GimmeRingMesh->SetupAttachment(Root);
+	GimmeRingMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	GimmeRingMesh->SetMobility(EComponentMobility::Movable);
+	GimmeRingMesh->SetVisibility(false);
+
 	static ConstructorHelpers::FObjectFinder<UStaticMesh> CylinderMesh(TEXT("/Engine/BasicShapes/Cylinder.Cylinder"));
 	static ConstructorHelpers::FObjectFinder<UStaticMesh> PlaneMesh(TEXT("/Engine/BasicShapes/Plane.Plane"));
 	static ConstructorHelpers::FObjectFinder<UMaterialInterface> BasicMat(TEXT("/Engine/BasicShapes/BasicShapeMaterial.BasicShapeMaterial"));
@@ -70,6 +83,7 @@ AGolfPinActor::AGolfPinActor()
 	{
 		DiscMesh->SetStaticMesh(PlaneMesh.Object);   // flat ground decal -- no thickness, no side wall
 		FlagMesh->SetStaticMesh(PlaneMesh.Object);
+		GimmeRingMesh->SetStaticMesh(PlaneMesh.Object);
 	}
 	if (CylinderMesh.Succeeded())
 	{
@@ -111,6 +125,15 @@ AGolfPinActor::AGolfPinActor()
 			FlagMesh->SetMaterial(0, RedMID);
 		}
 	}
+
+	// Gimme ring: same M_GolfGreen masked disc, white tint so it reads as a halo against the
+	// green. Square placeholder via BasicMat for fresh clones (same fallback as DiscMesh).
+	UMaterialInterface* GimmeSrc = GolfGreenMat.Succeeded() ? GolfGreenMat.Object
+	                              : (BasicMat.Succeeded() ? BasicMat.Object : nullptr);
+	if (UMaterialInstanceDynamic* GimmeMID = MakeColorMID(GimmeSrc, this, FLinearColor(0.98f, 0.95f, 0.40f)))
+	{
+		GimmeRingMesh->SetMaterial(0, GimmeMID);
+	}
 }
 
 void AGolfPinActor::SetGreenDiameterMeters(double DiameterM)
@@ -118,4 +141,20 @@ void AGolfPinActor::SetGreenDiameterMeters(double DiameterM)
 	if (!DiscMesh) { return; }
 	const float XY = static_cast<float>(FMath::Max(DiameterM, 0.5) * 100.0 / PlaneSizeUU);
 	DiscMesh->SetRelativeScale3D(FVector(XY, XY, 1.f));
+}
+
+void AGolfPinActor::SetGimmeRadiusFt(double RadiusFt)
+{
+	if (!GimmeRingMesh) { return; }
+	if (RadiusFt <= 0.0)
+	{
+		GimmeRingMesh->SetVisibility(false);
+		return;
+	}
+	// Plane mesh is 100 cm in its local XY; scale = diameter in cm / 100. Diameter = 2 * radius.
+	const float DiameterCm = static_cast<float>(2.0 * RadiusFt * CmPerFt);
+	const float XY = DiameterCm / PlaneSizeUU;
+	GimmeRingMesh->SetRelativeScale3D(FVector(XY, XY, 1.f));
+	GimmeRingMesh->SetRelativeLocation(FVector(0.f, 0.f, GimmeRingLiftUU));
+	GimmeRingMesh->SetVisibility(true);
 }

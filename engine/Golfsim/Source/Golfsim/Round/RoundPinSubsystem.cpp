@@ -4,7 +4,9 @@
 #include "Engine/GameInstance.h"
 #include "EngineUtils.h"   // TActorIterator
 #include "Events/EventTypes.h"
+#include "Input/KeyboardSwingComponent.h"   // FSwingDifficultyProfile::For (GOL-123 gimme ring)
 #include "Range/GolfPinActor.h"
+#include "Round/RoundSubsystem.h"           // active difficulty lookup
 
 void URoundPinSubsystem::OnWorldBeginPlay(UWorld& InWorld)
 {
@@ -75,6 +77,22 @@ void URoundPinSubsystem::OnHoleStart(const FGolfEvent& Event)
 		Pin->SetActorLocationAndRotation(HS.PinWorldLoc, FRotator::ZeroRotator);
 		UE_LOG(LogTemp, Display, TEXT("RoundPinSubsystem: moved pin to hole %d at (%.0f, %.0f, %.0f)"),
 			HS.HoleRef, HS.PinWorldLoc.X, HS.PinWorldLoc.Y, HS.PinWorldLoc.Z);
+	}
+
+	// GOL-123: size the gimme ring to the active difficulty's radius. Hidden when no round is
+	// active (range pin) since SetGimmeRadiusFt(0) collapses it.
+	if (Pin)
+	{
+		double GimmeFt = 0.0;
+		if (const URoundSubsystem* Round = URoundSubsystem::Get(this))
+		{
+			if (Round->IsActive())
+			{
+				const auto Profile = GolfsimKeyboardSwing::FSwingDifficultyProfile::For(Round->GetState().Difficulty);
+				GimmeFt = Profile.GimmeRadiusFt;
+			}
+		}
+		Pin->SetGimmeRadiusFt(GimmeFt);
 	}
 }
 

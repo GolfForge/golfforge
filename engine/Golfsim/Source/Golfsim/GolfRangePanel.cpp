@@ -231,6 +231,11 @@ void UGolfRangePanel::SetComboIndexGuarded(UComboBoxString* Combo, int32 Index)
 }
 
 void UGolfRangePanel::SetSelectedClubIndex(int32 Index) { SetComboIndexGuarded(ClubCombo, Index); }
+
+void UGolfRangePanel::SetMetricClubName(const FString& Club)
+{
+	if (ValClub) { ValClub->SetText(FText::FromString(Club)); }
+}
 void UGolfRangePanel::SetSelectedTimeIndex(int32 Index) { SetComboIndexGuarded(TimeCombo, Index); }
 void UGolfRangePanel::SetSelectedSkyIndex(int32 Index)  { SetComboIndexGuarded(SkyCombo, Index); }
 void UGolfRangePanel::SetSelectedCameraIndex(int32 Index) { SetComboIndexGuarded(CameraCombo, Index); }

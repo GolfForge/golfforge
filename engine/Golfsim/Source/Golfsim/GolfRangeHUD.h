@@ -42,6 +42,10 @@ public:
 private:
 	void EnsureInputBound();
 	void SelectClub(int32 Index);
+	// GOL-123: ungated club switch used by SelectPutterIfAvailable + SelectClub. The public
+	// SelectClub honors InputGated(); this path doesn't, so context-driven swaps land even when
+	// a modal is open.
+	void ApplyClubSelection(int32 Index);
 	void FireRandom();
 	// GOL-67: Space dispatcher. In Sim mode -> FireRandom (or no-op if an LM owns the stream).
 	// In Game mode -> advance the swing state machine (Idle -> Power -> Accuracy -> publish).
@@ -87,6 +91,26 @@ public:
 	// this to (a) skip the Tick respawn of its own pin, (b) early-return from ApplyPinDistance so
 	// the spinner / console SetPin can't fight the URoundPinSubsystem-owned pin.
 	bool RoundIsActive() const;
+
+	// GOL-123: round flow calls this when the ball lies on the green. Finds the bag's "Putter"
+	// entry and selects it; no-op if already on putter or if the bag has no Putter. Returns true
+	// if the active club changed.
+	bool SelectPutterIfAvailable();
+
+	// GOL-123: round flow calls this on every hole.start so the player tees off with the driver
+	// regardless of the club they finished the previous hole with. No-op if already on driver.
+	bool SelectDriverIfNeeded();
+
+	// GOL-123: re-anchor the active camera mode after a hole-transition teleport. Preserves the
+	// player's Tee-vs-Follow preference; just re-runs SetCameraMode(current) so the follow cam
+	// re-frames around the (now-moved) ball at the new tee instead of staying parked on the
+	// previous green.
+	void RefreshActiveCamera();
+
+	// GOL-123: pull keyboard focus off whatever Slate widget grabbed it (typically a panel dropdown
+	// after a selection). Without this, FInputModeGameAndUI leaves focus on the combo and Space /
+	// Q / E get swallowed by the widget instead of firing shots or cycling clubs.
+	void ReturnFocusToGame();
 
 	// GOL-65: shot-history table for the live session (H key entry point).
 	void ToggleHistoryPanel();

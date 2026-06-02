@@ -55,6 +55,10 @@ public:
 	void SetSelectedLaunchMonitorIndex(int32 Index);
 	void SetSelectedCameraIndex(int32 Index);
 
+	// GOL-123: refresh just the metrics readout's club name (called by ApplyClubSelection so the
+	// "Club: X" row stays in sync with the dropdown when an auto-swap fires before a shot lands).
+	void SetMetricClubName(const FString& Club);
+
 	// Range pin distance (GOL-29). SetPinValue updates the spinner (re-entrancy guarded so a console
 	// or HUD push doesn't re-broadcast OnPinChanged); SetPinActualReadout shows the resolved
 	// post-clamp distance next to the spinner. SetPuttMode flips the "Putt from green" checkbox.

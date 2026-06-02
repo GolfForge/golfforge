@@ -3,8 +3,7 @@
 Open-source, cross-platform golf simulator with AI-assisted course building, walking/treadmill
 integration, and a clean BLE-based hardware story for launch monitors.
 
-> **Status:** early, pre-1.0, and moving fast. The practice range runs and a real launch monitor
-> ([OpenFlight](https://github.com/jewbetcha/openflight)) can drive it; full courses are being brought up. Expect rough edges.
+> **Status:** early, pre-1.0, and moving fast. As of v0.0.3-alpha you can play a full **18-hole single-player round on a real LIDAR-cooked course with just a keyboard** — no launch monitor required. The practice range still runs, OpenFlight drives it, and OpenStreetMap + USGS feed the course pipeline. Expect rough edges.
 >
 > _The repository is still named `golfsim` while the rename to GolfForge is in progress._
 
@@ -23,7 +22,14 @@ attack:
 
 ## Try it
 
-Pre-built packages are attached to the latest [GitHub Release](https://github.com/GolfForge/golfforge/releases). Range only for v1 — drives a launch monitor, swings, lands. Course play is on the way (see [Coming soon](#coming-soon) below).
+Pre-built packages are attached to the latest [GitHub Release](https://github.com/GolfForge/golfforge/releases). v0.0.3-alpha ships with two playable surfaces:
+
+- **Single-player round** — main menu → **Play Course** → pick course + difficulty + name → land on hole 1's tee → swing through 18 holes on a real LIDAR-cooked course. No launch monitor needed; the built-in keyboard swing meter handles it.
+- **Practice range** — fixed-distance pin, full 14-club bag, launch-monitor support via [OpenFlight](https://github.com/jewbetcha/openflight) (Doppler radar) or manual-shot dialog for hardware-free testing.
+
+![Main menu → Play Course → pre-round picker](docs/screenshots/v0.0.3-picker.png)
+![On the course: live HUD, gimme ring, tracer arc](docs/screenshots/v0.0.3-on-course.png)
+![End-of-round scorecard](docs/screenshots/v0.0.3-scorecard.png)
 
 ### Windows
 
@@ -47,7 +53,9 @@ Not yet packaged. Build from source — instructions TBD.
 
 ### What you need to actually play
 
-GolfForge can run standalone with the built-in manual-shot dialog and a keyboard-fallback swing input (in progress). For the real experience you also need either:
+**Nothing.** The keyboard swing meter (Virtua-Tennis-style power → accuracy bars, Space to time each phase) drives both the course round and range Game mode. Three difficulty profiles (Easy / Normal / Pro) tune the timing window.
+
+Optional, for the simulator-grade experience:
 
 - A **launch monitor** that speaks our driver protocol. Today: [OpenFlight](https://github.com/jewbetcha/openflight) (DIY, ~$800 in parts, Doppler radar). More to follow.
 - A **treadmill** broadcasting Bluetooth FTMS, for the walking tier — coming soon.
@@ -56,9 +64,10 @@ GolfForge can run standalone with the built-in manual-shot dialog and a keyboard
 
 In rough priority order:
 
-- **Playable round.** Tap-to-advance hole play, scorecard, local multiplayer.
-- **Course-quality polish on the demo course.** Bunker geometry (raised lip + depression), fairway mowing patterns (stripes / criss-cross / diagonal), tee/fairway coverage fixes on the first real-world course.
 - **Practice modes.** Closest-to-the-pin with configurable distance range; TopGolf-style islands practice map; putting drills.
+- **Local multiplayer.** Stroke play with 2–4 humans on the same machine; future online peer-to-peer.
+- **More real-world courses.** The first cooked course (GolfForge Demo Black) is one shipped track; the pipeline can produce others — add yours via the [course pipeline](pipeline/README.md).
+- **Course-quality polish.** Bunker geometry (raised lip + depression), fairway mowing patterns (stripes / criss-cross / diagonal), course-side lighting bake.
 - **Walking integration.** Bluetooth FTMS treadmill driver (build-it-yourself ESP32 reference design or any FTMS-compliant treadmill); compressed walk mode; eventual incline-matching from hole elevation profiles.
 - **More launch monitors.** Square Omni driver alongside OpenFlight; other consumer LMs as the community brings them.
 - **Mac/iPadOS GPU acceleration.** MetalFX upscaling for Apple Silicon (currently TSR-only).

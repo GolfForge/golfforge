@@ -8,6 +8,7 @@
 #include "ShotHistoryPanel.h"
 #include "PreviousSessionsList.h"
 #include "CheatSheetPanel.h"
+#include "SwingMeterWidget.h"   // GOL-67
 #include "Events/EventBusSubsystem.h"      // publish shot.taken / subscribe shot.outcome (GOL-7)
 #include "Drivers/LaunchMonitorManager.h"  // active-driver status -> panel dot (GOL-11)
 #include "Drivers/LaunchMonitorDriver.h"
@@ -142,6 +143,17 @@ void AGolfRangeHUD::Tick(float DeltaSeconds)
 		ApplyPinDistance(CurrentPinYd);
 	}
 
+	// GOL-67: drive the swing-meter bars while in Game mode and a swing is in progress.
+	// Idle state is a no-op (bars hold their last values, which we zeroed on each shot resolution).
+	if (CurrentInputMode == EInputMode::Game && SwingState.State != GolfsimKeyboardSwing::EState::Idle)
+	{
+		GolfsimKeyboardSwing::Tick(SwingState, SwingConfig, DeltaSeconds);
+		if (SwingMeter)
+		{
+			SwingMeter->SetMeters(SwingState.Power, SwingState.Accuracy);
+		}
+	}
+
 	// Count the Carry readout up while the ball is in the air, then snap to the exact final once it
 	// lands (or if the trajectory was invalid, the first tick just sets the final immediately).
 	if (bCarryAnimating && Panel)
@@ -251,6 +263,19 @@ void AGolfRangeHUD::EnsureInputBound()
 			Panel->OnCameraChosen = [WeakThis](int32 Idx)
 			{
 				if (AGolfRangeHUD* HUD = WeakThis.Get()) { HUD->SetCameraMode(Idx); }
+			};
+
+			// GOL-67: Mode dropdown. Default = Game (lower barrier; no LM hardware required). The
+			// HUD's SetInputMode flips the swing-meter visibility AND hides the LM dropdown so a
+			// keyboard player isn't shown launch-monitor options that aren't relevant.
+			Panel->SetModeOptions({ TEXT("Game"), TEXT("Simulation") });
+			Panel->SetSelectedModeIndex((int32)CurrentInputMode);
+			Panel->OnModeChosen = [WeakThis](int32 Idx)
+			{
+				if (AGolfRangeHUD* HUD = WeakThis.Get())
+				{
+					HUD->SetInputMode(Idx == 0 ? EInputMode::Game : EInputMode::Simulation);
+				}
 			};
 
 			// Pin distance (GOL-29). Always start at 150 yd; persistence caused more confusion than
@@ -412,6 +437,11 @@ void AGolfRangeHUD::EnsureInputBound()
 						Panel->SetConnectionStatus(true, FString::Printf(TEXT("%s: connected"),
 							*Active->GetDisplayName().ToString()));
 					}
+
+					// GOL-67: apply the initial Mode visibility (default = Game -> hide LM controls,
+					// mount the swing meter). Must run AFTER the LM combo + Simulate button mount
+					// so the visibility flip lands on populated widgets.
+					SetInputMode(CurrentInputMode);
 				}
 			}
 		}
@@ -422,7 +452,7 @@ void AGolfRangeHUD::EnsureInputBound()
 	}
 	InputComponent->BindKey(EKeys::Q,        IE_Pressed, this, &AGolfRangeHUD::PrevClub);
 	InputComponent->BindKey(EKeys::E,        IE_Pressed, this, &AGolfRangeHUD::NextClub);
-	InputComponent->BindKey(EKeys::SpaceBar, IE_Pressed, this, &AGolfRangeHUD::FireRandom);
+	InputComponent->BindKey(EKeys::SpaceBar, IE_Pressed, this, &AGolfRangeHUD::OnSpaceForCurrentMode);
 	InputComponent->BindKey(EKeys::Left,     IE_Pressed,  this, &AGolfRangeHUD::TurnLeftPressed);
 	InputComponent->BindKey(EKeys::Left,     IE_Released, this, &AGolfRangeHUD::TurnLeftReleased);
 	InputComponent->BindKey(EKeys::Right,    IE_Pressed,  this, &AGolfRangeHUD::TurnRightPressed);
@@ -996,6 +1026,123 @@ void AGolfRangeHUD::ToggleMainMenuDev()
 }
 #endif
 
+// --- GOL-67: Game / Simulation mode + swing meter ----------------------------------------------
+
+namespace
+{
+	// Translate the file-scope FClubPreset row to the swing component's club preset (same fields).
+	// Lives here so the swing component header stays UE-free + testable without dragging GBag in.
+	GolfsimKeyboardSwing::FClubPreset ToSwingClub(const FClubPreset& C)
+	{
+		GolfsimKeyboardSwing::FClubPreset Out;
+		Out.Name = C.Name;
+		Out.NominalSpeedMps = C.SpeedMps;
+		Out.LaunchDeg = C.LaunchDeg;
+		Out.SpinRpm = C.SpinRpm;
+		return Out;
+	}
+}
+
+void AGolfRangeHUD::SetInputMode(EInputMode NewMode)
+{
+	CurrentInputMode = NewMode;
+	const bool bGame = (CurrentInputMode == EInputMode::Game);
+
+	// Mode swap resets any in-flight swing -- otherwise toggling mid-swing would leave the bars
+	// at a dangling locked-power state.
+	SwingState = GolfsimKeyboardSwing::FState{};
+
+	if (Panel)
+	{
+		Panel->SetSelectedModeIndex(bGame ? 0 : 1);   // re-entrancy guarded inside
+		Panel->SetLMControlsVisible(!bGame);
+	}
+
+	if (bGame)
+	{
+		// Lazy-create the swing meter the first time we enter Game mode.
+		if (!SwingMeter)
+		{
+			if (APlayerController* PC = GetOwningPlayerController())
+			{
+				SwingMeter = CreateWidget<USwingMeterWidget>(PC, USwingMeterWidget::StaticClass());
+				if (SwingMeter)
+				{
+					SwingMeter->SetSweetSpot(SwingConfig.SweetSpotLow, SwingConfig.SweetSpotHigh);
+					SwingMeter->AddToViewport(15);   // above the range panel, below modals
+				}
+			}
+		}
+		if (SwingMeter)
+		{
+			SwingMeter->SetMeters(0.0, 0.0);
+			SwingMeter->SetHintText(TEXT("Press Space to start your swing"));
+			SwingMeter->SetVisibility(ESlateVisibility::HitTestInvisible);
+		}
+	}
+	else if (SwingMeter)
+	{
+		SwingMeter->SetVisibility(ESlateVisibility::Collapsed);
+	}
+}
+
+void AGolfRangeHUD::OnSpaceForCurrentMode()
+{
+	if (InputGated()) { return; }
+	if (CurrentInputMode == EInputMode::Simulation)
+	{
+		FireRandom();
+		return;
+	}
+
+	// Game mode: step the swing state machine. The HUD owns the active-club lookup; the namespace
+	// just maps Power% + Accuracy% + club -> shot fields.
+	const FClubPreset& C = GBag[FMath::Clamp(ActiveClub, 0, GBagNum - 1)];
+	const GolfsimKeyboardSwing::FClubPreset SwingClub = ToSwingClub(C);
+	GolfsimKeyboardSwing::FResolution Res;
+	const bool bResolved = GolfsimKeyboardSwing::OnSpace(SwingState, SwingConfig, SwingClub, Res);
+
+	// Update the hint text on every press so the player knows what the next press will do.
+	if (SwingMeter)
+	{
+		switch (SwingState.State)
+		{
+			case GolfsimKeyboardSwing::EState::Power:
+				SwingMeter->SetHintText(TEXT("Press Space to lock POWER"));
+				break;
+			case GolfsimKeyboardSwing::EState::Accuracy:
+				SwingMeter->SetHintText(TEXT("Press Space to lock ACCURACY"));
+				break;
+			default:
+				SwingMeter->SetHintText(TEXT("Press Space to start your swing"));
+				break;
+		}
+	}
+
+	if (!bResolved) { return; }   // press 1 or 2 -- no shot yet
+
+	if (Res.bWhiffed)
+	{
+		// Whiff: no shot, just a log line for now. Sound/visual feedback is a polish follow-up.
+		UE_LOG(LogTemp, Display, TEXT("golfsim Game: WHIFF (power=%.2f, accuracy=%.2f)"),
+			SwingState.Power, SwingState.Accuracy);
+		if (SwingMeter)
+		{
+			SwingMeter->SetMeters(0.0, 0.0);
+			SwingMeter->SetHintText(TEXT("Whiff! Press Space to try again"));
+		}
+		return;
+	}
+
+	UE_LOG(LogTemp, Display,
+		TEXT("golfsim Game: %s power=%.2f accuracy=%.2f -> speed=%.1f m/s az=%.1f side=%.0f rpm"),
+		C.Name, SwingState.Power, SwingState.Accuracy,
+		Res.BallSpeedMps, Res.AzimuthDeg, Res.SidespinRpm);
+
+	PublishShotTaken(Res.BallSpeedMps, Res.LaunchAngleDeg, Res.AzimuthDeg,
+		Res.BackspinRpm, Res.SidespinRpm, FString(C.Name), TEXT("keyboard-swing"));
+}
+
 void AGolfRangeHUD::ToggleCheatSheet()
 {
 	// Don't pop the cheat sheet over a settings modal -- it's a peek, not a stack of modals.
@@ -1398,5 +1545,13 @@ void AGolfRangeHUD::DrawHUD()
 		const FString Res = FString::Printf(TEXT("Res: %d x %d"),
 			(int32)Canvas->SizeX, (int32)Canvas->SizeY);
 		DrawText(Res, FLinearColor(1.0f, 0.92f, 0.35f), 20.0f, 20.0f);
+
+		// GOL-67: persistent bottom-left discoverability hint so first-time users find Tab.
+		// Hidden while a modal is up to keep the panel/menu the only focus surface.
+		if (!InputGated())
+		{
+			const FString Hint(TEXT("Tab: Key bindings"));
+			DrawText(Hint, FLinearColor(0.85f, 0.78f, 0.30f), 20.0f, (float)Canvas->SizeY - 30.0f);
+		}
 	}
 }

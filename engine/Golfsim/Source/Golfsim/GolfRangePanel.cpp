@@ -135,13 +135,15 @@ void UGolfRangePanel::BuildTree()
 	// 5.7 (its ctor defaults WidgetStyle/ItemStyle/Font from the style cache), so no style asset is
 	// needed; we only lighten the row text so names read against the dark dropdown menu (the default
 	// ItemStyle.TextColor is dark; SelectedTextColor stays default so the hovered row reads on its
-	// light highlight). Options are supplied later by the HUD.
-	auto AddLabeledCombo = [&](const TCHAR* Label) -> UComboBoxString*
+	// light highlight). Options are supplied later by the HUD. OutLabel optionally returns the
+	// header text block so callers can hide/show the row at runtime (Mode dropdown gates LM row).
+	auto AddLabeledCombo = [&](const TCHAR* Label, TObjectPtr<UTextBlock>* OutLabel = nullptr) -> UComboBoxString*
 	{
 		UTextBlock* Lbl = WidgetTree->ConstructWidget<UTextBlock>();
 		Lbl->SetText(FText::FromString(Label));
 		UVerticalBoxSlot* LblSlot = Col->AddChildToVerticalBox(Lbl);
 		LblSlot->SetPadding(FMargin(0.f, 6.f, 0.f, 1.f));
+		if (OutLabel) { *OutLabel = Lbl; }
 
 		UComboBoxString* Combo = WidgetTree->ConstructWidget<UComboBoxString>();
 		FTableRowStyle ItemStyle = Combo->GetItemStyle();
@@ -153,13 +155,15 @@ void UGolfRangePanel::BuildTree()
 
 	ClubCombo = AddLabeledCombo(TEXT("Club"));
 	ClubCombo->OnSelectionChanged.AddDynamic(this, &UGolfRangePanel::HandleClubSelectionChanged);
+	ModeCombo = AddLabeledCombo(TEXT("Mode"));   // GOL-67: Game / Simulation
+	ModeCombo->OnSelectionChanged.AddDynamic(this, &UGolfRangePanel::HandleModeSelectionChanged);
 	TimeCombo = AddLabeledCombo(TEXT("Time"));
 	TimeCombo->OnSelectionChanged.AddDynamic(this, &UGolfRangePanel::HandleTimeSelectionChanged);
 	SkyCombo = AddLabeledCombo(TEXT("Sky"));
 	SkyCombo->OnSelectionChanged.AddDynamic(this, &UGolfRangePanel::HandleSkySelectionChanged);
 	CameraCombo = AddLabeledCombo(TEXT("Camera"));
 	CameraCombo->OnSelectionChanged.AddDynamic(this, &UGolfRangePanel::HandleCameraSelectionChanged);
-	LMCombo = AddLabeledCombo(TEXT("Launch Monitor"));
+	LMCombo = AddLabeledCombo(TEXT("Launch Monitor"), &LMLabel);
 	LMCombo->OnSelectionChanged.AddDynamic(this, &UGolfRangePanel::HandleLaunchMonitorSelectionChanged);
 
 	// "Simulate Shot" button -- asks the connected device to emit a shot (OpenFlight mock mode ->
@@ -212,6 +216,7 @@ void UGolfRangePanel::SetTimeOptions(const TArray<FString>& Names) { FillCombo(T
 void UGolfRangePanel::SetSkyOptions(const TArray<FString>& Names)  { FillCombo(SkyCombo, Names); }
 void UGolfRangePanel::SetCameraOptions(const TArray<FString>& Names) { FillCombo(CameraCombo, Names); }
 void UGolfRangePanel::SetLaunchMonitorOptions(const TArray<FString>& Names) { FillCombo(LMCombo, Names); }
+void UGolfRangePanel::SetModeOptions(const TArray<FString>& Names) { FillCombo(ModeCombo, Names); }
 
 void UGolfRangePanel::SetComboIndexGuarded(UComboBoxString* Combo, int32 Index)
 {
@@ -230,6 +235,31 @@ void UGolfRangePanel::SetSelectedTimeIndex(int32 Index) { SetComboIndexGuarded(T
 void UGolfRangePanel::SetSelectedSkyIndex(int32 Index)  { SetComboIndexGuarded(SkyCombo, Index); }
 void UGolfRangePanel::SetSelectedCameraIndex(int32 Index) { SetComboIndexGuarded(CameraCombo, Index); }
 void UGolfRangePanel::SetSelectedLaunchMonitorIndex(int32 Index) { SetComboIndexGuarded(LMCombo, Index); }
+void UGolfRangePanel::SetSelectedModeIndex(int32 Index)
+{
+	// Separate guard from the other combos -- the Mode pick triggers visibility changes on the LM
+	// section, and we don't want a programmatic seed (HUD startup) to fire the HUD callback that
+	// would re-mount or hide widgets a second time.
+	if (!ModeCombo || ModeCombo->GetOptionCount() <= 0) { return; }
+	const int32 Clamped = FMath::Clamp(Index, 0, ModeCombo->GetOptionCount() - 1);
+	bSuppressModeCallback = true;
+	ModeCombo->SetSelectedIndex(Clamped);
+	bSuppressModeCallback = false;
+}
+
+void UGolfRangePanel::SetLMControlsVisible(bool bVisible)
+{
+	const ESlateVisibility V = bVisible ? ESlateVisibility::Visible : ESlateVisibility::Collapsed;
+	if (LMLabel)        { LMLabel->SetVisibility(V); }
+	if (LMCombo)        { LMCombo->SetVisibility(V); }
+	if (SimulateButton)
+	{
+		// Don't override the "shown only while a driver is connected" rule when going visible -- it
+		// stays Collapsed until SetConnectionStatus(true) flips it. When hiding for Game mode,
+		// force collapsed regardless.
+		if (!bVisible) { SimulateButton->SetVisibility(ESlateVisibility::Collapsed); }
+	}
+}
 
 void UGolfRangePanel::HandleClubSelectionChanged(FString, ESelectInfo::Type SelectionType)
 {
@@ -254,6 +284,20 @@ void UGolfRangePanel::HandleLaunchMonitorSelectionChanged(FString, ESelectInfo::
 void UGolfRangePanel::HandleCameraSelectionChanged(FString, ESelectInfo::Type SelectionType)
 {
 	HandleComboPick(CameraCombo, OnCameraChosen, SelectionType);
+}
+
+void UGolfRangePanel::HandleModeSelectionChanged(FString, ESelectInfo::Type SelectionType)
+{
+	if (bSuppressModeCallback || SelectionType == ESelectInfo::Direct || !ModeCombo)
+	{
+		return;
+	}
+	const int32 Idx = ModeCombo->GetSelectedIndex();
+	if (Idx >= 0 && OnModeChosen)
+	{
+		OnModeChosen(Idx);
+	}
+	ReturnFocusToGameViewport();
 }
 
 void UGolfRangePanel::HandleSimulateClicked()

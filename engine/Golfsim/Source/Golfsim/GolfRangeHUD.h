@@ -11,6 +11,7 @@
 #include "GolfRangePanel.h"
 #include "GolfDisplaySettings.h"   // FGolfDisplaySettings (ApplyDisplaySettings param)
 #include "Events/EventBusSubsystem.h"   // FGolfEventSubscription member + EventBus access
+#include "Input/KeyboardSwingComponent.h"   // GOL-67: Game-mode swing state
 #include "GolfRangeHUD.generated.h"
 
 class UManualShotDialog;
@@ -19,6 +20,7 @@ class UMainMenu;
 class UShotHistoryPanel;
 class UPreviousSessionsList;
 class UCheatSheetPanel;
+class USwingMeterWidget;
 class AGolfBallActor;
 class AGolfPinActor;
 class ACameraActor;
@@ -40,6 +42,9 @@ private:
 	void EnsureInputBound();
 	void SelectClub(int32 Index);
 	void FireRandom();
+	// GOL-67: Space dispatcher. In Sim mode -> FireRandom (or no-op if an LM owns the stream).
+	// In Game mode -> advance the swing state machine (Idle -> Power -> Accuracy -> publish).
+	void OnSpaceForCurrentMode();
 
 	// Shared publish half for both fire paths: stamp the launch transform (tee + aim), remember the
 	// input-derived panel metrics, build + publish the shot.taken envelope through the bus.
@@ -83,6 +88,11 @@ public:
 	void OpenPreviousSessionsList();
 	// Tab cheat sheet (dev convenience; replaced when a real keybindings UI lands).
 	void ToggleCheatSheet();
+
+	// GOL-67: Game / Simulation mode. Game routes Space through the swing meter; Simulation
+	// keeps the LM dropdown + the existing random-fire path. Default = Game (lower barrier).
+	enum class EInputMode : uint8 { Game = 0, Simulation = 1 };
+	void SetInputMode(EInputMode NewMode);
 
 #if WITH_EDITOR
 	// Z: re-open the main menu mid-session. Editor / PIE only -- cooked builds don't bind this.
@@ -188,6 +198,10 @@ private:
 	UPROPERTY(Transient) TObjectPtr<UShotHistoryPanel> HistoryPanel;          // GOL-65
 	UPROPERTY(Transient) TObjectPtr<UPreviousSessionsList> SessionsList;      // GOL-65
 	UPROPERTY(Transient) TObjectPtr<UCheatSheetPanel> CheatSheet;
+	UPROPERTY(Transient) TObjectPtr<USwingMeterWidget> SwingMeter;            // GOL-67 (Game mode only)
+	EInputMode CurrentInputMode = EInputMode::Game;                           // default Game (renamed to avoid shadowing FInputModeGameAndUI local)
+	GolfsimKeyboardSwing::FState SwingState;
+	GolfsimKeyboardSwing::FConfig SwingConfig;
 
 	// GOL-29 state. Pin is find-or-spawned (cached weakly so the PIE-spawned actor goes away with
 	// the world). Putt mode caches the tee pawn pose + club so the toggle is reversible.

@@ -445,6 +445,41 @@ namespace
 		UE_LOG(LogTemp, Warning, TEXT("golfsim.Credits: no AGolfRangeHUD in this level"));
 	}
 
+	// golfsim.SetMode game|simulation  -- GOL-67. Flips the panel Mode + swing-meter / LM-dropdown
+	// visibility. Range-only (no AGolfRangeHUD on other levels).
+	void SetModeCmd(const TArray<FString>& Args, UWorld* World)
+	{
+		if (!World) { return; }
+		if (Args.Num() < 1)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("Usage: golfsim.SetMode <game|simulation>"));
+			return;
+		}
+		APlayerController* PC = World->GetFirstPlayerController();
+		AGolfRangeHUD* HUD = PC ? Cast<AGolfRangeHUD>(PC->GetHUD()) : nullptr;
+		if (!HUD)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("golfsim.SetMode: no AGolfRangeHUD (range only)"));
+			return;
+		}
+		const FString& Arg = Args[0];
+		if (Arg.Equals(TEXT("game"), ESearchCase::IgnoreCase))
+		{
+			HUD->SetInputMode(AGolfRangeHUD::EInputMode::Game);
+		}
+		else if (Arg.Equals(TEXT("simulation"), ESearchCase::IgnoreCase) ||
+		         Arg.Equals(TEXT("sim"), ESearchCase::IgnoreCase))
+		{
+			HUD->SetInputMode(AGolfRangeHUD::EInputMode::Simulation);
+		}
+		else
+		{
+			UE_LOG(LogTemp, Warning, TEXT("golfsim.SetMode: unknown mode '%s'  (game|simulation)"), *Arg);
+			return;
+		}
+		UE_LOG(LogTemp, Display, TEXT("golfsim.SetMode: %s"), *Arg);
+	}
+
 	// golfsim.ShotHistory.Show / .Clear  -- GOL-65. Show toggles the in-range table; Clear empties
 	// the in-memory + on-disk current session. Range-only (no AGolfRangeHUD on other levels).
 	void ShotHistoryShowCmd(const TArray<FString>& /*Args*/, UWorld* World)
@@ -563,6 +598,11 @@ static FAutoConsoleCommandWithWorldAndArgs GShotHistoryClearCmd(
 	TEXT("golfsim.ShotHistory.Clear"),
 	TEXT("Empty the in-memory history list AND truncate the current session's JSONL on disk."),
 	FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&ShotHistoryClearCmd));
+
+static FAutoConsoleCommandWithWorldAndArgs GSetModeCmd(
+	TEXT("golfsim.SetMode"),
+	TEXT("Switch range input: golfsim.SetMode <game|simulation>  (game = swing-meter; simulation = LM dropdown)"),
+	FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&SetModeCmd));
 
 static FAutoConsoleCommandWithWorldAndArgs GPublishTestShotCmd(
 	TEXT("golfsim.PublishTestShot"),

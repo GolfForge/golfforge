@@ -62,12 +62,20 @@ public:
 	void SetPinActualReadout(double Yards);
 	void SetPuttMode(bool bChecked);
 
+	// Input mode (GOL-67). Mode dropdown: 0 = Game, 1 = Simulation. Visibility of the LM combo +
+	// Simulate button is gated on Mode == Simulation -- Game mode hides the LM row entirely so a
+	// keyboard player isn't asked about a launch monitor they don't have.
+	void SetModeOptions(const TArray<FString>& Names);
+	void SetSelectedModeIndex(int32 Index);
+	void SetLMControlsVisible(bool bVisible);
+
 	// Set by the owning HUD; each ComboBox pushes the user's pick back through its delegate.
 	TFunction<void(int32)> OnClubChosen;
 	TFunction<void(int32)> OnTimeChosen;
 	TFunction<void(int32)> OnSkyChosen;
 	TFunction<void(int32)> OnLaunchMonitorChosen;
 	TFunction<void(int32)> OnCameraChosen;
+	TFunction<void(int32)> OnModeChosen;        // GOL-67: 0=Game, 1=Simulation
 	TFunction<void(double)> OnPinChanged;       // user dragged/edited the Pin spinner
 	TFunction<void(bool)>   OnPuttModeChanged;  // user toggled "Putt from green"
 
@@ -83,6 +91,7 @@ protected:
 	UFUNCTION() void HandleSkySelectionChanged(FString SelectedItem, ESelectInfo::Type SelectionType);
 	UFUNCTION() void HandleLaunchMonitorSelectionChanged(FString SelectedItem, ESelectInfo::Type SelectionType);
 	UFUNCTION() void HandleCameraSelectionChanged(FString SelectedItem, ESelectInfo::Type SelectionType);
+	UFUNCTION() void HandleModeSelectionChanged(FString SelectedItem, ESelectInfo::Type SelectionType);
 	UFUNCTION() void HandleSimulateClicked();
 	UFUNCTION() void HandlePinValueChanged(float Value);
 	UFUNCTION() void HandlePuttModeChanged(bool bChecked);
@@ -105,6 +114,8 @@ private:
 	UPROPERTY(Transient) TObjectPtr<UComboBoxString> CameraCombo;
 	UPROPERTY(Transient) TObjectPtr<UComboBoxString> LMCombo;
 	UPROPERTY(Transient) TObjectPtr<UButton> SimulateButton;   // shown only while an LM is connected
+	UPROPERTY(Transient) TObjectPtr<UComboBoxString> ModeCombo;            // GOL-67: Game / Simulation
+	UPROPERTY(Transient) TObjectPtr<UTextBlock> LMLabel;                   // "Launch Monitor" header (hidden in Game)
 	UPROPERTY(Transient) TObjectPtr<USpinBox> PinBox;          // pin distance, yards
 	UPROPERTY(Transient) TObjectPtr<UTextBlock> PinActualText; // resolved post-clamp distance next to PinBox
 	UPROPERTY(Transient) TObjectPtr<UCheckBox> PuttModeBox;    // teleports the player onto the green
@@ -122,4 +133,5 @@ private:
 	bool bSuppressSelectionCallback = false;
 	bool bSuppressPinCallback = false;     // same guard for the Pin spinner
 	bool bSuppressPuttCallback = false;    // same guard for the Putt-mode checkbox
+	bool bSuppressModeCallback = false;    // GOL-67: guard for the Mode combobox programmatic set
 };

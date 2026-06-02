@@ -25,15 +25,16 @@ namespace
 
 	// MIRROR of AGolfRangeHUD::EnsureInputBound. Keep in sync; this is dev UI, drift surfaces in PIE.
 	static const FCheatBinding kBindings[] = {
-		{ TEXT("Q"),         TEXT("Previous club") },
-		{ TEXT("E"),         TEXT("Next club") },
-		{ TEXT("Space"),     TEXT("Fire shot") },
+		{ TEXT("Q / E"),     TEXT("Previous / next club") },
+		{ TEXT("Space"),     TEXT("Game mode: 1 power -> 2 accuracy -> 3 fire (whiff < 10% power)") },
+		{ TEXT("Space"),     TEXT("Simulation mode: fire a randomized shot from the bag") },
 		{ TEXT("Arrow keys"),TEXT("Aim left / right") },
 		{ TEXT("M"),         TEXT("Manual-shot dialog") },
 		{ TEXT("H"),         TEXT("Session shot history (current)") },
 		{ TEXT("Tab"),       TEXT("This cheat sheet") },
 		{ TEXT("Esc"),       TEXT("Settings / credits") },
 		{ TEXT("RMB drag"),  TEXT("Orbit follow-cam (Follow mode)") },
+		{ TEXT("Panel: Mode"), TEXT("Game = swing meter (default); Simulation = LM dropdown") },
 #if WITH_EDITOR
 		{ TEXT("Z"),         TEXT("Main menu (PIE only)") },
 #endif

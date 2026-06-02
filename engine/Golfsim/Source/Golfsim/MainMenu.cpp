@@ -1,6 +1,7 @@
 #include "MainMenu.h"
 
 #include "Kismet/KismetSystemLibrary.h"   // QuitGame
+#include "UI/GolfUITheme.h"   // GOL-138 smoke test: shared theme tokens + fonts
 
 #include "Blueprint/WidgetTree.h"
 #include "Components/BackgroundBlur.h"
@@ -62,8 +63,10 @@ void UMainMenu::BuildTree()
 
 	UTextBlock* Title = WidgetTree->ConstructWidget<UTextBlock>();
 	Title->SetText(FText::FromString(TEXT("GolfForge")));
-	{ FSlateFontInfo F = Title->GetFont(); F.Size = 28; Title->SetFont(F); }
-	Title->SetColorAndOpacity(FSlateColor(FLinearColor(1.0f, 0.92f, 0.35f)));
+	// GOL-138 smoke test: drive the title from GolfUITheme. Renders Roboto fallback until the Barlow
+	// Condensed font asset is imported, then this same call picks it up automatically.
+	Title->SetFont(GolfUI::Display(28, FName(TEXT("Bold"))));
+	Title->SetColorAndOpacity(FSlateColor(GolfUI::Color::Text()));
 	Title->SetJustification(ETextJustify::Center);
 	UVerticalBoxSlot* TitleSlot = Col->AddChildToVerticalBox(Title);
 	TitleSlot->SetHorizontalAlignment(HAlign_Center);

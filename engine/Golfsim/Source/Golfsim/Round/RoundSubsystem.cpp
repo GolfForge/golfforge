@@ -6,6 +6,9 @@
 #include "Engine/GameInstance.h"
 #include "Engine/World.h"
 #include "GameFramework/PlayerController.h"
+#include "Kismet/GameplayStatics.h"   // OpenLevel for course-load
+#include "Misc/Paths.h"
+#include "UObject/UObjectGlobals.h"   // FCoreUObjectDelegates
 
 namespace
 {
@@ -26,10 +29,20 @@ void URoundSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 		OutcomeSub = EBus->Subscribe(EEventKind::ShotOutcome,
 			[this](const FGolfEvent& Event) { OnShotOutcome(Event); });
 	}
+
+	// Survive level transitions: when an OpenLevel call (from a deferred StartRound) finishes,
+	// finish the round-start on the new world.
+	PostLoadMapHandle = FCoreUObjectDelegates::PostLoadMapWithWorld.AddUObject(
+		this, &URoundSubsystem::OnPostLoadMap);
 }
 
 void URoundSubsystem::Deinitialize()
 {
+	if (PostLoadMapHandle.IsValid())
+	{
+		FCoreUObjectDelegates::PostLoadMapWithWorld.Remove(PostLoadMapHandle);
+		PostLoadMapHandle.Reset();
+	}
 	if (UEventBusSubsystem* EBus = EventBusWeak.Get())
 	{
 		EBus->Unsubscribe(OutcomeSub);
@@ -37,6 +50,17 @@ void URoundSubsystem::Deinitialize()
 	OutcomeSub = FGolfEventSubscription{};
 	EventBusWeak = nullptr;
 	Super::Deinitialize();
+}
+
+FString URoundSubsystem::LevelNameForCourse(const FString& CourseId)
+{
+	// Mirror of CourseIdByLevelName in Course/CourseSurfaceSubsystem.cpp. Hardcoded for now;
+	// when the second course lands, hoist this table into a shared header (one source of truth).
+	static const TMap<FString, FString> Map = {
+		{ TEXT("golfforge-demo-black"), TEXT("GolfForgeDemoBlack") },
+	};
+	if (const FString* Found = Map.Find(CourseId)) { return *Found; }
+	return FString();
 }
 
 URoundSubsystem* URoundSubsystem::Get(const UObject* WorldContext)
@@ -54,6 +78,36 @@ URoundSubsystem* URoundSubsystem::Get(const UObject* WorldContext)
 
 void URoundSubsystem::StartRound(const FString& CourseId, EGolfDifficulty Difficulty)
 {
+	// If the caller is on a different level than the course's map, defer + OpenLevel. The actual
+	// StartRound logic runs again from OnPostLoadMap once the new world is up. Without this,
+	// hole.start would publish XY coordinates that only resolve on the course's landscape -- the
+	// pin would land at world Z=0 on the wrong map (effectively invisible).
+	const FString TargetLevel = LevelNameForCourse(CourseId);
+	UWorld* World = GetGameInstance() ? GetGameInstance()->GetWorld() : nullptr;
+	if (World && !TargetLevel.IsEmpty())
+	{
+		const FString CurrentLevel = FPaths::GetBaseFilename(World->GetMapName());
+		// PIE wraps maps as `UEDPIE_<n>_<MapName>`; Contains() sidesteps the prefix.
+		if (!CurrentLevel.Contains(TargetLevel))
+		{
+			UE_LOG(LogTemp, Display,
+				TEXT("URoundSubsystem::StartRound: current map '%s' != target '%s'; loading target..."),
+				*CurrentLevel, *TargetLevel);
+			bPendingStart = true;
+			PendingCourseId = CourseId;
+			PendingDifficulty = Difficulty;
+			UGameplayStatics::OpenLevel(World, FName(*TargetLevel));
+			return;
+		}
+	}
+	else if (TargetLevel.IsEmpty())
+	{
+		UE_LOG(LogTemp, Warning,
+			TEXT("URoundSubsystem::StartRound: no level mapping for course '%s' (add to LevelNameForCourse)"),
+			*CourseId);
+		// Continue anyway -- caller might be running on the correct map already.
+	}
+
 	TArray<GolfsimRound::FHoleSpec> Schedule;
 	FString Err;
 	if (!GolfsimRound::LoadHoleSchedule(CourseId, Schedule, Err))
@@ -71,6 +125,25 @@ void URoundSubsystem::StartRound(const FString& CourseId, EGolfDifficulty Diffic
 		*CourseId, (int32)Difficulty, *State.RoundId, State.Schedule.Num());
 
 	ApplyStep(Step);
+}
+
+void URoundSubsystem::OnPostLoadMap(UWorld* LoadedWorld)
+{
+	if (!bPendingStart || !LoadedWorld) { return; }
+	// Verify the loaded world is the one we asked for; ignore unrelated transitions.
+	const FString MapName = FPaths::GetBaseFilename(LoadedWorld->GetMapName());
+	const FString Target = LevelNameForCourse(PendingCourseId);
+	if (Target.IsEmpty() || !MapName.Contains(Target))
+	{
+		return;
+	}
+	bPendingStart = false;
+	const FString CourseId = PendingCourseId;
+	const EGolfDifficulty Difficulty = PendingDifficulty;
+	PendingCourseId.Empty();
+	UE_LOG(LogTemp, Display,
+		TEXT("URoundSubsystem::OnPostLoadMap: target map '%s' loaded; resuming StartRound"), *MapName);
+	StartRound(CourseId, Difficulty);
 }
 
 void URoundSubsystem::OnHoleHoled()

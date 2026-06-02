@@ -31,8 +31,16 @@ public:
 	static URoundSubsystem* Get(const UObject* WorldContext);
 
 	/** Load hole.geojson, fill state, publish round.start + first hole.start. Logs + bails on load
-	 *  failure (no events fired). Best-effort applies the difficulty to the range HUD if present. */
+	 *  failure (no events fired). Best-effort applies the difficulty to the range HUD if present.
+	 *  If the current world's map doesn't match the course's level (e.g. caller is on the practice
+	 *  range), stashes a pending-start and OpenLevels to the course; the actual StartRound runs
+	 *  after PostLoadMapWithWorld fires on the new world. Course -> level mapping is hard-coded
+	 *  (golfforge-demo-black -> GolfForgeDemoBlack); add entries as new courses land. */
 	void StartRound(const FString& CourseId, EGolfDifficulty Difficulty);
+
+	/** Course-id -> UE5 level name (mirror of CourseIdByLevelName in CourseSurfaceSubsystem.cpp).
+	 *  Empty if the course has no level mapping yet -- caller should error out. */
+	static FString LevelNameForCourse(const FString& CourseId);
 
 	/** Manual hole-out trigger. GOL-119's auto-detector replaces the console caller; the API stays. */
 	void OnHoleHoled();
@@ -58,7 +66,18 @@ private:
 	/** Best-effort: forward Difficulty to AGolfRangeHUD::SetSwingDifficulty if a HUD exists. */
 	void ApplyDifficultyToHUDIfPresent(EGolfDifficulty D);
 
+	/** Handler bound to FCoreUObjectDelegates::PostLoadMapWithWorld in Initialize. Drives the
+	 *  deferred StartRound when an OpenLevel was needed to reach the course's map. */
+	void OnPostLoadMap(UWorld* LoadedWorld);
+
 	GolfsimRound::FRoundState State;
 	TWeakObjectPtr<UEventBusSubsystem> EventBusWeak;
 	FGolfEventSubscription OutcomeSub;
+
+	// Pending-start state: set by StartRound when an OpenLevel is required; consumed by
+	// OnPostLoadMap once the target map is loaded and the new world is ready.
+	bool bPendingStart = false;
+	FString PendingCourseId;
+	EGolfDifficulty PendingDifficulty = EGolfDifficulty::Easy;
+	FDelegateHandle PostLoadMapHandle;
 };

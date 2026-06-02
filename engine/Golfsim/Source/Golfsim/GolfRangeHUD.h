@@ -83,6 +83,11 @@ public:
 	void ApplyPinDistance(double Yards);
 	void SetPuttMode(bool bEnabled);
 
+	// GOL-117: true while URoundSubsystem reports an active single-player round. Range HUD uses
+	// this to (a) skip the Tick respawn of its own pin, (b) early-return from ApplyPinDistance so
+	// the spinner / console SetPin can't fight the URoundPinSubsystem-owned pin.
+	bool RoundIsActive() const;
+
 	// GOL-65: shot-history table for the live session (H key entry point).
 	void ToggleHistoryPanel();
 	// Main-menu entry: open the previous-sessions list over the menu. Selecting one opens the table.

@@ -2,6 +2,26 @@
 
 > Dated milestone summaries, newest on top. The durable outcome + the committed artifact, not the blow-by-blow — process detail lives in git history, `docs/ue5-cookbook.md`, and the scripts themselves.
 
+## 2026-06-02 — GOL-117 — Per-hole pin placement on the course; auto-load course level on round start (Windows)
+
+First visible child of GOL-112. With this in, `golfsim.Round.Start golfforge-demo-black easy` from PIE on any level auto-loads the course map and spawns a flag + disc at each hole's green as the round progresses.
+
+- **`Round/RoundPinSubsystem.{h,cpp}` — UWorldSubsystem.** Mirrors `UCourseSurfaceSubsystem`'s shape: per-world lifetime, subscribes in `OnWorldBeginPlay`, tears down in `Deinitialize`. Listens to three round events:
+  - `RoundStart` → `DestroyAllPins()` walks the level with `TActorIterator<AGolfPinActor>` and destroys every existing pin. Covers the range HUD's pin (when starting from the range) AND a leaked pin from any prior abandoned round.
+  - `HoleStart` → find-or-spawn the managed pin at `Event.PinWorldLoc`. `URoundSubsystem::SnapToGround` already ran on the XY, so the Z in the event is already on the landscape — no extra trace.
+  - `RoundComplete` → destroy the managed pin. The range HUD's Tick retry respawns the range pin on the next frame at the spinner's current value.
+- **Reuses `AGolfPinActor`** (from GOL-29) verbatim. Same disc + flagpole visual; the green/pin styling work from GOL-29 carries over.
+- **Range HUD co-existence guards.** New `AGolfRangeHUD::RoundIsActive()` queries `URoundSubsystem::Get(this)->IsActive()`. Threaded into two places:
+  - The Tick pin-respawn retry at `GolfRangeHUD.cpp:141` — skips while a round is active so the HUD doesn't fight the URoundPinSubsystem-owned pin.
+  - `ApplyPinDistance` — early-returns with a Display log if called while a round is active, so console `golfsim.SetPin` / panel spinner can't move the round pin.
+- **Auto-load course level (PIE-testing-surfaced fix).** Without this, calling `Round.Start golfforge-demo-black` from the range published events into a world where the green XY (`-60972, 63054`) doesn't correspond to anything (off-landscape; ground trace misses; pin spawns at Z=0 below the floor, invisible). Fix lives in `URoundSubsystem::StartRound`:
+  - New static `LevelNameForCourse(CourseId)` — hardcoded table (`golfforge-demo-black` → `GolfForgeDemoBlack`); inverse of `CourseIdByLevelName` in `CourseSurfaceSubsystem.cpp` (single-source refactor deferred until course #2 lands).
+  - On mismatch between `World->GetMapName()` and target level, stashes `{CourseId, Difficulty}` in `PendingCourseId / PendingDifficulty / bPendingStart` and `UGameplayStatics::OpenLevel`s the target.
+  - `FCoreUObjectDelegates::PostLoadMapWithWorld` bound in `Initialize`; `OnPostLoadMap` fires on the new world, verifies the loaded map matches, clears the pending state, re-calls `StartRound` (which now takes the "already on target" branch). PIE prefix (`UEDPIE_0_<name>`) is handled by `Contains()`.
+- **PIE end-to-end verified.** From PracticeRange: `Round.Start golfforge-demo-black easy` → log shows "current map 'UEDPIE_0_PracticeRange' != target 'GolfForgeDemoBlack'; loading target..." → UE LoadMap → "target map 'UEDPIE_0_GolfForgeDemoBlack' loaded; resuming StartRound" → `round.start` + `hole.start` + `RoundPinSubsystem: spawned pin for hole 1 at (-60972, 63054, -2182)` (real terrain Z, not the prior Z=0 fallback). `HoleOut` slides the pin to hole 2 at `(-21408, 44879, -520)` etc. Re-running `Round.Start` while already on the course skips the level load. Range pin doesn't fight during the transition window.
+- **No new automation tests** — pure UWorld glue + UE level-load plumbing; the data-shape + state-machine tests in `Golfsim.Round.*` (GOL-116) and `Golfsim.RoundEvents.*` (GOL-115) already cover the inputs. Build clean 4.5 s; **58/58 tests pass**.
+- **GOL-112 epic now has 4 open children:** GOL-118 tee-up, GOL-119 hole-out detection, GOL-120 scorecard, GOL-121 Play Course button + pre-round picker.
+
 ## 2026-06-02 — GOL-116 — URoundSubsystem: hole state machine for single-player rounds (Windows)
 
 The brain of GOL-112. State + event plumbing only — no UI, no pin/pawn handling, no auto-hole-out detection. With this in, you can drive a full 18-hole round through the console.

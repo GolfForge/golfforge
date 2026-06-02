@@ -14,6 +14,7 @@
 #include "Drivers/LaunchMonitorDriver.h"
 #include "Physics/BallFlightTypes.h"       // FBallTrajectory (carried on the outcome event)
 #include "Physics/RangeSurface.h"          // ClassifyRangeLie -> the integrator's surface provider (GOL-9)
+#include "Round/RoundSubsystem.h"          // IsActive() guard for the range pin (GOL-117)
 
 #include "EngineUtils.h"
 #include "Camera/CameraActor.h"     // follow camera (Camera dropdown: Tee / Follow)
@@ -138,7 +139,9 @@ void AGolfRangeHUD::Tick(float DeltaSeconds)
 	// ApplyPinDistance once at panel mount, but on the very first ticks the pawn may not be
 	// possessed yet -- ApplyPinDistance early-returns and the pin actor never spawns. Tick
 	// re-fires until Pin becomes a valid actor; thereafter this is a no-op every frame.
-	if (Panel && !Pin.IsValid() && GetOwningPlayerController() && GetOwningPlayerController()->GetPawn())
+	// GOL-117: while a round is active, URoundPinSubsystem owns the pin -- don't fight it.
+	if (Panel && !Pin.IsValid() && !RoundIsActive()
+		&& GetOwningPlayerController() && GetOwningPlayerController()->GetPawn())
 	{
 		ApplyPinDistance(CurrentPinYd);
 	}
@@ -696,11 +699,27 @@ namespace
 	constexpr double PuttStandoffYd = 3.0;   // ~9 ft -- a "lag putt" starting distance
 }
 
+bool AGolfRangeHUD::RoundIsActive() const
+{
+	if (const URoundSubsystem* Sub = URoundSubsystem::Get(this))
+	{
+		return Sub->IsActive();
+	}
+	return false;
+}
+
 void AGolfRangeHUD::ApplyPinDistance(double Yards)
 {
 	UWorld* World = GetWorld();
 	if (!World)
 	{
+		return;
+	}
+	if (RoundIsActive())
+	{
+		// GOL-117: a round owns the pin via URoundPinSubsystem; the spinner / console SetPin
+		// would fight it. Skip; the spinner can change again after round.complete.
+		UE_LOG(LogTemp, Display, TEXT("AGolfRangeHUD::ApplyPinDistance: round active -- ignoring (pin owned by URoundPinSubsystem)"));
 		return;
 	}
 	const double ClampedYd = FMath::Clamp(Yards, 0.0, PinMaxYd);

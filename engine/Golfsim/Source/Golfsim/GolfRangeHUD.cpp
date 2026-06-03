@@ -9,6 +9,7 @@
 #include "PreviousSessionsList.h"
 #include "UI/RoundSetupWizard.h"            // GOL-141: round-setup wizard over main menu
 #include "Game/CourseRegistry.h"            // GOL-141: course-card seed list
+#include "UI/RoundHud.h"                    // GOL-144: in-round glass top HUD
 #include "ScorecardPanel.h"                 // GOL-120: end-of-round scorecard modal
 #include "Kismet/GameplayStatics.h"        // OpenLevel for the scorecard's Back-to-Menu
 #include "CheatSheetPanel.h"
@@ -140,6 +141,7 @@ void AGolfRangeHUD::Tick(float DeltaSeconds)
 	Super::Tick(DeltaSeconds);
 
 	UpdateFollowCam(DeltaSeconds);
+	UpdateInRoundHud();   // GOL-144: drive the glass round panel + hole map; toggle vs the legacy panel
 
 	// GOL-29: keep retrying the pin placement until the actor exists. EnsureInputBound calls
 	// ApplyPinDistance once at panel mount, but on the very first ticks the pawn may not be
@@ -836,6 +838,100 @@ bool AGolfRangeHUD::RoundIsActive() const
 		return Sub->IsActive();
 	}
 	return false;
+}
+
+void AGolfRangeHUD::EnsureRoundHud()
+{
+	if (RoundHud) { return; }
+	APlayerController* PC = GetOwningPlayerController();
+	if (!PC) { return; }
+	RoundHud = CreateWidget<URoundHud>(PC, URoundHud::StaticClass());
+	if (!RoundHud) { return; }
+
+	TWeakObjectPtr<AGolfRangeHUD> WeakThis(this);
+	RoundHud->OnMenu = [WeakThis]()
+	{
+		// Leave to menu. GOL-147 will insert the mode-aware confirm dialog ahead of this path.
+		if (AGolfRangeHUD* HUD = WeakThis.Get()) { HUD->ReturnToMainMenu(); }
+	};
+	RoundHud->AddToViewport(20);   // above the legacy panel (0) + swing meter (15), below modals (30+)
+	RoundHud->SetVisibility(ESlateVisibility::Collapsed);
+}
+
+void AGolfRangeHUD::UpdateInRoundHud()
+{
+	EnsureRoundHud();
+	if (!RoundHud) { return; }
+
+	const bool bRound = RoundIsActive();
+
+	// The legacy range panel is range-only now; the glass round HUD replaces it in a round.
+	if (Panel)
+	{
+		Panel->SetVisibility((!bRound && !bManualOpen)
+			? ESlateVisibility::SelfHitTestInvisible : ESlateVisibility::Collapsed);
+	}
+
+	const URoundSubsystem* Round = URoundSubsystem::Get(this);
+	if (!bRound || InputGated() || !Round)
+	{
+		RoundHud->SetVisibility(ESlateVisibility::Collapsed);
+		return;
+	}
+	const GolfsimRound::FRoundState& S = Round->GetState();
+	if (!S.Schedule.IsValidIndex(S.HoleIndex))
+	{
+		RoundHud->SetVisibility(ESlateVisibility::Collapsed);
+		return;
+	}
+	const GolfsimRound::FHoleSpec& Hole = S.Schedule[S.HoleIndex];
+
+	FRoundHudData D;
+	D.PlayerName = GolfDisplay::ReadPlayerName();
+	D.Handicap   = GolfDisplay::ReadHandicap();
+
+	// score vs par over completed holes (+ how many holes are through).
+	int32 Total = 0, ParDone = 0;
+	for (int32 i = 0; i < S.PerHoleStrokes.Num(); ++i)
+	{
+		Total += S.PerHoleStrokes[i];
+		if (S.Schedule.IsValidIndex(i)) { ParDone += S.Schedule[i].Par; }
+	}
+	D.ScoreVsPar = Total - ParDone;
+	D.HolesThru  = S.PerHoleStrokes.Num();
+	D.HoleNum    = Hole.Ref;
+	D.Par        = Hole.Par;
+	D.HoleYds    = FMath::RoundToInt(FVector::Dist(Hole.TeeWorldLoc, Hole.GreenWorldLoc) / CmPerYd);
+	D.Shot       = S.StrokesThisHole + 1;
+
+	// to-pin: live pawn -> pin (XY), in yards.
+	if (APlayerController* PC = GetOwningPlayerController())
+	{
+		if (APawn* Pawn = PC->GetPawn())
+		{
+			const FVector P = Pawn->GetActorLocation();
+			const FVector2D Delta(Hole.PinWorldLoc.X - P.X, Hole.PinWorldLoc.Y - P.Y);
+			D.ToPinYd = FMath::RoundToInt(Delta.Size() / CmPerYd);
+		}
+	}
+
+	// conditions: real sky + time from the env director if one exists on this map (find-only, no spawn
+	// -- spawning on the course map would re-light it). Wind + temp stay seams ("--") for GOL-154.
+	if (UWorld* World = GetWorld())
+	{
+		for (TActorIterator<AGolfRangeEnvironment> It(World); It; ++It)
+		{
+			const AGolfRangeEnvironment* Env = *It;
+			const TArray<FString> SkyNames = Env->GetSkyPresetNames();
+			const TArray<FString> TimeNames = Env->GetTimePresetNames();
+			if (SkyNames.IsValidIndex(Env->GetSkyIndex()))   { D.SkyName = SkyNames[Env->GetSkyIndex()]; }
+			if (TimeNames.IsValidIndex(Env->GetTimeIndex())) { D.TimeName = TimeNames[Env->GetTimeIndex()]; }
+			break;
+		}
+	}
+
+	RoundHud->SetData(D);
+	RoundHud->SetVisibility(ESlateVisibility::SelfHitTestInvisible);
 }
 
 void AGolfRangeHUD::ApplyPinDistance(double Yards)
@@ -1844,62 +1940,7 @@ void AGolfRangeHUD::DrawHUD()
 			DrawText(Hint, FLinearColor(0.85f, 0.78f, 0.30f), 20.0f, (float)Canvas->SizeY - 30.0f);
 		}
 
-		// GOL-120: live round HUD top-left under the res readout. Hidden when no round is active
-		// (range play) or when a modal is up.
-		if (!InputGated())
-		{
-			const URoundSubsystem* Round = URoundSubsystem::Get(this);
-			if (Round && Round->IsActive())
-			{
-				const GolfsimRound::FRoundState& S = Round->GetState();
-				if (S.Schedule.IsValidIndex(S.HoleIndex))
-				{
-					const GolfsimRound::FHoleSpec& Hole = S.Schedule[S.HoleIndex];
-
-					// Total = strokes already in PerHoleStrokes + current StrokesThisHole.
-					int32 PriorTotal = 0;
-					int32 PriorPar = 0;
-					for (int32 i = 0; i < S.PerHoleStrokes.Num(); ++i)
-					{
-						PriorTotal += S.PerHoleStrokes[i];
-						if (S.Schedule.IsValidIndex(i)) { PriorPar += S.Schedule[i].Par; }
-					}
-					const int32 RunningTotal = PriorTotal + S.StrokesThisHole;
-					// vs par considers holes completed + current par for the active hole's at-par target.
-					const int32 RunningParTarget = PriorPar + Hole.Par;
-					const int32 VsParRunning = RunningTotal - PriorPar;   // strokes - completed-hole par
-					(void)RunningParTarget;
-
-					// Distance from pawn (= next launch point post-teleport) to pin XY, in yards.
-					FString DistText(TEXT("--"));
-					if (APlayerController* PC = GetOwningPlayerController())
-					{
-						if (APawn* Pawn = PC->GetPawn())
-						{
-							const FVector P = Pawn->GetActorLocation();
-							const FVector2D Delta(Hole.PinWorldLoc.X - P.X, Hole.PinWorldLoc.Y - P.Y);
-							const double Yards = Delta.Size() / CmPerYd;   // file-scope constant
-							DistText = FString::Printf(TEXT("%.0f yd"), Yards);
-						}
-					}
-
-					const FLinearColor LiveColor(0.95f, 0.95f, 0.95f);
-					const float X = 20.f;
-					float Y = 50.f;
-					DrawText(FString::Printf(TEXT("Hole %d  -  par %d  -  hcp %d"),
-						Hole.Ref, Hole.Par, Hole.Handicap), LiveColor, X, Y); Y += 22.f;
-					DrawText(FString::Printf(TEXT("Strokes this hole: %d"),
-						S.StrokesThisHole), LiveColor, X, Y); Y += 22.f;
-					const FString VsParStr = (VsParRunning > 0)
-						? FString::Printf(TEXT("+%d"), VsParRunning)
-						: (VsParRunning == 0 ? FString(TEXT("E"))
-						                     : FString::Printf(TEXT("%d"), VsParRunning));
-					DrawText(FString::Printf(TEXT("Total: %d  (%s)"),
-						RunningTotal, *VsParStr), LiveColor, X, Y); Y += 22.f;
-					DrawText(FString::Printf(TEXT("Distance to pin: %s"), *DistText),
-						LiveColor, X, Y);
-				}
-			}
-		}
+		// GOL-144: the live round readout is now the glass URoundHud (round panel + hole map),
+		// driven from Tick -> UpdateInRoundHud(); the old canvas text was removed.
 	}
 }

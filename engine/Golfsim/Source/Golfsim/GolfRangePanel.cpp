@@ -1,4 +1,5 @@
 #include "GolfRangePanel.h"
+#include "UI/GolfUITheme.h"   // GOL-144: glass reskin of the range panel
 
 #include "Engine/World.h"
 #include "Framework/Application/SlateApplication.h"
@@ -34,8 +35,8 @@ void UGolfRangePanel::BuildTree()
 	WidgetTree->RootWidget = Root;   // without this the base RebuildWidget renders an empty SSpacer
 
 	UBorder* Bg = WidgetTree->ConstructWidget<UBorder>();
-	Bg->SetBrushColor(FLinearColor(0.f, 0.f, 0.f, 0.5f));
-	Bg->SetPadding(FMargin(12.f));
+	Bg->SetBrush(GolfUI::RoundedBrush(GolfUI::Color::GlassFill(), GolfUI::Radius::Lg, GolfUI::Color::Border(), 1.f));
+	Bg->SetPadding(FMargin(16.f));
 	UCanvasPanelSlot* BgSlot = Root->AddChildToCanvas(Bg);
 	BgSlot->SetAnchors(FAnchors(1.f, 0.f, 1.f, 0.f));   // top-right point anchor
 	BgSlot->SetAlignment(FVector2D(1.f, 0.f));          // pivot at the widget's top-right corner
@@ -47,12 +48,8 @@ void UGolfRangePanel::BuildTree()
 
 	UTextBlock* Title = WidgetTree->ConstructWidget<UTextBlock>();
 	Title->SetText(FText::FromString(TEXT("RANGE")));
-	{
-		FSlateFontInfo F = Title->GetFont();   // engine default Roboto; no asset needed
-		F.Size = 18;
-		Title->SetFont(F);
-	}
-	Title->SetColorAndOpacity(FSlateColor(FLinearColor(1.0f, 0.92f, 0.35f)));
+	{ FSlateFontInfo F = GolfUI::Display(18, FName(TEXT("Bold"))); F.LetterSpacing = 60; Title->SetFont(F); }
+	Title->SetColorAndOpacity(FSlateColor(GolfUI::Color::Text()));
 	Col->AddChildToVerticalBox(Title);
 
 	// Label/value grid: label in col 0, right-aligned value in col 1.
@@ -61,11 +58,15 @@ void UGolfRangePanel::BuildTree()
 	{
 		UTextBlock* Lbl = WidgetTree->ConstructWidget<UTextBlock>();
 		Lbl->SetText(FText::FromString(Label));
+		Lbl->SetFont(GolfUI::Body(13));
+		Lbl->SetColorAndOpacity(FSlateColor(GolfUI::Color::TextDim()));
 		UGridSlot* LS = Grid->AddChildToGrid(Lbl, RowIdx, 0);
 		LS->SetPadding(FMargin(0.f, 2.f, 12.f, 2.f));
 
 		UTextBlock* Val = WidgetTree->ConstructWidget<UTextBlock>();
 		Val->SetText(FText::FromString(TEXT("-")));
+		Val->SetFont(GolfUI::Mono(13));
+		Val->SetColorAndOpacity(FSlateColor(GolfUI::Color::Text()));
 		UGridSlot* VS = Grid->AddChildToGrid(Val, RowIdx, 1);
 		VS->SetHorizontalAlignment(HAlign_Right);
 		VS->SetPadding(FMargin(0.f, 2.f, 0.f, 2.f));
@@ -141,14 +142,14 @@ void UGolfRangePanel::BuildTree()
 	{
 		UTextBlock* Lbl = WidgetTree->ConstructWidget<UTextBlock>();
 		Lbl->SetText(FText::FromString(Label));
+		Lbl->SetFont(GolfUI::Body(12));
+		Lbl->SetColorAndOpacity(FSlateColor(GolfUI::Color::TextDim()));
 		UVerticalBoxSlot* LblSlot = Col->AddChildToVerticalBox(Lbl);
 		LblSlot->SetPadding(FMargin(0.f, 6.f, 0.f, 1.f));
 		if (OutLabel) { *OutLabel = Lbl; }
 
 		UComboBoxString* Combo = WidgetTree->ConstructWidget<UComboBoxString>();
-		FTableRowStyle ItemStyle = Combo->GetItemStyle();
-		ItemStyle.TextColor = FSlateColor(FLinearColor::White);
-		Combo->SetItemStyle(ItemStyle);
+		GolfUI::StyleComboBox(Combo);   // mono font + readable white items, matches the new look
 		Col->AddChildToVerticalBox(Combo);
 		return Combo;
 	};

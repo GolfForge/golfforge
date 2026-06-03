@@ -24,6 +24,7 @@ class URoundSetupWizard;
 class UScorecardPanel;
 class UCheatSheetPanel;
 class USwingMeterWidget;
+class URoundHud;
 class AGolfBallActor;
 class AGolfPinActor;
 class ACameraActor;
@@ -113,6 +114,11 @@ public:
 	// this to (a) skip the Tick respawn of its own pin, (b) early-return from ApplyPinDistance so
 	// the spinner / console SetPin can't fight the URoundPinSubsystem-owned pin.
 	bool RoundIsActive() const;
+
+	// GOL-144: the in-round glass HUD (round panel + hole map). EnsureRoundHud lazily creates it;
+	// UpdateInRoundHud (called from Tick) pushes live round + env data and toggles it vs the legacy panel.
+	void EnsureRoundHud();
+	void UpdateInRoundHud();
 
 	// GOL-123: round flow calls this when the ball lies on the green. Finds the bag's "Putter"
 	// entry and selects it; no-op if already on putter or if the bag has no Putter. Returns true
@@ -259,6 +265,7 @@ private:
 	UPROPERTY(Transient) TObjectPtr<UScorecardPanel> Scorecard;               // GOL-120
 	UPROPERTY(Transient) TObjectPtr<UCheatSheetPanel> CheatSheet;
 	UPROPERTY(Transient) TObjectPtr<USwingMeterWidget> SwingMeter;            // GOL-67 (Game mode only)
+	UPROPERTY(Transient) TObjectPtr<URoundHud> RoundHud;                      // GOL-144 in-round top HUD
 	EInputMode CurrentInputMode = EInputMode::Game;                           // default Game (renamed to avoid shadowing FInputModeGameAndUI local)
 	GolfsimKeyboardSwing::FState SwingState;
 	GolfsimKeyboardSwing::FConfig SwingConfig;

@@ -2,6 +2,15 @@
 
 > Dated milestone summaries, newest on top. The durable outcome + the committed artifact, not the blow-by-blow — process detail lives in git history, `docs/ue5-cookbook.md`, and the scripts themselves.
 
+## 2026-06-03 — GOL-144 — In-round HUD: round panel + hole-map card (glass) (Windows)
+
+Eighth child of the GOL-137 UI epic; first of the in-round HUD redesign (top regions). Replaced the canvas-drawn round readout with glass panels matching `06-hud-gamemode.png` / `08` (the two share the same top), bound to live data. Commit `1bfe7a9`.
+
+- **New `UI/RoundHud.{h,cpp}`** — full-screen `SelfHitTestInvisible` widget (only its Menu button takes input; swing meter/gameplay below stay interactive) + top legibility gradient. **Round panel (top-left, glass):** avatar w/ initials + name + `{±N} THRU {thru} · HCP {h}` + Menu ghost button; HOLE (big) │ PAR │ HOLE YDS │ SHOT │ TO PIN row (Shot + To-pin accent); conditions strip (wind/temp seam "—", sky + time real). **Hole-map card (top-right):** placeholder flyover + `PIN {n} YD` tag + `Hole {n} · Par {p}` + `{yds} yd` footer. One `SetData(FRoundHudData)` + `OnMenu`.
+- **`GolfRangeHUD`** — owns/mounts `RoundHud` (z20); `UpdateInRoundHud()` (per-Tick) builds live data from `URoundSubsystem::GetState()` (hole/par; HoleYds = `Dist(Tee,Green)/CmPerYd`; Shot = strokes+1; ToPin = live pawn→pin; score/thru from PerHoleStrokes) + `GolfDisplay` name/handicap + the env director's sky/time (**find-only — no spawn**, so it can't re-light the course map). In a round: show `RoundHud`, hide the legacy panel; on the range: hide `RoundHud`, show the panel. Removed the old `DrawHUD` canvas round block. Menu → `ReturnToMainMenu` (GOL-147 adds the confirm guard).
+- **`GolfRangePanel`** — light glass reskin (GolfUITheme glass card, Display title, Body/Mono row fonts, `StyleComboBox` dropdowns); structure + functions untouched (full bottom-HUD rework = GOL-145).
+- PIE-verified: in-round top panels match the render (sky/time live), range panel on-theme + functional. Full-build clean.
+
 ## 2026-06-03 — GOL-143 — Round Setup wizard: Players step + Tee Off (wizard complete) (Windows)
 
 Seventh child of the GOL-137 UI epic; the final wizard step — **the 3-step Round Setup wizard is now end-to-end** (Course → Format → Players → Tee Off). Single-player live; multiplayer is a seam. Commit `6a3352c`.

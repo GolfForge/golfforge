@@ -2,6 +2,16 @@
 
 > Dated milestone summaries, newest on top. The durable outcome + the committed artifact, not the blow-by-blow — process detail lives in git history, `docs/ue5-cookbook.md`, and the scripts themselves.
 
+## 2026-06-03 — GOL-145 — In-round HUD: telemetry readout + control bar + §6 LM gating (Windows)
+
+Ninth child of the GOL-137 UI epic; partner to GOL-144 (top panels). Rebuilt the **bottom** HUD to match `06-hud-gamemode.png` / `08-hud-lm-connected.png` and wired the spec **§6 launch-monitor gating**. Commit `19cdb3d`.
+
+- **`GolfRangePanel.{h,cpp}` rebuilt** — from a top-right metrics grid into the bottom layout via a full-screen vertical stack (fill spacer → telemetry readout → full-width control bar). **Telemetry readout** (bottom-left glass): eyebrow + club headline + Swing/Sim-shot button (+`Space` cap) + secondary tiles (Ball speed/Launch/Spin) + primary tiles (Carry accent / Total / Offline). `UpdateMetrics()` kept its exact signature, so the existing carry/total count-up in `GolfRangeHUD::Tick` is unchanged. **Control bar** (full-width glass): Club/Time/Sky/Camera/Launch-Monitor `StyleComboBox` dropdowns + an LM status pill. Pin/putt became a range-only cluster (hidden in-round). Removed the old Mode dropdown + connection-status/Simulate-button plumbing.
+- **§6 gating** — `Drivers/LaunchMonitorManager` gained `ELaunchMonitorStatus {Sim,Off,Pairing,Online}` (on `FLaunchMonitorDriverInfo` + `GetActiveStatus()`; `OnActiveStatusChanged` now carries it, mapped from the drivers' connect bool). `GolfRangeHUD::ApplyLaunchMonitorState` derives the input mode from the selected LM status (Online → Simulation: the device owns the shot stream, "Sim shot", meter hidden, green "X · Live" pill; else → Game: keyboard swing, "Swing", meter shown, amber "Game · Keyboard" pill), resets any in-progress swing on every change, and paints the pill + button label. Default = "Simulated (no device)" → Game. Space + the primary button share the guarded `OnSpaceForCurrentMode` dispatcher (Game advances the meter; an online LM emits via `RequestSimulatedShot`).
+- **Device list stays real-only** (Simulated + registered drivers; OpenFlight today). The status enum is the extensible seam the **incoming Square Omni / Blue Tees Rainmaker** drivers plug into — once registered they appear with live status, no HUD changes.
+- **Bottom HUD now shows in both range + round** (RoundHud's top panels layer on top in-round; GOL-144's in-round panel hide removed; pin/putt hide in-round).
+- PIE-verified in both contexts; full-build + 63/63 automation tests green. **Swing-meter overlap with the new bottom bar is deferred to GOL-146** (game-bar rework, per user).
+
 ## 2026-06-03 — GOL-144 — In-round HUD: round panel + hole-map card (glass) (Windows)
 
 Eighth child of the GOL-137 UI epic; first of the in-round HUD redesign (top regions). Replaced the canvas-drawn round readout with glass panels matching `06-hud-gamemode.png` / `08` (the two share the same top), bound to live data. Commit `1bfe7a9`.

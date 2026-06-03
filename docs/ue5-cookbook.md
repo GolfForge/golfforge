@@ -4,6 +4,21 @@ The engine-side knowledge base: hard-won pitfalls, working recipes, and the curr
 
 ---
 
+## UMG procedural layout: full-width bottom bar (GOL-145)
+
+Mixed canvas anchors (stretch one axis, point the other) are fiddly to get right for a full-bleed bottom bar. The robust recipe: a **full-screen `UVerticalBox`** as the root canvas's only child (`SetAnchors(FAnchors(0,0,1,1))` + `SetOffsets(FMargin(0))`), then:
+- a **fill `USpacer`** first (`UVerticalBoxSlot::SetSize(FSlateChildSize(ESlateSizeRule::Fill))`) — pushes everything to the bottom;
+- bottom-left content with `VerticalBoxSlot::SetHorizontalAlignment(HAlign_Left)` (sizes to content);
+- the **full-width bar** last with `SetHorizontalAlignment(HAlign_Fill)` — the border stretches edge-to-edge, no anchor math.
+
+Hit-testing: set the `UVerticalBox` (and the fill spacer) to `SelfHitTestInvisible` / `HitTestInvisible` so the empty middle passes clicks through to gameplay; only the actual control widgets (bar, cards, dropdowns) capture input. (`FSlateChildSize`/`ESlateSizeRule` live in `Components/SlateWrapperTypes.h` — include it.)
+
+For autosize **point-anchored** corner panels, the offset component on the side you're aligned to is the inset: top-right (`align (1,0)`) uses `Offsets.Right/Top`; bottom-center (`align (0.5,1)`) uses `Offsets.Bottom`; bottom-left (`align (0,1)`) uses `Offsets.Left/Bottom`.
+
+Heads-up: moving a panel to the bottom can collide with other bottom-anchored widgets (the swing meter's bottom-center card overlapped the new GOL-145 control bar) — z-order doesn't help if both are visible; reposition one. (Swing-meter reposition deferred to GOL-146.)
+
+---
+
 ## Marketplace / Fab asset dependencies
 
 **License basis (open-source compliance, GOL-44):** Quixel Megascans / Megaplant and marketplace foliage are licensed under the **Fab Standard License**, which lets you ship them *baked into a product* but forbids redistributing the raw assets "on a standalone basis" — so committing the `.uasset` files to this public repo is not allowed. We therefore **gitignore all of them** and each machine re-downloads them from its own Fab account. Nothing here is committed, so there's no redistribution and no attribution obligation in the repo. (Only assets offered under **CC-BY/CC0** on Fab could be committed — CC-BY with attribution in `NOTICE` — but the packs below are Standard-License, not CC.)

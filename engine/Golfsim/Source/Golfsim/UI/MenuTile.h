@@ -15,6 +15,7 @@ class UButton;
 class UBorder;
 class UTextBlock;
 class UOverlay;
+class UImage;
 
 UCLASS()
 class GOLFSIM_API UMenuTile : public UUserWidget
@@ -50,7 +51,7 @@ private:
 	void RefreshVisualState();   // border + accent-wash + arrow per hovered|selected|disabled
 
 	UPROPERTY(Transient) TObjectPtr<UBorder>    BgBorder;       // card fill + border (recolored on state)
-	UPROPERTY(Transient) TObjectPtr<UBorder>    AccentWash;     // accent-soft sheen, shown when active
+	UPROPERTY(Transient) TObjectPtr<UImage>     AccentWash;     // accent-soft gradient sheen, shown when active
 	UPROPERTY(Transient) TObjectPtr<UTextBlock> IndexText;
 	UPROPERTY(Transient) TObjectPtr<UTextBlock> TagText;
 	UPROPERTY(Transient) TObjectPtr<UTextBlock> TitleText;

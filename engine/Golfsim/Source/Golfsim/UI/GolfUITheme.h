@@ -26,6 +26,7 @@ class UBorder;
 class UButton;
 class UTextBlock;
 class UWidget;
+class UImage;
 
 namespace GolfUI
 {
@@ -94,6 +95,16 @@ namespace GolfUI
 	GOLFSIM_API UBorder*    MakeStatusDot(UWidgetTree* Tree, const FLinearColor& Col = Color::Accent());// small round status dot
 	GOLFSIM_API UButton*    MakeAccentButton(UWidgetTree* Tree, const FString& Label);                 // filled fairway, ink text
 	GOLFSIM_API UButton*    MakeGhostButton(UWidgetTree* Tree, const FString& Label);                  // outline, accent border on hover
+
+	// ------------------------------------------------------------------ gradients (GOL-150)
+	// UImage brushes backed by /Game/UI/Materials/M_UIGradient{Linear,Radial} (each gets its own MID, so
+	// callers can place several with different colours). Linear is vertical (Bottom at V=1, Top at V=0);
+	// radial fades Inner->Outer from Center over Radius, in 0..1 UV space. Slate has no native gradient
+	// brush, so this is how the bg ambiance + tile hover-wash are drawn. Falls back to a flat-colour
+	// image if the material asset isn't present (so it compiles/renders before the asset lands).
+	GOLFSIM_API UImage* MakeLinearGradient(UWidgetTree* Tree, const FLinearColor& Bottom, const FLinearColor& Top);
+	GOLFSIM_API UImage* MakeRadialGradient(UWidgetTree* Tree, const FLinearColor& Inner, const FLinearColor& Outer,
+		FVector2D Center = FVector2D(0.5f, 0.5f), float Radius = 0.7f);
 
 	// ------------------------------------------------------------------ interaction / motion
 	// Apply a rounded FButtonStyle with Normal/Hovered/Pressed/Disabled fills (hover/pressed derive

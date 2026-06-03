@@ -8,6 +8,10 @@
 #include "Engine/Font.h"                // UFont (font assets)
 #include "Styling/CoreStyle.h"          // fallback font face before the .ttf assets are imported
 #include "Brushes/SlateRoundedBoxBrush.h"
+#include "Brushes/SlateColorBrush.h"    // flat-colour fallback when a gradient material is missing
+#include "Components/Image.h"           // gradient material brushes (GOL-150)
+#include "Materials/MaterialInterface.h"
+#include "Materials/MaterialInstanceDynamic.h"
 
 namespace
 {
@@ -31,6 +35,29 @@ namespace
 		}
 		// Engine default face (Roboto) at the requested size, so widgets render before the import.
 		return FCoreStyle::GetDefaultFontStyle("Regular", Size);
+	}
+
+	// Build a UImage whose brush is a gradient material; SetParams configures that image's own MID.
+	// Falls back to a flat-colour brush if the material asset isn't present.
+	template <typename TSet>
+	UImage* MakeGradientImage(UWidgetTree* Tree, const TCHAR* MatPath, const FLinearColor& Fallback, TSet&& SetParams)
+	{
+		UImage* Img = Tree->ConstructWidget<UImage>();
+		if (UMaterialInterface* Mat = LoadObject<UMaterialInterface>(nullptr, MatPath))
+		{
+			FSlateBrush B;
+			B.SetResourceObject(Mat);
+			Img->SetBrush(B);
+			if (UMaterialInstanceDynamic* MID = Img->GetDynamicMaterial())
+			{
+				SetParams(MID);
+			}
+		}
+		else
+		{
+			Img->SetBrush(FSlateColorBrush(Fallback));
+		}
+		return Img;
 	}
 }
 
@@ -219,5 +246,29 @@ namespace GolfUI
 		T.Angle = 0.f;
 		Widget->SetRenderTransformPivot(FVector2D(0.5f, 0.5f));
 		Widget->SetRenderTransform(T);
+	}
+
+	UImage* MakeLinearGradient(UWidgetTree* Tree, const FLinearColor& Bottom, const FLinearColor& Top)
+	{
+		return MakeGradientImage(Tree, TEXT("/Game/UI/Materials/M_UIGradientLinear.M_UIGradientLinear"), Bottom,
+			[&](UMaterialInstanceDynamic* MID)
+			{
+				MID->SetVectorParameterValue(TEXT("ColorA"), Top);     // V=0 (top)
+				MID->SetVectorParameterValue(TEXT("ColorB"), Bottom);  // V=1 (bottom)
+			});
+	}
+
+	UImage* MakeRadialGradient(UWidgetTree* Tree, const FLinearColor& Inner, const FLinearColor& Outer,
+		FVector2D Center, float Radius)
+	{
+		return MakeGradientImage(Tree, TEXT("/Game/UI/Materials/M_UIGradientRadial.M_UIGradientRadial"), Inner,
+			[&](UMaterialInstanceDynamic* MID)
+			{
+				MID->SetVectorParameterValue(TEXT("ColorA"), Inner);
+				MID->SetVectorParameterValue(TEXT("ColorB"), Outer);
+				MID->SetScalarParameterValue(TEXT("CenterX"), (float)Center.X);
+				MID->SetScalarParameterValue(TEXT("CenterY"), (float)Center.Y);
+				MID->SetScalarParameterValue(TEXT("Radius"), Radius);
+			});
 	}
 }

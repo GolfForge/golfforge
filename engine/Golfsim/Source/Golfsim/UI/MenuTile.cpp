@@ -4,7 +4,9 @@
 #include "Blueprint/WidgetTree.h"
 #include "Components/Button.h"
 #include "Components/Border.h"
+#include "Components/Image.h"
 #include "Components/Overlay.h"
+#include "Materials/MaterialInstanceDynamic.h"   // feed the wash material the tile size for its rounded mask
 #include "Components/OverlaySlot.h"
 #include "Components/TextBlock.h"
 #include "Components/HorizontalBox.h"
@@ -39,9 +41,11 @@ void UMenuTile::BuildTree()
 	BgBorder->SetBrush(RoundedBrush(Color::Bg1(), Radius::Lg, Color::Border(), 1.f));
 	FillSlot(Cast<UOverlaySlot>(Root->AddChildToOverlay(BgBorder)));
 
-	// Accent sheen, shown only when the tile is active.
-	AccentWash = WidgetTree->ConstructWidget<UBorder>();
-	AccentWash->SetBrush(RoundedBrush(Color::AccentSoft(), Radius::Lg));
+	// Accent hover-wash: a vertical gradient (accent-soft at the bottom -> transparent up), full-bleed so
+	// its left/right/top edges coincide with the tile edges (no inset "box"). It fades to transparent
+	// well before the top, and accent-soft is faint, so the only un-rounded bit is the two bottom corners
+	// over the dark stage -- negligible at this alpha (a rounded-box gradient material is the proper fix).
+	AccentWash = MakeLinearGradient(WidgetTree, Color::AccentSoft(), FLinearColor(0.f, 0.f, 0.f, 0.f));
 	AccentWash->SetVisibility(ESlateVisibility::Collapsed);
 	FillSlot(Cast<UOverlaySlot>(Root->AddChildToOverlay(AccentWash)));
 
@@ -117,7 +121,7 @@ void UMenuTile::BuildTree()
 	Cta->AddChildToHorizontalBox(CtaText);
 	CtaArrow = WidgetTree->ConstructWidget<UTextBlock>();
 	CtaArrow->SetText(FText::FromString(TEXT("→")));
-	CtaArrow->SetFont(Display(14, FName(TEXT("SemiBold"))));
+	CtaArrow->SetFont(Mono(14));   // stopgap: Barlow Condensed has no U+2192; JetBrains Mono does (GOL-151 icon font is the real fix)
 	CtaArrow->SetColorAndOpacity(FSlateColor(Color::Accent()));
 	if (UHorizontalBoxSlot* AS = Cta->AddChildToHorizontalBox(CtaArrow)) { AS->SetPadding(FMargin(8.f, 0, 0, 0)); AS->SetVerticalAlignment(VAlign_Center); }
 }
@@ -199,6 +203,18 @@ void UMenuTile::RefreshVisualState()
 	if (AccentWash)
 	{
 		AccentWash->SetVisibility(bActive ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Collapsed);
+		if (bActive)
+		{
+			// Feed the wash material the tile's pixel size so its rounded-box mask matches the card's
+			// corners (the gradient is a flat rectangle otherwise; the mask rounds it to the card shape).
+			if (UMaterialInstanceDynamic* MID = AccentWash->GetDynamicMaterial())
+			{
+				const FVector2D Sz = GetCachedGeometry().GetLocalSize();
+				MID->SetScalarParameterValue(TEXT("SizeX"), (float)Sz.X);
+				MID->SetScalarParameterValue(TEXT("SizeY"), (float)Sz.Y);
+				MID->SetScalarParameterValue(TEXT("Radius"), (float)GolfUI::Radius::Lg);
+			}
+		}
 	}
 	if (CtaArrow)
 	{

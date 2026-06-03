@@ -6,12 +6,14 @@
 #include "TimerManager.h"
 #include "Engine/World.h"
 #include "GameFramework/PlayerController.h"
+#include "Misc/ConfigCacheIni.h"          // ProjectVersion for the brand subtitle
 
 #include "Blueprint/WidgetTree.h"
 #include "Components/Border.h"
 #include "Components/Button.h"
 #include "Components/CanvasPanel.h"
 #include "Components/CanvasPanelSlot.h"
+#include "Components/Image.h"
 #include "Components/HorizontalBox.h"
 #include "Components/HorizontalBoxSlot.h"
 #include "Components/SizeBox.h"
@@ -73,8 +75,25 @@ void UMainMenu::BuildTree()
 		SS->SetAnchors(FAnchors(0.f, 0.f, 1.f, 1.f));
 		SS->SetOffsets(FMargin(0.f));
 	}
-	// (Background radial glow / per-tile scrim gradients are deferred to a material-based pass -- Slate
-	// has no native linear/radial gradient brush, so the flat dark stage stands in until then. GOL-148.)
+	// Subtle bg ambiance (GOL-150): two soft radial gradients behind the content, per theme.css .stage
+	// (bg-glow top-right + accent-soft bottom-left). HitTestInvisible so they never eat clicks. Added
+	// after the Stage + before the content Col, so they sit between the flat stage and the bento.
+	auto AddRadial = [&](const FLinearColor& Inner, FVector2D Center, float Radius)
+	{
+		FLinearColor Outer = Inner; Outer.A = 0.f;
+		UImage* G = MakeRadialGradient(WidgetTree, Inner, Outer, Center, Radius);
+		G->SetVisibility(ESlateVisibility::HitTestInvisible);
+		if (UCanvasPanelSlot* GS = Root->AddChildToCanvas(G))
+		{
+			GS->SetAnchors(FAnchors(0.f, 0.f, 1.f, 1.f));
+			GS->SetOffsets(FMargin(0.f));
+		}
+	};
+	{
+		FLinearColor Glow = Color::BgGlow(); Glow.A = 0.5f;
+		AddRadial(Glow, FVector2D(0.85f, -0.10f), 0.55f);                 // top-right warmth
+		AddRadial(Color::AccentSoft(), FVector2D(-0.05f, 1.10f), 0.45f);  // bottom-left accent
+	}
 
 	UVerticalBox* Col = WidgetTree->ConstructWidget<UVerticalBox>();
 	{
@@ -105,7 +124,14 @@ void UMainMenu::BuildTree()
 		{ FSlateFontInfo F = Display(22, FName(TEXT("Bold"))); F.LetterSpacing = 60; Name->SetFont(F); }
 		Name->SetColorAndOpacity(FSlateColor(Color::Text()));
 		BrandText->AddChildToVerticalBox(Name);
-		UTextBlock* Sub = MakeEyebrow(WidgetTree, TEXT("Golf Simulator · v0.9"));
+		// Brand subtitle pulls the real ProjectVersion (DefaultGame.ini, bumped per cook) instead of a
+		// hardcoded mock version. Falls back to no version string if unset.
+		FString Version;
+		GConfig->GetString(TEXT("/Script/EngineSettings.GeneralProjectSettings"), TEXT("ProjectVersion"), Version, GGameIni);
+		const FString BrandSub = Version.IsEmpty()
+			? FString(TEXT("Golf Simulator"))
+			: FString::Printf(TEXT("Golf Simulator · v%s"), *Version);
+		UTextBlock* Sub = MakeEyebrow(WidgetTree, BrandSub);
 		if (UVerticalBoxSlot* SubS = BrandText->AddChildToVerticalBox(Sub)) { SubS->SetPadding(FMargin(0, 4.f, 0, 0)); }
 	}
 
@@ -160,7 +186,7 @@ void UMainMenu::BuildTree()
 		UTextBlock* Hcp = MakeMonoNumber(WidgetTree, TEXT("HCP 8.4"), 11, Color::Accent());   // TODO(GOL-143): real handicap
 		if (UVerticalBoxSlot* HS = ChipText->AddChildToVerticalBox(Hcp)) { HS->SetPadding(FMargin(0, 3.f, 0, 0)); }
 
-		if (UHorizontalBoxSlot* ChS = Env->AddChildToHorizontalBox(Chip)) { ChS->SetVerticalAlignment(VAlign_Center); }
+		if (UHorizontalBoxSlot* ChS = Env->AddChildToHorizontalBox(Chip)) { ChS->SetVerticalAlignment(VAlign_Center); ChS->SetPadding(FMargin(8.f, 0.f, 0.f, 0.f)); }
 	}
 
 	// ───────────────────────── bento ─────────────────────────
@@ -226,7 +252,7 @@ void UMainMenu::BuildTree()
 		if (UHorizontalBoxSlot* TS = Legend->AddChildToHorizontalBox(T)) { TS->SetPadding(FMargin(2.f, 0, 18.f, 0)); TS->SetVerticalAlignment(VAlign_Center); }
 	};
 	AddKbd(TEXT("1")); AddKbd(TEXT("2")); AddKbd(TEXT("3")); AddKbd(TEXT("4")); AddLabel(TEXT("Select"));
-	AddKbd(TEXT("↵")); AddLabel(TEXT("Confirm"));
+	AddKbd(TEXT("Enter")); AddLabel(TEXT("Confirm"));   // stopgap: U+21B5 not in JetBrains Mono (GOL-151)
 	AddKbd(TEXT("Esc")); AddLabel(TEXT("Quit"));
 
 	// Previous Sessions footer link (reuses the existing callback; greyed when count == 0).

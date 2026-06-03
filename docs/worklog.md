@@ -2,6 +2,16 @@
 
 > Dated milestone summaries, newest on top. The durable outcome + the committed artifact, not the blow-by-blow — process detail lives in git history, `docs/ue5-cookbook.md`, and the scripts themselves.
 
+## 2026-06-02 — GOL-150 — UI gradient material + apply (bg ambiance, rounded hover-wash); menu version/title (Windows)
+
+Third child of the GOL-137 UI-elevation epic; closes the last visual gap vs. the prototype where the bento used flat fills (Slate has no native gradient brush). Commit `7edacce`.
+
+- **`engine/scripts/build_ui_gradient_materials.py` + `Content/UI/Materials/M_UIGradient{Linear,Radial}`** — two `MD_UI` + `BLEND_TRANSLUCENT` materials (linear vertical; radial Center/Radius), RGBA params, built via `MaterialEditingLibrary` (mirrors `build_golf_green_material.py`). Consumed as `UImage` brushes through new `GolfUITheme::MakeLinearGradient`/`MakeRadialGradient` (each widget makes its own MID; flat-colour fallback if the asset is missing).
+- **Rounded gradients** — a flat gradient over a rounded card shows square corners, so the linear material carries a rounded-box SDF mask (a `MaterialExpressionCustom` node) multiplied into Opacity, with `SizeX/SizeY` fed per-tile from `GetCachedGeometry().GetLocalSize()` and `Radius` matching the card. The crisp card itself stays `FSlateRoundedBoxBrush` (the mask is only for the gradient overlay).
+- **Applied** — `MainMenu`: subtle bg ambiance (bg-glow top-right + accent-soft bottom-left radials) + player-chip spacing; `MenuTile`: hover accent-wash is now a bottom-up gradient, masked to the corners.
+- **Menu copy/branding** — brand subtitle reads `ProjectVersion` (`DefaultGame.ini` = `0.0.4-alpha`) instead of a hardcoded mock; `ProjectDisplayedTitle=GolfForge` for the packaged app title. `→`/`↵` glyph stopgaps (Barlow lacks U+2192, JetBrains lacks U+21B5).
+- Follow-ups filed: **GOL-151** (Lucide icon font — proper icon set + glyph fix), **GOL-152** (project/exe rename Golfsim → GolfForge, cross-machine). Cookbook gotchas banked: the rounded-gradient material technique, material-build-fails-during-PIE, and the editor's `Golfsim.uproject` auto-rewrite hazard (strips the Win64 plugin guard → revert before committing).
+
 ## 2026-06-02 — GOL-137 UI Elevation (epic start) — GolfUITheme foundation + bento main menu (Windows)
 
 Kicked off the GolfForge UI-elevation epic (GOL-137) from the Claude Design handoff in `Build/handoff/` (spec `BUILD_SPEC.md` + 8 renders + the working web prototype + `RESOLVED_TOKENS.md`). Two children shipped; scope is "build the whole spec UI, disable what has no backend yet" (Practice tile, multiplayer, formats, resume → "Coming soon" seams).

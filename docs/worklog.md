@@ -2,6 +2,16 @@
 
 > Dated milestone summaries, newest on top. The durable outcome + the committed artifact, not the blow-by-blow — process detail lives in git history, `docs/ue5-cookbook.md`, and the scripts themselves.
 
+## 2026-06-03 — GOL-141 — Round Setup wizard: chrome + Course step (Windows)
+
+Fifth child of the GOL-137 UI-elevation epic. Replaced the old `UPreRoundPicker` combo-box modal with the full-screen GolfForge wizard (header brand + clickable stepper + close-X; footer live summary + Back/Continue) and built the Course step in full. Steps 2/3 are "Coming soon" stubs that GOL-142/143 fill. Commit `4fad7de`.
+
+- **New `Game/CourseRegistry.{h,cpp}`** — `FGolfCourseInfo` struct + `GolfCourseRegistry::All()`: the cooked `golfforge-demo-black` (selectable) + the design's fictional tracks as disabled placeholders. Static display metadata only — no `URoundSubsystem` coupling (the wizard stays a dumb view, seeded by the HUD).
+- **New `UI/CourseCard.{h,cpp}`** — 3-up card atom (image-slot placeholder + type flag, name/location, `holes·par·yards` mono, 5-dot difficulty meter, check badge). Mirrors `UMenuTile`'s interaction: `UOverlay` root hit-tests the whole card, hover lifts + accent-borders, selected = accent ring + check (base style, not animation-gated, §7); disabled = dimmed/non-interactive. `Configure(FGolfCourseInfo)` / `SetSelected` / `OnSelected`.
+- **New `UI/RoundSetupWizard.{h,cpp}`** — full-screen stage: `Bg0` + radial-gradient ambiance, topbar brand + stepper + close-X, `UWidgetSwitcher` (Course built; Format/Players stubs), footer summary + Back/Continue/Tee Off. Nav ported from `setup.js` (`CanAdvance`/`ShowStep`/`GoNext`/`GoBack`); Enter advances, Esc backs/exits; stepper toggles instant (§7). Difficulty dropped from the wizard → Tee Off uses `EGolfDifficulty::Normal` (scoring moves to the Format step). Resume banner built but hidden behind `SetResumeVisible()` until backing lands.
+- **`GolfRangeHUD.{h,cpp}`** — retyped the member + renamed `bPreRoundOpen`→`bRoundSetupOpen` and the Open/Ensure/Close trio; `OnTeeOff`→`StartRound(CourseId, Normal)`. `OpenRoundSetup` resets to step 1 + takes keyboard focus. Deleted `PreRoundPicker.{h,cpp}`.
+- **Stepper highlight gotcha → GOL-153 filed (Low):** the active step reads via **text only** — green+bold number, white+bold name. The pill background would not paint: `UButton::SetStyle` (the settings-rail mechanism), a nested `UBorder` background, and pre-built visibility-toggled accent layers **all failed to repaint** for buttons/borders in the centered topbar `UHorizontalBox`, while the same brushes paint fine on `UCourseCard` and the close-X/Continue buttons, and the text re-color in the same function works. Root cause unknown; the filled-circle badge was dropped for now. Cookbook gotcha banked.
+
 ## 2026-06-02 — GOL-140 — Settings overlay redesign + reusable segmented/toggle controls (Windows)
 
 Fourth child of the GOL-137 UI-elevation epic. Rebuilt the settings modal into the GolfForge design while keeping the exact backing + public API. Commit `c75eb6f`.

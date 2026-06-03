@@ -281,18 +281,11 @@ void AGolfRangeHUD::EnsureInputBound()
 				}
 			};
 
-			// GOL-67: Mode dropdown. Default = Game (lower barrier; no LM hardware required). The
-			// HUD's SetInputMode flips the swing-meter visibility AND hides the LM dropdown so a
-			// keyboard player isn't shown launch-monitor options that aren't relevant.
-			Panel->SetModeOptions({ TEXT("Game"), TEXT("Simulation") });
-			Panel->SetSelectedModeIndex((int32)CurrentInputMode);
-			Panel->OnModeChosen = [WeakThis](int32 Idx)
+			// GOL-145: the telemetry readout's primary button (Swing / Sim shot). Routed by mode in
+			// TriggerPrimaryAction (Game -> swing meter; a connected LM -> RequestSimulatedShot).
+			Panel->OnPrimaryAction = [WeakThis]()
 			{
-				if (AGolfRangeHUD* HUD = WeakThis.Get())
-				{
-					HUD->SetInputMode(Idx == 0 ? EInputMode::Game : EInputMode::Simulation);
-					HUD->ReturnFocusToGame();
-				}
+				if (AGolfRangeHUD* HUD = WeakThis.Get()) { HUD->TriggerPrimaryAction(); }
 			};
 
 			// Pin distance (GOL-29). Always start at 150 yd; persistence caused more confusion than
@@ -395,101 +388,87 @@ void AGolfRangeHUD::EnsureInputBound()
 				return GolfRangeSurface::ClassifyLie(WorldCm.X / 100.0, WorldCm.Y / 100.0);
 			};
 
-			// Launch-monitor connection status -> panel dot (the active driver). Weak-captured panel
-			// so a status change after PIE teardown is a no-op.
+			// GOL-145: launch-monitor §6 gating. The LM dropdown's status drives the input mode (a
+			// connected device -> Simulation: the device owns the shot stream; "Simulated (no device)"/
+			// disconnected -> Game: keyboard swing) plus the status pill + primary-button label.
 			if (ULaunchMonitorManager* LM = ULaunchMonitorManager::Get(this))
 			{
-				TWeakObjectPtr<UGolfRangePanel> WeakPanel(Panel);
-				LM->OnActiveStatusChanged = [WeakPanel, WeakThis](bool bConnected, const FString& Detail)
+				// Async connect/disconnect re-derives the gating state (so a failed connect falls back
+				// to Game mode + amber pill). Resolve the device name fresh each fire.
+				LM->OnActiveStatusChanged = [WeakThis](ELaunchMonitorStatus Status, const FString& Detail)
 				{
-					if (UGolfRangePanel* P = WeakPanel.Get()) { P->SetConnectionStatus(bConnected, Detail); }
-						// On connect, sync the device to our current club (re-picking the same dropdown
-						// entry wouldn't fire OnClubChosen, so push it here too).
-						if (bConnected)
-						{
-							if (AGolfRangeHUD* HUD = WeakThis.Get())
-							{
-								if (ULaunchMonitorManager* M = ULaunchMonitorManager::Get(HUD))
-								{
-									if (ULaunchMonitorDriver* D = M->GetActiveDriver())
-									{
-										D->SetSelectedClub(GBag[FMath::Clamp(HUD->ActiveClub, 0, GBagNum - 1)].Name);
-									}
-								}
-							}
-						}
+					AGolfRangeHUD* HUD = WeakThis.Get();
+					if (!HUD) { return; }
+					ULaunchMonitorManager* M = ULaunchMonitorManager::Get(HUD);
+					ULaunchMonitorDriver* D = M ? M->GetActiveDriver() : nullptr;
+					const FString Name = D ? D->GetDisplayName().ToString() : FString(TEXT("Simulated (no device)"));
+					HUD->ApplyLaunchMonitorState(Status, Name);
+					// On connect, sync the device to our current club (re-picking the same dropdown
+					// entry wouldn't fire OnClubChosen, so push it here too).
+					if (Status == ELaunchMonitorStatus::Online && D)
+					{
+						D->SetSelectedClub(GBag[FMath::Clamp(HUD->ActiveClub, 0, GBagNum - 1)].Name);
+					}
 				};
-				if (Panel)
+
+				// Dropdown options: "Simulated (no device)" (index 0 = keyboard/game) + each available
+				// driver (today just OpenFlight; Square Omni / Blue Tees Rainmaker appear automatically
+				// once their drivers register). Picking a driver connects it; index 0 drops to keyboard.
+				const TArray<FLaunchMonitorDriverInfo> Drivers = LM->GetAvailableDrivers();
+				ULaunchMonitorDriver* Active = LM->GetActiveDriver();
+				const bool bActiveConnected = Active && Active->IsConnected();
+				TArray<FString> LMNames;
+				LMNames.Reserve(Drivers.Num() + 1);
+				LMNames.Add(TEXT("Simulated (no device)"));
+				int32 SelectedLM = 0;
+				for (int32 i = 0; i < Drivers.Num(); ++i)
 				{
-					// Launch-monitor dropdown: "Off" + each available driver (today just OpenFlight;
-					// Square Omni etc. appear automatically once registered). Picking a driver connects
-					// it; "Off" disconnects. Defaults to "Off" unless one is already connected.
-					const TArray<FLaunchMonitorDriverInfo> Drivers = LM->GetAvailableDrivers();
-					ULaunchMonitorDriver* Active = LM->GetActiveDriver();
-					const bool bActiveConnected = Active && Active->IsConnected();
-					TArray<FString> LMNames;
-					LMNames.Reserve(Drivers.Num() + 1);
-					LMNames.Add(TEXT("Off"));
-					int32 SelectedLM = 0;
-					for (int32 i = 0; i < Drivers.Num(); ++i)
+					LMNames.Add(Drivers[i].DisplayName.ToString());
+					if (bActiveConnected && Drivers[i].Id == LM->GetActiveDriverId())
 					{
-						LMNames.Add(Drivers[i].DisplayName.ToString());
-						if (bActiveConnected && Drivers[i].Id == LM->GetActiveDriverId())
-						{
-							SelectedLM = i + 1;
-						}
+						SelectedLM = i + 1;
 					}
-					Panel->SetLaunchMonitorOptions(LMNames);
-					Panel->SetSelectedLaunchMonitorIndex(SelectedLM);
-
-					Panel->OnLaunchMonitorChosen = [WeakThis](int32 Idx)
-					{
-						AGolfRangeHUD* HUD = WeakThis.Get();
-						if (!HUD) { return; }
-						ULaunchMonitorManager* Mgr = ULaunchMonitorManager::Get(HUD);
-						if (!Mgr) { HUD->ReturnFocusToGame(); return; }
-						if (Idx <= 0)
-						{
-							Mgr->DisconnectActive();   // "Off"
-						}
-						else
-						{
-							const TArray<FLaunchMonitorDriverInfo> Avail = Mgr->GetAvailableDrivers();
-							if (Avail.IsValidIndex(Idx - 1))
-							{
-								Mgr->SetActiveDriver(Avail[Idx - 1].Id, /*bConnectNow=*/true);
-							}
-						}
-						HUD->ReturnFocusToGame();
-					};
-
-					// "Simulate Shot" button (shown by the panel only while connected) -> ask the active
-					// driver to emit a shot (OpenFlight mock mode round-trips it back over the socket).
-					Panel->OnSimulateShot = [WeakThis]()
-					{
-						AGolfRangeHUD* HUD = WeakThis.Get();
-						if (!HUD) { return; }
-						ULaunchMonitorManager* Mgr = ULaunchMonitorManager::Get(HUD);
-						if (!Mgr) { return; }
-						if (ULaunchMonitorDriver* D = Mgr->GetActiveDriver())
-						{
-							D->RequestSimulatedShot();
-						}
-					};
-
-					// Only override the panel's default ("No launch monitor", gray) when something is
-					// actually connected -- so a disconnected startup reads consistently with "Off".
-					if (bActiveConnected && Active)
-					{
-						Panel->SetConnectionStatus(true, FString::Printf(TEXT("%s: connected"),
-							*Active->GetDisplayName().ToString()));
-					}
-
-					// GOL-67: apply the initial Mode visibility (default = Game -> hide LM controls,
-					// mount the swing meter). Must run AFTER the LM combo + Simulate button mount
-					// so the visibility flip lands on populated widgets.
-					SetInputMode(CurrentInputMode);
 				}
+				Panel->SetLaunchMonitorOptions(LMNames);
+				Panel->SetSelectedLaunchMonitorIndex(SelectedLM);
+				// Default = Simulated: clear any configured-but-idle driver so a late callback can't
+				// repaint the pill as that driver's "Offline".
+				if (SelectedLM == 0) { LM->SetActiveDriver(FString(), /*bConnectNow=*/false); }
+
+				Panel->OnLaunchMonitorChosen = [WeakThis](int32 Idx)
+				{
+					AGolfRangeHUD* HUD = WeakThis.Get();
+					if (!HUD) { return; }
+					ULaunchMonitorManager* Mgr = ULaunchMonitorManager::Get(HUD);
+					if (!Mgr) { HUD->ReturnFocusToGame(); return; }
+					if (Idx <= 0)
+					{
+						// "Simulated (no device)": drop the driver entirely (clear the active id).
+						Mgr->SetActiveDriver(FString(), /*bConnectNow=*/false);
+						HUD->ApplyLaunchMonitorState(ELaunchMonitorStatus::Sim, TEXT("Simulated (no device)"));
+					}
+					else
+					{
+						const TArray<FLaunchMonitorDriverInfo> Avail = Mgr->GetAvailableDrivers();
+						if (Avail.IsValidIndex(Idx - 1))
+						{
+							Mgr->SetActiveDriver(Avail[Idx - 1].Id, /*bConnectNow=*/true);
+							// Connect is async; show Pairing now -- OnActiveStatusChanged refines it to
+							// Online/Off when the driver reports back.
+							const ELaunchMonitorStatus Now = Mgr->GetActiveStatus();
+							HUD->ApplyLaunchMonitorState(
+								Now == ELaunchMonitorStatus::Online ? Now : ELaunchMonitorStatus::Pairing,
+								Avail[Idx - 1].DisplayName.ToString());
+						}
+					}
+					HUD->ReturnFocusToGame();
+				};
+
+				// Apply the initial gating from the current selection (default = Simulated -> Game mode).
+				ApplyLaunchMonitorState(
+					bActiveConnected ? ELaunchMonitorStatus::Online : ELaunchMonitorStatus::Sim,
+					(bActiveConnected && Active) ? Active->GetDisplayName().ToString()
+												 : FString(TEXT("Simulated (no device)")));
 			}
 		}
 	}
@@ -865,11 +844,13 @@ void AGolfRangeHUD::UpdateInRoundHud()
 
 	const bool bRound = RoundIsActive();
 
-	// The legacy range panel is range-only now; the glass round HUD replaces it in a round.
+	// GOL-145: the bottom HUD (telemetry readout + control bar) shows in both the range and a round
+	// (RoundHud's top panels layer on top in-round). Only the manual-shot dialog hides it. The pin/putt
+	// dev cluster is range-only -- hide it during a round so the in-round readout stays clean.
 	if (Panel)
 	{
-		Panel->SetVisibility((!bRound && !bManualOpen)
-			? ESlateVisibility::SelfHitTestInvisible : ESlateVisibility::Collapsed);
+		Panel->SetVisibility(bManualOpen ? ESlateVisibility::Collapsed : ESlateVisibility::SelfHitTestInvisible);
+		Panel->SetRangeControlsVisible(!bRound);
 	}
 
 	const URoundSubsystem* Round = URoundSubsystem::Get(this);
@@ -1401,14 +1382,9 @@ void AGolfRangeHUD::SetInputMode(EInputMode NewMode)
 	const bool bGame = (CurrentInputMode == EInputMode::Game);
 
 	// Mode swap resets any in-flight swing -- otherwise toggling mid-swing would leave the bars
-	// at a dangling locked-power state.
+	// at a dangling locked-power state. (GOL-145: mode is now derived from the LM status; the control
+	// bar's pill + button label are set by ApplyLaunchMonitorState, not here.)
 	SwingState = GolfsimKeyboardSwing::FState{};
-
-	if (Panel)
-	{
-		Panel->SetSelectedModeIndex(bGame ? 0 : 1);   // re-entrancy guarded inside
-		Panel->SetLMControlsVisible(!bGame);
-	}
 
 	if (bGame)
 	{
@@ -1438,6 +1414,26 @@ void AGolfRangeHUD::SetInputMode(EInputMode NewMode)
 	}
 }
 
+void AGolfRangeHUD::ApplyLaunchMonitorState(ELaunchMonitorStatus Status, const FString& Name)
+{
+	// §6: a connected device owns the shot stream (Simulation mode); everything else is keyboard Game
+	// mode. SetInputMode flips the swing meter visibility AND resets any in-progress swing.
+	SetInputMode(Status == ELaunchMonitorStatus::Online ? EInputMode::Simulation : EInputMode::Game);
+	if (Panel)
+	{
+		Panel->SetLaunchMonitorStatus(Status, Name);
+		Panel->SetPrimaryActionLabel(Status == ELaunchMonitorStatus::Online ? TEXT("Sim shot") : TEXT("Swing"));
+	}
+}
+
+void AGolfRangeHUD::TriggerPrimaryAction()
+{
+	// The Swing / Sim-shot button is the click-equivalent of Space: OnSpaceForCurrentMode routes by
+	// mode (Game -> advance the swing meter; Simulation -> ask the active LM to emit) with the same
+	// modal + ball-in-flight guards.
+	OnSpaceForCurrentMode();
+}
+
 void AGolfRangeHUD::SetSwingDifficulty(EGolfDifficulty D)
 {
 	ActiveDifficulty = D;
@@ -1464,6 +1460,13 @@ void AGolfRangeHUD::OnSpaceForCurrentMode()
 	}
 	if (CurrentInputMode == EInputMode::Simulation)
 	{
+		// GOL-145 §6: a connected LM owns the shot stream -> ask it to emit (OpenFlight mock mode
+		// round-trips it back). Falls back to a random shot only if no driver is active (e.g. the dev
+		// console forced Simulation without a device).
+		if (ULaunchMonitorManager* Mgr = ULaunchMonitorManager::Get(this))
+		{
+			if (ULaunchMonitorDriver* D = Mgr->GetActiveDriver()) { D->RequestSimulatedShot(); return; }
+		}
 		FireRandom();
 		return;
 	}

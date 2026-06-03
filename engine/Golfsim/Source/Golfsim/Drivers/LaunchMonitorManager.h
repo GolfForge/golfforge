@@ -14,12 +14,21 @@
 class ULaunchMonitorDriver;
 struct FShotTakenEvent;
 
+/** Connection state of a launch monitor, for the in-round HUD's §6 gating + status pill (GOL-145).
+ *  Online = a real device is connected (game mode OFF -- the LM owns the shot stream). Sim = the
+ *  built-in "Simulated (no device)" keyboard mode (no driver active). Pairing = an async connect is
+ *  in flight. Off = a driver is selected but not connected. The status drives EInputMode in the HUD
+ *  (Online -> Simulation, everything else -> Game) so adding a real driver (Square Omni / Blue Tees
+ *  Rainmaker, incoming) needs no HUD changes -- it just appears with live status. */
+enum class ELaunchMonitorStatus : uint8 { Sim, Off, Pairing, Online };
+
 /** Id + label + live-state for one driver, for a settings UI to render. */
 struct FLaunchMonitorDriverInfo
 {
 	FString Id;
 	FText DisplayName;
 	bool bConnected = false;
+	ELaunchMonitorStatus Status = ELaunchMonitorStatus::Off;
 };
 
 UCLASS()
@@ -38,6 +47,11 @@ public:
 	TArray<FLaunchMonitorDriverInfo> GetAvailableDrivers() const;
 	FString GetActiveDriverId() const { return ActiveDriverId; }
 
+	/** §6 status of the active selection: Sim when no driver is active ("Simulated (no device)"),
+	 *  Online when the active driver is connected, else Off. (Pairing is reported transiently by the
+	 *  HUD on a fresh pick; a future async driver can refine it.) */
+	ELaunchMonitorStatus GetActiveStatus() const;
+
 	/** Make a driver active: disconnect any other, optionally connect the pick now. */
 	void SetActiveDriver(const FString& Id, bool bConnectNow = true);
 	void ConnectActive();
@@ -49,8 +63,8 @@ public:
 	/** Drivers call this to publish a normalized shot onto the EventBus. */
 	void PublishShot(const FShotTakenEvent& Shot);
 
-	/** Fired when the active driver's connection status changes (HUD wires it to the panel dot). */
-	TFunction<void(bool /*bConnected*/, const FString& /*Detail*/)> OnActiveStatusChanged;
+	/** Fired when the active driver's connection status changes (HUD wires it to the status pill). */
+	TFunction<void(ELaunchMonitorStatus /*Status*/, const FString& /*Detail*/)> OnActiveStatusChanged;
 
 private:
 	void RegisterDriver(ULaunchMonitorDriver* Driver);

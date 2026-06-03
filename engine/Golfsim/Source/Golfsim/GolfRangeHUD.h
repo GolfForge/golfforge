@@ -29,6 +29,7 @@ class AGolfBallActor;
 class AGolfPinActor;
 class ACameraActor;
 struct FManualShotValues;
+enum class ELaunchMonitorStatus : uint8;   // Drivers/LaunchMonitorManager.h
 
 UCLASS()
 class GOLFSIM_API AGolfRangeHUD : public AHUD
@@ -154,6 +155,14 @@ public:
 	// keeps the LM dropdown + the existing random-fire path. Default = Game (lower barrier).
 	enum class EInputMode : uint8 { Game = 0, Simulation = 1 };
 	void SetInputMode(EInputMode NewMode);
+
+	// GOL-145: §6 launch-monitor gating. ApplyLaunchMonitorState derives the input mode from the
+	// selected LM status (Online -> Simulation: the device owns the shot stream; everything else ->
+	// Game: keyboard swing), repaints the control-bar status pill, and sets the telemetry primary-action
+	// button label ("Sim shot" vs "Swing"). TriggerPrimaryAction routes that button by mode: Game ->
+	// advance the swing meter (same as Space); Online -> ask the active driver to emit a shot.
+	void ApplyLaunchMonitorState(ELaunchMonitorStatus Status, const FString& Name);
+	void TriggerPrimaryAction();
 
 	// GOL-122: swap the swing-meter difficulty profile (Easy / Normal / Pro). Easy on entry; the
 	// pre-round picker (GOL-121) will overwrite at round start. Console: golfsim.SetDifficulty.

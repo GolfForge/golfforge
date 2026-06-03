@@ -73,7 +73,10 @@ void ULaunchMonitorManager::RegisterDriver(ULaunchMonitorDriver* Driver)
 		ULaunchMonitorDriver* D = WeakDriver.Get();
 		if (M && D && D->GetDriverId() == M->ActiveDriverId && M->OnActiveStatusChanged)
 		{
-			M->OnActiveStatusChanged(bConnected, Detail);
+			// Drivers only know connected/not; map to the §6 status (Online/Off). Sim is a HUD-level
+			// state (no driver active) the HUD applies directly, so it never arrives here.
+			M->OnActiveStatusChanged(
+				bConnected ? ELaunchMonitorStatus::Online : ELaunchMonitorStatus::Off, Detail);
 		}
 	};
 	Drivers.Add(Driver);
@@ -87,10 +90,19 @@ TArray<FLaunchMonitorDriverInfo> ULaunchMonitorManager::GetAvailableDrivers() co
 	{
 		if (Driver)
 		{
-			Infos.Add({ Driver->GetDriverId(), Driver->GetDisplayName(), Driver->IsConnected() });
+			const bool bConn = Driver->IsConnected();
+			Infos.Add({ Driver->GetDriverId(), Driver->GetDisplayName(), bConn,
+				bConn ? ELaunchMonitorStatus::Online : ELaunchMonitorStatus::Off });
 		}
 	}
 	return Infos;
+}
+
+ELaunchMonitorStatus ULaunchMonitorManager::GetActiveStatus() const
+{
+	const ULaunchMonitorDriver* Active = GetActiveDriver();
+	if (!Active) { return ELaunchMonitorStatus::Sim; }   // no driver selected = "Simulated (no device)"
+	return Active->IsConnected() ? ELaunchMonitorStatus::Online : ELaunchMonitorStatus::Off;
 }
 
 ULaunchMonitorDriver* ULaunchMonitorManager::FindDriver(const FString& Id) const

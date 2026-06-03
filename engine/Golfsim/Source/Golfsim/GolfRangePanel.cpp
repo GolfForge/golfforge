@@ -1,5 +1,6 @@
 #include "GolfRangePanel.h"
-#include "UI/GolfUITheme.h"   // GOL-144: glass reskin of the range panel
+#include "UI/GolfUITheme.h"
+#include "Drivers/LaunchMonitorManager.h"   // ELaunchMonitorStatus
 
 #include "Engine/World.h"
 #include "Framework/Application/SlateApplication.h"
@@ -12,15 +13,48 @@
 #include "Components/CanvasPanelSlot.h"
 #include "Components/CheckBox.h"
 #include "Components/ComboBoxString.h"
-#include "Components/GridPanel.h"
-#include "Components/GridSlot.h"
 #include "Components/HorizontalBox.h"
 #include "Components/HorizontalBoxSlot.h"
+#include "Components/SizeBox.h"
+#include "Components/Spacer.h"
+#include "Components/SlateWrapperTypes.h"   // FSlateChildSize / ESlateSizeRule for fill spacers
 #include "Components/SpinBox.h"
 #include "Components/TextBlock.h"
 #include "Components/VerticalBox.h"
 #include "Components/VerticalBoxSlot.h"
-#include "Styling/SlateTypes.h"   // FTableRowStyle for the dropdown row text color
+
+using namespace GolfUI;
+
+namespace
+{
+	// A telemetry tile: small eyebrow over a mono value, in a rounded inset. bAccent fills the cell
+	// with the soft accent + tints the value green (CARRY). bBig bumps the value size for the primary row.
+	UTextBlock* BuildTile(UWidgetTree* Tree, UHorizontalBox* Row, const TCHAR* Label,
+		bool bAccent, bool bBig)
+	{
+		UBorder* Cell = Tree->ConstructWidget<UBorder>();
+		Cell->SetBrush(RoundedBrush(bAccent ? Color::AccentSoft() : Color::Surface(), Radius::Md,
+			bAccent ? Color::AccentLine() : Color::Border(), 1.f));
+		Cell->SetPadding(FMargin(12.f, 8.f));
+
+		UVerticalBox* Col = Tree->ConstructWidget<UVerticalBox>();
+		Cell->SetContent(Col);
+		Col->AddChildToVerticalBox(MakeEyebrow(Tree, Label));
+
+		UTextBlock* Val = Tree->ConstructWidget<UTextBlock>();
+		Val->SetText(FText::FromString(TEXT("-")));
+		Val->SetFont(Mono(bBig ? 22 : 15, FName(TEXT("Medium"))));
+		Val->SetColorAndOpacity(FSlateColor(bAccent ? Color::Accent() : Color::Text()));
+		if (UVerticalBoxSlot* VS = Col->AddChildToVerticalBox(Val)) { VS->SetPadding(FMargin(0.f, 3.f, 0.f, 0.f)); }
+
+		if (UHorizontalBoxSlot* CS = Row->AddChildToHorizontalBox(Cell))
+		{
+			CS->SetPadding(FMargin(0.f, 0.f, 10.f, 0.f));
+			CS->SetVerticalAlignment(VAlign_Fill);
+		}
+		return Val;
+	}
+}
 
 void UGolfRangePanel::NativeOnInitialized()
 {
@@ -30,69 +64,103 @@ void UGolfRangePanel::NativeOnInitialized()
 
 void UGolfRangePanel::BuildTree()
 {
-	// Root canvas fills the screen (AddToViewport); a single corner-anchored Border holds the panel.
 	UCanvasPanel* Root = WidgetTree->ConstructWidget<UCanvasPanel>(UCanvasPanel::StaticClass(), TEXT("Root"));
 	WidgetTree->RootWidget = Root;   // without this the base RebuildWidget renders an empty SSpacer
 
-	UBorder* Bg = WidgetTree->ConstructWidget<UBorder>();
-	Bg->SetBrush(GolfUI::RoundedBrush(GolfUI::Color::GlassFill(), GolfUI::Radius::Lg, GolfUI::Color::Border(), 1.f));
-	Bg->SetPadding(FMargin(16.f));
-	UCanvasPanelSlot* BgSlot = Root->AddChildToCanvas(Bg);
-	BgSlot->SetAnchors(FAnchors(1.f, 0.f, 1.f, 0.f));   // top-right point anchor
-	BgSlot->SetAlignment(FVector2D(1.f, 0.f));          // pivot at the widget's top-right corner
-	BgSlot->SetAutoSize(true);
-	BgSlot->SetOffsets(FMargin(0.f, 28.f, 28.f, 0.f));  // L,T,R,B; with autosize, T/R are the corner inset
-
-	UVerticalBox* Col = WidgetTree->ConstructWidget<UVerticalBox>();
-	Bg->SetContent(Col);
-
-	UTextBlock* Title = WidgetTree->ConstructWidget<UTextBlock>();
-	Title->SetText(FText::FromString(TEXT("RANGE")));
-	{ FSlateFontInfo F = GolfUI::Display(18, FName(TEXT("Bold"))); F.LetterSpacing = 60; Title->SetFont(F); }
-	Title->SetColorAndOpacity(FSlateColor(GolfUI::Color::Text()));
-	Col->AddChildToVerticalBox(Title);
-
-	// Label/value grid: label in col 0, right-aligned value in col 1.
-	UGridPanel* Grid = WidgetTree->ConstructWidget<UGridPanel>();
-	auto AddRow = [&](int32 RowIdx, const TCHAR* Label) -> UTextBlock*
+	// Full-screen vertical stack: a fill spacer pushes the readout + control bar to the bottom. This
+	// sidesteps fiddly mixed canvas anchors and gives the control bar a clean full-width bottom span.
+	UVerticalBox* Stack = WidgetTree->ConstructWidget<UVerticalBox>();
+	Stack->SetVisibility(ESlateVisibility::SelfHitTestInvisible);
+	if (UCanvasPanelSlot* SS = Root->AddChildToCanvas(Stack))
 	{
-		UTextBlock* Lbl = WidgetTree->ConstructWidget<UTextBlock>();
-		Lbl->SetText(FText::FromString(Label));
-		Lbl->SetFont(GolfUI::Body(13));
-		Lbl->SetColorAndOpacity(FSlateColor(GolfUI::Color::TextDim()));
-		UGridSlot* LS = Grid->AddChildToGrid(Lbl, RowIdx, 0);
-		LS->SetPadding(FMargin(0.f, 2.f, 12.f, 2.f));
+		SS->SetAnchors(FAnchors(0.f, 0.f, 1.f, 1.f));
+		SS->SetOffsets(FMargin(0.f));
+	}
 
-		UTextBlock* Val = WidgetTree->ConstructWidget<UTextBlock>();
-		Val->SetText(FText::FromString(TEXT("-")));
-		Val->SetFont(GolfUI::Mono(13));
-		Val->SetColorAndOpacity(FSlateColor(GolfUI::Color::Text()));
-		UGridSlot* VS = Grid->AddChildToGrid(Val, RowIdx, 1);
-		VS->SetHorizontalAlignment(HAlign_Right);
-		VS->SetPadding(FMargin(0.f, 2.f, 0.f, 2.f));
-		return Val;
-	};
-	ValClub    = AddRow(0, TEXT("Club"));
-	ValSpeed   = AddRow(1, TEXT("Ball Speed (mph)"));
-	ValLaunch  = AddRow(2, TEXT("Launch (deg)"));
-	ValSpin    = AddRow(3, TEXT("Spin (rpm)"));
-	ValCarry   = AddRow(4, TEXT("Carry (yd)"));
-	ValTotal   = AddRow(5, TEXT("Total (yd)"));
-	ValOffline = AddRow(6, TEXT("Offline (yd)"));
-	UVerticalBoxSlot* GridSlot = Col->AddChildToVerticalBox(Grid);
-	GridSlot->SetPadding(FMargin(0.f, 6.f, 0.f, 6.f));
+	USpacer* Fill = WidgetTree->ConstructWidget<USpacer>();
+	Fill->SetVisibility(ESlateVisibility::HitTestInvisible);
+	if (UVerticalBoxSlot* FS = Stack->AddChildToVerticalBox(Fill)) { FS->SetSize(FSlateChildSize(ESlateSizeRule::Fill)); }
 
-	// Pin distance row (GOL-29): label + integer spinner (0..400 yd, +/-5) + actual readout.
-	// Same fixed-width recipe as the manual-shot dialog (MinDesiredWidth + 0 fractional digits) so
-	// the spinner's pixel width doesn't shove the AutoSize panel as the value drags.
+	// ── Telemetry readout (bottom-left glass card) ───────────────────────────────────────────────
+	UBorder* Readout = MakeGlassPanel(WidgetTree);
+	if (UVerticalBoxSlot* RS = Stack->AddChildToVerticalBox(Readout))
+	{
+		RS->SetHorizontalAlignment(HAlign_Left);
+		RS->SetPadding(FMargin(28.f, 0.f, 0.f, 14.f));
+	}
+	UVerticalBox* RCol = WidgetTree->ConstructWidget<UVerticalBox>();
+	Readout->SetContent(RCol);
+
+	// Header: eyebrow + club headline (left), primary-action button (right).
+	UHorizontalBox* Header = WidgetTree->ConstructWidget<UHorizontalBox>();
+	RCol->AddChildToVerticalBox(Header);
+	{
+		UVerticalBox* HL = WidgetTree->ConstructWidget<UVerticalBox>();
+		HL->AddChildToVerticalBox(MakeEyebrow(WidgetTree, TEXT("LAUNCH MONITOR · LAST SHOT")));
+		ValClub = WidgetTree->ConstructWidget<UTextBlock>();
+		ValClub->SetText(FText::FromString(TEXT("-")));
+		ValClub->SetFont(Display(30, FName(TEXT("SemiBold"))));
+		ValClub->SetColorAndOpacity(FSlateColor(Color::Text()));
+		if (UVerticalBoxSlot* CS = HL->AddChildToVerticalBox(ValClub)) { CS->SetPadding(FMargin(0.f, 2.f, 0.f, 0.f)); }
+		if (UHorizontalBoxSlot* HLS = Header->AddChildToHorizontalBox(HL)) { HLS->SetVerticalAlignment(VAlign_Center); }
+
+		USpacer* HGap = WidgetTree->ConstructWidget<USpacer>();
+		if (UHorizontalBoxSlot* GS = Header->AddChildToHorizontalBox(HGap)) { GS->SetSize(FSlateChildSize(ESlateSizeRule::Fill)); }
+
+		// Primary action button: "Swing"/"Sim shot" + a [Space] keycap. Surface fill so it reads as an
+		// elevated control over the glass (matches 06/08).
+		PrimaryButton = WidgetTree->ConstructWidget<UButton>();
+		StyleButton(PrimaryButton, Color::Surface2(), Radius::Md, Color::Border(), 1.f);
+		UHorizontalBox* BtnRow = WidgetTree->ConstructWidget<UHorizontalBox>();
+		PrimaryButtonLabel = WidgetTree->ConstructWidget<UTextBlock>();
+		PrimaryButtonLabel->SetText(FText::FromString(TEXT("Swing")));
+		PrimaryButtonLabel->SetFont(Body(14, FName(TEXT("SemiBold"))));
+		PrimaryButtonLabel->SetColorAndOpacity(FSlateColor(Color::Text()));
+		if (UHorizontalBoxSlot* LS = BtnRow->AddChildToHorizontalBox(PrimaryButtonLabel))
+		{
+			LS->SetVerticalAlignment(VAlign_Center);
+			LS->SetPadding(FMargin(0.f, 0.f, 8.f, 0.f));
+		}
+		if (UHorizontalBoxSlot* KS = BtnRow->AddChildToHorizontalBox(MakeKbd(WidgetTree, TEXT("Space"))))
+		{
+			KS->SetVerticalAlignment(VAlign_Center);
+		}
+		PrimaryButton->SetContent(BtnRow);
+		PrimaryButton->OnClicked.AddDynamic(this, &UGolfRangePanel::HandlePrimaryActionClicked);
+		if (UHorizontalBoxSlot* BS = Header->AddChildToHorizontalBox(PrimaryButton))
+		{
+			BS->SetVerticalAlignment(VAlign_Center);
+			BS->SetPadding(FMargin(20.f, 0.f, 0.f, 0.f));
+		}
+	}
+
+	// Secondary tiles: ball speed / launch / spin.
+	UHorizontalBox* SecRow = WidgetTree->ConstructWidget<UHorizontalBox>();
+	if (UVerticalBoxSlot* SRS = RCol->AddChildToVerticalBox(SecRow)) { SRS->SetPadding(FMargin(0.f, 14.f, 0.f, 0.f)); }
+	ValSpeed  = BuildTile(WidgetTree, SecRow, TEXT("BALL SPEED"), false, false);
+	ValLaunch = BuildTile(WidgetTree, SecRow, TEXT("LAUNCH"),     false, false);
+	ValSpin   = BuildTile(WidgetTree, SecRow, TEXT("SPIN"),       false, false);
+
+	// Primary tiles: carry (accent) / total / offline.
+	UHorizontalBox* PriRow = WidgetTree->ConstructWidget<UHorizontalBox>();
+	if (UVerticalBoxSlot* PRS = RCol->AddChildToVerticalBox(PriRow)) { PRS->SetPadding(FMargin(0.f, 8.f, 0.f, 0.f)); }
+	ValCarry   = BuildTile(WidgetTree, PriRow, TEXT("CARRY"),   true,  true);
+	ValTotal   = BuildTile(WidgetTree, PriRow, TEXT("TOTAL"),   false, true);
+	ValOffline = BuildTile(WidgetTree, PriRow, TEXT("OFFLINE"), false, true);
+
+	// Range-only dev controls: pin distance spinner + putt-from-green checkbox. Hidden in a round.
+	RangeControlsRow = WidgetTree->ConstructWidget<UHorizontalBox>();
+	if (UVerticalBoxSlot* RGS = RCol->AddChildToVerticalBox(RangeControlsRow)) { RGS->SetPadding(FMargin(0.f, 10.f, 0.f, 0.f)); }
 	{
 		UTextBlock* PinLbl = WidgetTree->ConstructWidget<UTextBlock>();
-		PinLbl->SetText(FText::FromString(TEXT("Pin (yd)")));
-		UVerticalBoxSlot* PinLblSlot = Col->AddChildToVerticalBox(PinLbl);
-		PinLblSlot->SetPadding(FMargin(0.f, 6.f, 0.f, 1.f));
-
-		UHorizontalBox* PinRow = WidgetTree->ConstructWidget<UHorizontalBox>();
-		Col->AddChildToVerticalBox(PinRow);
+		PinLbl->SetText(FText::FromString(TEXT("PIN")));
+		PinLbl->SetFont(Mono(11));
+		PinLbl->SetColorAndOpacity(FSlateColor(Color::TextFaint()));
+		if (UHorizontalBoxSlot* PLS = RangeControlsRow->AddChildToHorizontalBox(PinLbl))
+		{
+			PLS->SetVerticalAlignment(VAlign_Center);
+			PLS->SetPadding(FMargin(0.f, 0.f, 8.f, 0.f));
+		}
 
 		PinBox = WidgetTree->ConstructWidget<USpinBox>();
 		PinBox->SetMinValue(0.f);
@@ -100,99 +168,119 @@ void UGolfRangePanel::BuildTree()
 		PinBox->SetMinSliderValue(0.f);
 		PinBox->SetMaxSliderValue(400.f);
 		PinBox->SetDelta(5.f);
-		PinBox->SetMinDesiredWidth(96.f);
+		PinBox->SetMinDesiredWidth(80.f);
 		PinBox->SetMinFractionalDigits(0);
 		PinBox->SetMaxFractionalDigits(0);
 		PinBox->OnValueChanged.AddDynamic(this, &UGolfRangePanel::HandlePinValueChanged);
-		UHorizontalBoxSlot* PinBoxSlot = PinRow->AddChildToHorizontalBox(PinBox);
-		PinBoxSlot->SetPadding(FMargin(0.f, 0.f, 8.f, 0.f));
-		PinBoxSlot->SetVerticalAlignment(VAlign_Center);
+		if (UHorizontalBoxSlot* PBS = RangeControlsRow->AddChildToHorizontalBox(PinBox))
+		{
+			PBS->SetPadding(FMargin(0.f, 0.f, 8.f, 0.f));
+			PBS->SetVerticalAlignment(VAlign_Center);
+		}
 
 		PinActualText = WidgetTree->ConstructWidget<UTextBlock>();
 		PinActualText->SetText(FText::FromString(TEXT("@ -- yd")));
-		PinActualText->SetColorAndOpacity(FSlateColor(FLinearColor(0.75f, 0.75f, 0.75f)));
-		UHorizontalBoxSlot* PinReadSlot = PinRow->AddChildToHorizontalBox(PinActualText);
-		PinReadSlot->SetVerticalAlignment(VAlign_Center);
-
-		// Putt-mode toggle right below the pin row -- teleports the pawn to the green, selects Putter.
-		// Session-only; defaults off every PIE entry.
-		UHorizontalBox* PuttRow = WidgetTree->ConstructWidget<UHorizontalBox>();
-		UVerticalBoxSlot* PuttRowSlot = Col->AddChildToVerticalBox(PuttRow);
-		PuttRowSlot->SetPadding(FMargin(0.f, 4.f, 0.f, 0.f));
+		PinActualText->SetFont(Mono(12));
+		PinActualText->SetColorAndOpacity(FSlateColor(Color::TextDim()));
+		if (UHorizontalBoxSlot* PAS = RangeControlsRow->AddChildToHorizontalBox(PinActualText))
+		{
+			PAS->SetVerticalAlignment(VAlign_Center);
+			PAS->SetPadding(FMargin(0.f, 0.f, 18.f, 0.f));
+		}
 
 		PuttModeBox = WidgetTree->ConstructWidget<UCheckBox>();
 		PuttModeBox->OnCheckStateChanged.AddDynamic(this, &UGolfRangePanel::HandlePuttModeChanged);
-		UHorizontalBoxSlot* PuttBoxSlot = PuttRow->AddChildToHorizontalBox(PuttModeBox);
-		PuttBoxSlot->SetPadding(FMargin(0.f, 0.f, 6.f, 0.f));
-		PuttBoxSlot->SetVerticalAlignment(VAlign_Center);
+		if (UHorizontalBoxSlot* PMS = RangeControlsRow->AddChildToHorizontalBox(PuttModeBox))
+		{
+			PMS->SetPadding(FMargin(0.f, 0.f, 6.f, 0.f));
+			PMS->SetVerticalAlignment(VAlign_Center);
+		}
 
 		UTextBlock* PuttLbl = WidgetTree->ConstructWidget<UTextBlock>();
 		PuttLbl->SetText(FText::FromString(TEXT("Putt from green")));
-		UHorizontalBoxSlot* PuttLblSlot = PuttRow->AddChildToHorizontalBox(PuttLbl);
-		PuttLblSlot->SetVerticalAlignment(VAlign_Center);
+		PuttLbl->SetFont(Body(12));
+		PuttLbl->SetColorAndOpacity(FSlateColor(Color::TextDim()));
+		if (UHorizontalBoxSlot* PLS2 = RangeControlsRow->AddChildToHorizontalBox(PuttLbl))
+		{
+			PLS2->SetVerticalAlignment(VAlign_Center);
+		}
 	}
 
-	// Three labeled dropdowns (Club / Time / Sky). A code-only ComboBoxString renders fully styled in
-	// 5.7 (its ctor defaults WidgetStyle/ItemStyle/Font from the style cache), so no style asset is
-	// needed; we only lighten the row text so names read against the dark dropdown menu (the default
-	// ItemStyle.TextColor is dark; SelectedTextColor stays default so the hovered row reads on its
-	// light highlight). Options are supplied later by the HUD. OutLabel optionally returns the
-	// header text block so callers can hide/show the row at runtime (Mode dropdown gates LM row).
-	auto AddLabeledCombo = [&](const TCHAR* Label, TObjectPtr<UTextBlock>* OutLabel = nullptr) -> UComboBoxString*
+	// ── Control bar (full-width bottom glass bar) ────────────────────────────────────────────────
+	UBorder* Bar = WidgetTree->ConstructWidget<UBorder>();
+	Bar->SetBrush(RoundedBrush(Color::GlassFill(), Radius::Lg, Color::Border(), 1.f));
+	Bar->SetPadding(FMargin(24.f, 12.f));
+	if (UVerticalBoxSlot* BarSlot = Stack->AddChildToVerticalBox(Bar)) { BarSlot->SetHorizontalAlignment(HAlign_Fill); }
+
+	UHorizontalBox* BarRow = WidgetTree->ConstructWidget<UHorizontalBox>();
+	Bar->SetContent(BarRow);
+
+	// One labeled dropdown cell: eyebrow over a fixed-width styled combo. Options come from the HUD.
+	auto AddBarCombo = [&](const TCHAR* Label, float Width) -> UComboBoxString*
 	{
-		UTextBlock* Lbl = WidgetTree->ConstructWidget<UTextBlock>();
-		Lbl->SetText(FText::FromString(Label));
-		Lbl->SetFont(GolfUI::Body(12));
-		Lbl->SetColorAndOpacity(FSlateColor(GolfUI::Color::TextDim()));
-		UVerticalBoxSlot* LblSlot = Col->AddChildToVerticalBox(Lbl);
-		LblSlot->SetPadding(FMargin(0.f, 6.f, 0.f, 1.f));
-		if (OutLabel) { *OutLabel = Lbl; }
+		UVerticalBox* Cell = WidgetTree->ConstructWidget<UVerticalBox>();
+		Cell->AddChildToVerticalBox(MakeEyebrow(WidgetTree, Label));
 
 		UComboBoxString* Combo = WidgetTree->ConstructWidget<UComboBoxString>();
-		GolfUI::StyleComboBox(Combo);   // mono font + readable white items, matches the new look
-		Col->AddChildToVerticalBox(Combo);
+		StyleComboBox(Combo);
+		USizeBox* Wrap = WidgetTree->ConstructWidget<USizeBox>();
+		Wrap->SetWidthOverride(Width);
+		Wrap->SetContent(Combo);
+		if (UVerticalBoxSlot* WS = Cell->AddChildToVerticalBox(Wrap)) { WS->SetPadding(FMargin(0.f, 3.f, 0.f, 0.f)); }
+
+		if (UHorizontalBoxSlot* CS = BarRow->AddChildToHorizontalBox(Cell))
+		{
+			CS->SetVerticalAlignment(VAlign_Center);
+			CS->SetPadding(FMargin(0.f, 0.f, 16.f, 0.f));
+		}
 		return Combo;
 	};
 
-	ClubCombo = AddLabeledCombo(TEXT("Club"));
+	ClubCombo = AddBarCombo(TEXT("CLUB"), 150.f);
 	ClubCombo->OnSelectionChanged.AddDynamic(this, &UGolfRangePanel::HandleClubSelectionChanged);
-	ModeCombo = AddLabeledCombo(TEXT("Mode"));   // GOL-67: Game / Simulation
-	ModeCombo->OnSelectionChanged.AddDynamic(this, &UGolfRangePanel::HandleModeSelectionChanged);
-	TimeCombo = AddLabeledCombo(TEXT("Time"));
+	TimeCombo = AddBarCombo(TEXT("TIME OF DAY"), 150.f);
 	TimeCombo->OnSelectionChanged.AddDynamic(this, &UGolfRangePanel::HandleTimeSelectionChanged);
-	SkyCombo = AddLabeledCombo(TEXT("Sky"));
+	SkyCombo = AddBarCombo(TEXT("SKY / WEATHER"), 160.f);
 	SkyCombo->OnSelectionChanged.AddDynamic(this, &UGolfRangePanel::HandleSkySelectionChanged);
-	CameraCombo = AddLabeledCombo(TEXT("Camera"));
+	CameraCombo = AddBarCombo(TEXT("CAMERA"), 140.f);
 	CameraCombo->OnSelectionChanged.AddDynamic(this, &UGolfRangePanel::HandleCameraSelectionChanged);
-	LMCombo = AddLabeledCombo(TEXT("Launch Monitor"), &LMLabel);
+	LMCombo = AddBarCombo(TEXT("LAUNCH MONITOR"), 190.f);
 	LMCombo->OnSelectionChanged.AddDynamic(this, &UGolfRangePanel::HandleLaunchMonitorSelectionChanged);
 
-	// "Simulate Shot" button -- asks the connected device to emit a shot (OpenFlight mock mode ->
-	// Socket.IO simulate_shot). Hidden until SetConnectionStatus reports a connection. Default UButton
-	// is light, so the label is black.
-	SimulateButton = WidgetTree->ConstructWidget<UButton>();
-	UTextBlock* SimLabel = WidgetTree->ConstructWidget<UTextBlock>();
-	SimLabel->SetText(FText::FromString(TEXT("Simulate Shot")));
-	SimLabel->SetColorAndOpacity(FSlateColor(FLinearColor::Black));
-	SimLabel->SetJustification(ETextJustify::Center);
-	SimulateButton->SetContent(SimLabel);
-	SimulateButton->OnClicked.AddDynamic(this, &UGolfRangePanel::HandleSimulateClicked);
-	SimulateButton->SetVisibility(ESlateVisibility::Collapsed);
-	UVerticalBoxSlot* SimSlot = Col->AddChildToVerticalBox(SimulateButton);
-	SimSlot->SetPadding(FMargin(0.f, 6.f, 0.f, 0.f));
+	USpacer* BarGap = WidgetTree->ConstructWidget<USpacer>();
+	if (UHorizontalBoxSlot* BGS = BarRow->AddChildToHorizontalBox(BarGap)) { BGS->SetSize(FSlateChildSize(ESlateSizeRule::Fill)); }
 
-	// Launch-monitor connection indicator (bottom of the panel). Gray until the HUD wires the active
-	// driver's status; green/red thereafter.
-	StatusText = WidgetTree->ConstructWidget<UTextBlock>();
-	StatusText->SetText(FText::FromString(TEXT("● No launch monitor")));
-	StatusText->SetColorAndOpacity(FSlateColor(FLinearColor(0.6f, 0.6f, 0.6f)));
+	// LM status pill (recoloured by SetLaunchMonitorStatus; amber game-mode default).
+	StatusPill = WidgetTree->ConstructWidget<UBorder>();
+	StatusPill->SetPadding(FMargin(12.f, 7.f));
+	UHorizontalBox* PillRow = WidgetTree->ConstructWidget<UHorizontalBox>();
+	StatusPill->SetContent(PillRow);
 	{
-		FSlateFontInfo F = StatusText->GetFont();
-		F.Size = 10;
-		StatusText->SetFont(F);
+		USizeBox* DotBox = WidgetTree->ConstructWidget<USizeBox>();
+		DotBox->SetWidthOverride(9.f);
+		DotBox->SetHeightOverride(9.f);
+		StatusDot = WidgetTree->ConstructWidget<UBorder>();
+		DotBox->SetContent(StatusDot);
+		if (UHorizontalBoxSlot* DS = PillRow->AddChildToHorizontalBox(DotBox))
+		{
+			DS->SetVerticalAlignment(VAlign_Center);
+			DS->SetPadding(FMargin(0.f, 0.f, 9.f, 0.f));
+		}
+
+		UVerticalBox* PillCol = WidgetTree->ConstructWidget<UVerticalBox>();
+		StatusEyebrow = MakeEyebrow(WidgetTree, TEXT("MODE"));
+		PillCol->AddChildToVerticalBox(StatusEyebrow);
+		StatusValue = WidgetTree->ConstructWidget<UTextBlock>();
+		StatusValue->SetText(FText::FromString(TEXT("Game · Keyboard")));
+		StatusValue->SetFont(Mono(13, FName(TEXT("Medium"))));
+		StatusValue->SetColorAndOpacity(FSlateColor(Color::Text()));
+		if (UVerticalBoxSlot* PVS = PillCol->AddChildToVerticalBox(StatusValue)) { PVS->SetPadding(FMargin(0.f, 2.f, 0.f, 0.f)); }
+		PillRow->AddChildToHorizontalBox(PillCol);
 	}
-	UVerticalBoxSlot* StatusSlot = Col->AddChildToVerticalBox(StatusText);
-	StatusSlot->SetPadding(FMargin(0.f, 8.f, 0.f, 0.f));
+	if (UHorizontalBoxSlot* PS = BarRow->AddChildToHorizontalBox(StatusPill)) { PS->SetVerticalAlignment(VAlign_Center); }
+
+	// Default look = Sim / game mode (the HUD re-applies this once the manager is wired).
+	SetLaunchMonitorStatus(ELaunchMonitorStatus::Sim, TEXT("Simulated (no device)"));
 }
 
 namespace
@@ -200,15 +288,9 @@ namespace
 	// Repopulate a dropdown's options from a name list.
 	void FillCombo(UComboBoxString* Combo, const TArray<FString>& Names)
 	{
-		if (!Combo)
-		{
-			return;
-		}
+		if (!Combo) { return; }
 		Combo->ClearOptions();
-		for (const FString& Name : Names)
-		{
-			Combo->AddOption(Name);
-		}
+		for (const FString& Name : Names) { Combo->AddOption(Name); }
 	}
 }
 
@@ -217,14 +299,10 @@ void UGolfRangePanel::SetTimeOptions(const TArray<FString>& Names) { FillCombo(T
 void UGolfRangePanel::SetSkyOptions(const TArray<FString>& Names)  { FillCombo(SkyCombo, Names); }
 void UGolfRangePanel::SetCameraOptions(const TArray<FString>& Names) { FillCombo(CameraCombo, Names); }
 void UGolfRangePanel::SetLaunchMonitorOptions(const TArray<FString>& Names) { FillCombo(LMCombo, Names); }
-void UGolfRangePanel::SetModeOptions(const TArray<FString>& Names) { FillCombo(ModeCombo, Names); }
 
 void UGolfRangePanel::SetComboIndexGuarded(UComboBoxString* Combo, int32 Index)
 {
-	if (!Combo || Combo->GetOptionCount() <= 0)
-	{
-		return;   // nothing to select yet (options not populated)
-	}
+	if (!Combo || Combo->GetOptionCount() <= 0) { return; }   // nothing to select yet
 	const int32 Clamped = FMath::Clamp(Index, 0, Combo->GetOptionCount() - 1);
 	bSuppressSelectionCallback = true;
 	Combo->SetSelectedIndex(Clamped);
@@ -232,38 +310,21 @@ void UGolfRangePanel::SetComboIndexGuarded(UComboBoxString* Combo, int32 Index)
 }
 
 void UGolfRangePanel::SetSelectedClubIndex(int32 Index) { SetComboIndexGuarded(ClubCombo, Index); }
-
-void UGolfRangePanel::SetMetricClubName(const FString& Club)
-{
-	if (ValClub) { ValClub->SetText(FText::FromString(Club)); }
-}
 void UGolfRangePanel::SetSelectedTimeIndex(int32 Index) { SetComboIndexGuarded(TimeCombo, Index); }
 void UGolfRangePanel::SetSelectedSkyIndex(int32 Index)  { SetComboIndexGuarded(SkyCombo, Index); }
 void UGolfRangePanel::SetSelectedCameraIndex(int32 Index) { SetComboIndexGuarded(CameraCombo, Index); }
 void UGolfRangePanel::SetSelectedLaunchMonitorIndex(int32 Index) { SetComboIndexGuarded(LMCombo, Index); }
-void UGolfRangePanel::SetSelectedModeIndex(int32 Index)
+
+void UGolfRangePanel::SetMetricClubName(const FString& Club)
 {
-	// Separate guard from the other combos -- the Mode pick triggers visibility changes on the LM
-	// section, and we don't want a programmatic seed (HUD startup) to fire the HUD callback that
-	// would re-mount or hide widgets a second time.
-	if (!ModeCombo || ModeCombo->GetOptionCount() <= 0) { return; }
-	const int32 Clamped = FMath::Clamp(Index, 0, ModeCombo->GetOptionCount() - 1);
-	bSuppressModeCallback = true;
-	ModeCombo->SetSelectedIndex(Clamped);
-	bSuppressModeCallback = false;
+	if (ValClub) { ValClub->SetText(FText::FromString(Club.ToUpper())); }
 }
 
-void UGolfRangePanel::SetLMControlsVisible(bool bVisible)
+void UGolfRangePanel::SetRangeControlsVisible(bool bVisible)
 {
-	const ESlateVisibility V = bVisible ? ESlateVisibility::Visible : ESlateVisibility::Collapsed;
-	if (LMLabel)        { LMLabel->SetVisibility(V); }
-	if (LMCombo)        { LMCombo->SetVisibility(V); }
-	if (SimulateButton)
+	if (RangeControlsRow)
 	{
-		// Don't override the "shown only while a driver is connected" rule when going visible -- it
-		// stays Collapsed until SetConnectionStatus(true) flips it. When hiding for Game mode,
-		// force collapsed regardless.
-		if (!bVisible) { SimulateButton->SetVisibility(ESlateVisibility::Collapsed); }
+		RangeControlsRow->SetVisibility(bVisible ? ESlateVisibility::Visible : ESlateVisibility::Collapsed);
 	}
 }
 
@@ -292,63 +353,30 @@ void UGolfRangePanel::HandleCameraSelectionChanged(FString, ESelectInfo::Type Se
 	HandleComboPick(CameraCombo, OnCameraChosen, SelectionType);
 }
 
-void UGolfRangePanel::HandleModeSelectionChanged(FString, ESelectInfo::Type SelectionType)
+void UGolfRangePanel::HandlePrimaryActionClicked()
 {
-	if (bSuppressModeCallback || SelectionType == ESelectInfo::Direct || !ModeCombo)
-	{
-		return;
-	}
-	const int32 Idx = ModeCombo->GetSelectedIndex();
-	if (Idx >= 0 && OnModeChosen)
-	{
-		OnModeChosen(Idx);
-	}
-	ReturnFocusToGameViewport();
-}
-
-void UGolfRangePanel::HandleSimulateClicked()
-{
-	if (OnSimulateShot)
-	{
-		OnSimulateShot();
-	}
+	if (OnPrimaryAction) { OnPrimaryAction(); }
 	ReturnFocusToGameViewport();   // so Space/1-6/arrows still reach gameplay after the click
 }
 
 void UGolfRangePanel::HandlePinValueChanged(float Value)
 {
-	// Programmatic SetValue() should not loop back into gameplay (the HUD writes the persisted value
-	// at start-up, and the console push calls SetPinValue too).
-	if (bSuppressPinCallback)
-	{
-		return;
-	}
-	if (OnPinChanged)
-	{
-		OnPinChanged(static_cast<double>(Value));
-	}
+	// Programmatic SetValue() should not loop back into gameplay (HUD writes the value at start-up).
+	if (bSuppressPinCallback) { return; }
+	if (OnPinChanged) { OnPinChanged(static_cast<double>(Value)); }
 	ReturnFocusToGameViewport();
 }
 
 void UGolfRangePanel::HandlePuttModeChanged(bool bChecked)
 {
-	if (bSuppressPuttCallback)
-	{
-		return;
-	}
-	if (OnPuttModeChanged)
-	{
-		OnPuttModeChanged(bChecked);
-	}
+	if (bSuppressPuttCallback) { return; }
+	if (OnPuttModeChanged) { OnPuttModeChanged(bChecked); }
 	ReturnFocusToGameViewport();
 }
 
 void UGolfRangePanel::SetPinValue(double Yards)
 {
-	if (!PinBox)
-	{
-		return;
-	}
+	if (!PinBox) { return; }
 	const float Clamped = FMath::Clamp(static_cast<float>(Yards), 0.f, 400.f);
 	bSuppressPinCallback = true;
 	PinBox->SetValue(Clamped);
@@ -357,19 +385,12 @@ void UGolfRangePanel::SetPinValue(double Yards)
 
 void UGolfRangePanel::SetPinActualReadout(double Yards)
 {
-	if (!PinActualText)
-	{
-		return;
-	}
-	PinActualText->SetText(FText::FromString(FString::Printf(TEXT("@ %.0f yd"), Yards)));
+	if (PinActualText) { PinActualText->SetText(FText::FromString(FString::Printf(TEXT("@ %.0f yd"), Yards))); }
 }
 
 void UGolfRangePanel::SetPuttMode(bool bChecked)
 {
-	if (!PuttModeBox)
-	{
-		return;
-	}
+	if (!PuttModeBox) { return; }
 	bSuppressPuttCallback = true;
 	PuttModeBox->SetIsChecked(bChecked);
 	bSuppressPuttCallback = false;
@@ -380,23 +401,16 @@ void UGolfRangePanel::HandleComboPick(UComboBoxString* Combo, const TFunction<vo
 {
 	// Programmatic selection (SetSelectedIndex) re-broadcasts with ESelectInfo::Direct; only act on
 	// genuine user picks. The bool guard is belt-and-suspenders for the same reentrancy.
-	if (bSuppressSelectionCallback || SelectionType == ESelectInfo::Direct || !Combo)
-	{
-		return;
-	}
+	if (bSuppressSelectionCallback || SelectionType == ESelectInfo::Direct || !Combo) { return; }
 	const int32 Idx = Combo->GetSelectedIndex();
-	if (Idx >= 0 && OnChosen)
-	{
-		OnChosen(Idx);
-	}
+	if (Idx >= 0 && OnChosen) { OnChosen(Idx); }
 	ReturnFocusToGameViewport();
 }
 
 void UGolfRangePanel::ReturnFocusToGameViewport()
 {
 	// Hand keyboard focus back to the game viewport so Space/1-6/arrows reach gameplay instead of the
-	// focused combobox (otherwise Space toggles the dropdown). Deferred a tick so it runs after the
-	// combobox finishes its own post-selection focus handling.
+	// focused combobox. Deferred a tick so it runs after the combobox's own post-selection focus.
 	if (UWorld* World = GetWorld())
 	{
 		TWeakObjectPtr<UGolfRangePanel> WeakSelf(this);
@@ -413,38 +427,59 @@ void UGolfRangePanel::ReturnFocusToGameViewport()
 void UGolfRangePanel::UpdateMetrics(const FString& Club, double SpeedMph, double LaunchDeg,
 	double SpinRpm, double CarryYd, double TotalYd, double OfflineYd, bool bSpinEstimated)
 {
-	if (ValClub)   { ValClub->SetText(FText::FromString(Club)); }
-	if (ValSpeed)  { ValSpeed->SetText(FText::FromString(FString::Printf(TEXT("%.0f"), SpeedMph))); }
-	if (ValLaunch) { ValLaunch->SetText(FText::FromString(FString::Printf(TEXT("%.1f"), LaunchDeg))); }
+	if (ValClub)   { ValClub->SetText(FText::FromString(Club.ToUpper())); }
+	if (ValSpeed)  { ValSpeed->SetText(FText::FromString(FString::Printf(TEXT("%.0f mph"), SpeedMph))); }
+	if (ValLaunch) { ValLaunch->SetText(FText::FromString(FString::Printf(TEXT("%.1f°"), LaunchDeg))); }
 	if (ValSpin)
 	{
 		// Mark estimated spin so it's clearly computed, not measured by the LM.
 		ValSpin->SetText(FText::FromString(bSpinEstimated
-			? FString::Printf(TEXT("%.0f est"), SpinRpm)
-			: FString::Printf(TEXT("%.0f"), SpinRpm)));
+			? FString::Printf(TEXT("%.0f rpm est"), SpinRpm)
+			: FString::Printf(TEXT("%.0f rpm"), SpinRpm)));
 	}
-	if (ValCarry)  { ValCarry->SetText(FText::FromString(FString::Printf(TEXT("%.0f"), CarryYd))); }
-	if (ValTotal)  { ValTotal->SetText(FText::FromString(FString::Printf(TEXT("%.0f"), TotalYd))); }
+	if (ValCarry)  { ValCarry->SetText(FText::FromString(FString::Printf(TEXT("%.0f yd"), CarryYd))); }
+	if (ValTotal)  { ValTotal->SetText(FText::FromString(FString::Printf(TEXT("%.0f yd"), TotalYd))); }
 	if (ValOffline)
 	{
-		const TCHAR* Side = (OfflineYd >= 0.0) ? TEXT("R") : TEXT("L");
-		ValOffline->SetText(FText::FromString(FString::Printf(TEXT("%s %.0f"), Side, FMath::Abs(OfflineYd))));
+		ValOffline->SetText(FText::FromString(FMath::Abs(OfflineYd) < 0.5
+			? FString(TEXT("0 yd"))
+			: FString::Printf(TEXT("%.0f yd %s"), FMath::Abs(OfflineYd), (OfflineYd >= 0.0) ? TEXT("R") : TEXT("L"))));
 	}
 }
 
-void UGolfRangePanel::SetConnectionStatus(bool bConnected, const FString& Detail)
+void UGolfRangePanel::SetPrimaryActionLabel(const FString& Label)
 {
-	// The Simulate Shot button is only useful while connected (it triggers a server-side mock shot).
-	if (SimulateButton)
+	if (PrimaryButtonLabel) { PrimaryButtonLabel->SetText(FText::FromString(Label)); }
+}
+
+void UGolfRangePanel::SetLaunchMonitorStatus(ELaunchMonitorStatus Status, const FString& Name)
+{
+	const bool bOnline = (Status == ELaunchMonitorStatus::Online);
+	const FLinearColor Tint = bOnline ? Color::Accent() : Color::Caution();
+
+	if (StatusDot)  { StatusDot->SetBrush(RoundedBrush(Tint, 999.f)); }
+	if (StatusPill)
 	{
-		SimulateButton->SetVisibility(bConnected ? ESlateVisibility::Visible : ESlateVisibility::Collapsed);
+		FLinearColor Fill = Tint; Fill.A = 0.14f;
+		FLinearColor Line = Tint; Line.A = 0.42f;
+		StatusPill->SetBrush(RoundedBrush(Fill, Radius::Sm, Line, 1.f));
 	}
-	if (!StatusText)
+	if (StatusEyebrow) { StatusEyebrow->SetText(FText::FromString(bOnline ? TEXT("MONITOR") : TEXT("MODE"))); }
+	if (StatusValue)
 	{
-		return;
+		// Truncate long device names for the pill (matches hud.js: >18 chars -> first 16 + ellipsis).
+		FString Short = Name;
+		if (Short.Len() > 18) { Short = Short.Left(16) + TEXT("…"); }
+		FString Val;
+		switch (Status)
+		{
+			case ELaunchMonitorStatus::Online:  Val = Name + TEXT(" · Live"); break;
+			case ELaunchMonitorStatus::Pairing: Val = Short + TEXT(" · Pairing…"); break;
+			case ELaunchMonitorStatus::Off:     Val = Short + TEXT(" · Offline"); break;
+			case ELaunchMonitorStatus::Sim:
+			default:                            Val = TEXT("Game · Keyboard"); break;
+		}
+		StatusValue->SetText(FText::FromString(Val));
+		StatusValue->SetColorAndOpacity(FSlateColor(bOnline ? Tint : Color::Text()));
 	}
-	StatusText->SetText(FText::FromString(FString::Printf(TEXT("● %s"), *Detail)));
-	StatusText->SetColorAndOpacity(FSlateColor(bConnected
-		? FLinearColor(0.2f, 0.85f, 0.2f)    // green
-		: FLinearColor(0.85f, 0.25f, 0.25f))); // red
 }

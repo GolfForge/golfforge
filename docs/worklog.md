@@ -2,6 +2,18 @@
 
 > Dated milestone summaries, newest on top. The durable outcome + the committed artifact, not the blow-by-blow — process detail lives in git history, `docs/ue5-cookbook.md`, and the scripts themselves.
 
+## 2026-06-03 — GOL-142 — Round Setup wizard: Format step + Holes/gimmes wired live (Windows)
+
+Sixth child of the GOL-137 UI epic. Built the wizard's Format step and — beyond the ticket's "disabled seams" scope (user call) — **wired the Holes selection and the gimme rule into actual gameplay**. Commit `3286740`.
+
+- **New `Round/RoundConfig.h`** — `FRoundConfig` (+ `ERoundHolesMode/GameType/TurnOrder/EHoleOutRule`), defaults to the supported path (Full 18 / Stroke / Play-it-out / holes-out). Mirrors the `GolfDifficulty.h` UENUM/USTRUCT pattern; rides on `FRoundState` so it survives the deferred map-load (the round subsystem is a GameInstance subsystem).
+- **Holes wired** — pure `GolfsimRound::SelectHoles(full, config)` subsets the schedule (Full18/Front9/Back9/Custom, Ref order). The state machine was already subset-agnostic, so Front 9 ends after hole 9, Custom ends after the last picked hole, etc. `URoundSubsystem::StartRound` gained a defaulted `FRoundConfig` param (zero change for other callers), subsets after load, bails on empty, and carries the config across the OpenLevel defer.
+- **Gimmes wired** — `GolfsimRound::EffectiveGimmeRadiusFt(config, difficultyRadius)`: "everyone holes out" keeps the difficulty's auto-hole tolerance; "Gimmes on N ft" loosens it via `max` (a concession can't tighten holing). `FRoundState` carries the config; `URoundHoleOutSubsystem` reads it at settle time (`RoundHoleOutSubsystem.cpp:64`). At Normal (~6 ft) only the 8 ft gimme visibly changes things — 3/5 clamp up.
+- **`USegmentedControl` extended** (back-compat) — optional **sub-labels** (`Full 18 · par 72`; both texts recolor to ink when selected) + **per-option disable** API; and options now **size to content** (was Fill-equal, which clipped "Everyone holes out" to a short sibling's width). Settings menu unaffected (default args).
+- **New `UI/OptionCard.{h,cpp}`** — selectable icon+title+desc card (game type ×4, turn order ×2), `UCourseCard`-style hover/selected/disabled; placeholder accent-square icon until GOL-151. Game/turn order stay **seams** (Stroke / Play-it-out live; scoring + multiplayer = GOL-69), collected into `FRoundConfig`.
+- **`RoundSetupWizard`** — Format step (section headers + Holes segmented w/ custom 1–18 chip picker + quick buttons, game/turn cards, hole-out segmented w/ gimme reveal), footer Course·Holes·Game chips, `CanAdvance` gates empty Custom, `OnTeeOff` carries the config; `GolfRangeHUD` passes it to `StartRound`.
+- Tests: `Golfsim.Round.SelectHoles` + `Golfsim.Round.GimmeRuleRadius` (all 13 round tests green). Live-Coding + full-build verified; PIE-confirmed (holes subset plays + ends correctly; gimmes loosen hole-out).
+
 ## 2026-06-03 — GOL-141 — Round Setup wizard: chrome + Course step (Windows)
 
 Fifth child of the GOL-137 UI-elevation epic. Replaced the old `UPreRoundPicker` combo-box modal with the full-screen GolfForge wizard (header brand + clickable stepper + close-X; footer live summary + Back/Continue) and built the Course step in full. Steps 2/3 are "Coming soon" stubs that GOL-142/143 fill. Commit `4fad7de`.

@@ -31,6 +31,18 @@ Heads-up: moving a panel to the bottom can collide with other bottom-anchored wi
 
 The leave confirm can be reached from inside the Settings modal (Settings → "Main Menu"). Rather than stack modals (z-order + focus + double input-gating headaches), `RequestLeaveToMainMenu()` calls `CloseSettings()` first, then shows the confirm over the bare HUD — so a Cancel returns to the HUD, not back into Settings. On dismiss, `CloseLeaveDialog()` hands keyboard focus back with `FSlateApplication::Get().SetAllUserFocusToGameViewport()` (the same idiom `CloseSettings` uses) so Space/gameplay keys work again. Each modal still owns its keys while up via `SetIsFocusable(true)` + `SetKeyboardFocus()` on open and an `NativeOnKeyDown` Esc/Enter handler.
 
+## Assets loaded via LoadObject path strings won't cook unless always-cooked (GOL-148)
+
+`GolfUITheme` resolves its fonts + gradient materials with `LoadObject("/Game/UI/Fonts/...")` /
+`"/Game/UI/Materials/..."` path strings (so widgets compile/render before the assets exist, and so the
+theme has no hard asset dependency). The cooker builds its set from **static references** — it can't
+see a runtime path-string load, so those assets are silently dropped from a packaged build (you'd get
+the engine-default font fallback + flat-colour gradients in the cooked exe, but everything works in the
+editor). Fix: add the directory to always-cook in `Config/DefaultGame.ini`:
+`+DirectoriesToAlwaysCook=(Path="/Game/UI")` under `[/Script/UnrealEd.ProjectPackagingSettings]`.
+General rule: any `/Game/...` asset reached only by a runtime string (LoadObject/StaticLoadObject,
+soft paths built at runtime, console-driven loads) needs an always-cook directory or an explicit hard ref.
+
 ---
 
 ## Marketplace / Fab asset dependencies

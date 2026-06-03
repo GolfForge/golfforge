@@ -2,6 +2,27 @@
 
 > Dated milestone summaries, newest on top. The durable outcome + the committed artifact, not the blow-by-blow — process detail lives in git history, `docs/ue5-cookbook.md`, and the scripts themselves.
 
+## 2026-06-03 — GOL-148 — Scorecard reskin + GOL-137 epic closeout (Windows)
+
+Twelfth and final child of the GOL-137 UI-elevation epic — **epic complete (12/12)**.
+
+- **`ScorecardPanel.{h,cpp}` reskinned** onto `GolfUITheme` (the last spec screen still on the
+  pre-theme look): blurred dim scrim, fixed-width (540px) `Bg1` glass card, `ROUND COMPLETE` eyebrow +
+  title (player name), faint-mono column headers over a hairline, mono number rows, **vs-par colors
+  mapped to the palette** (birdie→`Accent`, par→`Text`, bogey→`Caution`, double+→`DangerText`), a
+  divider + emphasized `TOTAL` row, and an accent "Back to menu" button. Data API
+  (`SetScorecard`) + `OnBackToMenu` unchanged. No scorecard render exists, so it's theme-token-based.
+- **Cook config** — `Config/DefaultGame.ini` gains `+DirectoriesToAlwaysCook=(Path="/Game/UI")` so the
+  theme's `LoadObject("/Game/UI/...")` fonts + gradient materials stage in a packaged build (the
+  cooker can't see those path-string refs statically). Prep for the deferred cook; verified at cook time.
+- **Fidelity pass** — swept the 8 spec-screen widgets for hardcoded-token drift; the scorecard was the
+  only real one (remaining `FLinearColor` literals are intentional: scrims, transparent button states,
+  gradient stops, tee-box swatch colors, dark chips). User PIE-verified all 8 screens.
+- **Deferred (per user):** the Win64 cook + boot-verify → a combined **Win+Mac v0.0.4-alpha** cook once
+  the UI epic lands (overlaps GOL-49). Dev/secondary panels (cheat sheet, shot history, previous
+  sessions, manual-shot) reskin → follow-up ticket. Reduced-motion a11y setting (GOL-147) → follow-up.
+- Full-build clean + 63/63 tests green; PIE-verified.
+
 ## 2026-06-03 — GOL-147 — Leave/quit confirmation: mode-aware modal + Menu→Settings nav (Windows)
 
 Eleventh child of the GOL-137 UI epic. Inserted a mode-aware leave confirm in front of the actual

@@ -2,6 +2,17 @@
 
 > Dated milestone summaries, newest on top. The durable outcome + the committed artifact, not the blow-by-blow — process detail lives in git history, `docs/ue5-cookbook.md`, and the scripts themselves.
 
+## 2026-06-03 — GOL-143 — Round Setup wizard: Players step + Tee Off (wizard complete) (Windows)
+
+Seventh child of the GOL-137 UI epic; the final wizard step — **the 3-step Round Setup wizard is now end-to-end** (Course → Format → Players → Tee Off). Single-player live; multiplayer is a seam. Commit `6a3352c`.
+
+- **`Round/RoundConfig.h`** — added `FRoundPlayer` (name / tee index / handicap) + `PlayerCount` + `TArray<FRoundPlayer> Players` to `FRoundConfig`. The HUD persists `Players[0]` at Tee Off; 2–4 are a GOL-69 seam.
+- **`GolfDisplaySettings.{h,cpp}`** — new `Read/WriteHandicap` (`[GolfForge.Round]/Handicap`, clamp 0–54, default 0), mirroring the existing player-name persistence. Stored for GOL-69 net scoring; not applied to score yet.
+- **`RoundSetupWizard` Players step** — count segmented (1 live; 2–4 disabled via per-option-disable), one player row (colored avatar with live auto-initials, styled `UEditableTextBox` name, 4 tee-box swatches with a white selected-ring, handicap −/+ stepper), and a sticky **round-summary card** (Course/loc + Holes/Game/Turn/Hole-out/Players from `FRoundConfig`). Footer gains a Players chip; name+handicap pre-fill from `GolfDisplay`. Removed the now-unused `BuildStubStep`.
+- **`GolfRangeHUD`** — Tee Off persists `Players[0]` name + handicap before `StartRound`; the scorecard + main-menu chip already read `ReadPlayerName`, so the entered name shows with no extra wiring. Tee box = seam (single tee geometry).
+- **Tests** — `Golfsim.Settings.HandicapRoundTrip` (round-trip + clamp + default); all round/settings tests green.
+- **Polish gotchas (cookbook):** a local `UHorizontalBox* Body` shadowed `GolfUI::Body(int)` (compile error); `StyleButton`'s 18px label padding shoved glyphs in a 30px icon button (use a tight 0-padding style); a `UBorder`'s content defaults to Fill, so set H/V alignment Center to center an avatar initial.
+
 ## 2026-06-03 — GOL-142 — Round Setup wizard: Format step + Holes/gimmes wired live (Windows)
 
 Sixth child of the GOL-137 UI epic. Built the wizard's Format step and — beyond the ticket's "disabled seams" scope (user call) — **wired the Holes selection and the gimme rule into actual gameplay**. Commit `3286740`.

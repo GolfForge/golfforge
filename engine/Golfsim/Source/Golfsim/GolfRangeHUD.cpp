@@ -7,7 +7,8 @@
 #include "Session/ShotHistorySubsystem.h"  // session shot history (GOL-65)
 #include "ShotHistoryPanel.h"
 #include "PreviousSessionsList.h"
-#include "PreRoundPicker.h"                 // GOL-121: pre-round picker over main menu
+#include "UI/RoundSetupWizard.h"            // GOL-141: round-setup wizard over main menu
+#include "Game/CourseRegistry.h"            // GOL-141: course-card seed list
 #include "ScorecardPanel.h"                 // GOL-120: end-of-round scorecard modal
 #include "Kismet/GameplayStatics.h"        // OpenLevel for the scorecard's Back-to-Menu
 #include "CheatSheetPanel.h"
@@ -1158,65 +1159,60 @@ void AGolfRangeHUD::CloseSessionsList()
 	// Main menu is still mounted underneath -- nothing to do; control returns to it automatically.
 }
 
-void AGolfRangeHUD::EnsurePreRoundPicker()
+void AGolfRangeHUD::EnsureRoundSetup()
 {
-	if (PreRoundPicker) { return; }
+	if (RoundSetup) { return; }
 	APlayerController* PC = GetOwningPlayerController();
 	if (!PC) { return; }
-	PreRoundPicker = CreateWidget<UPreRoundPicker>(PC, UPreRoundPicker::StaticClass());
-	if (!PreRoundPicker) { return; }
+	RoundSetup = CreateWidget<URoundSetupWizard>(PC, URoundSetupWizard::StaticClass());
+	if (!RoundSetup) { return; }
 
-	// Seed the course list -- one entry today; future courses just append to both arrays. Display
-	// label is trademark-safe per GOL-20 (the demo course is geographically inspired but the name
-	// stays neutral).
-	PreRoundPicker->SetCourses(
-		{ TEXT("GolfForge Demo Black") },
-		{ TEXT("golfforge-demo-black") });
-	PreRoundPicker->SetPlayerName(GolfDisplay::ReadPlayerName());
+	// Seed the Course step from the lightweight registry: the cooked course (selectable) + disabled
+	// placeholders. Names stay trademark-safe per GOL-20.
+	RoundSetup->SetCourses(GolfCourseRegistry::All());
 
 	TWeakObjectPtr<AGolfRangeHUD> WeakThis(this);
-	PreRoundPicker->OnStartRound = [WeakThis](const FString& CourseId, EGolfDifficulty D, const FString& PlayerName)
+	RoundSetup->OnTeeOff = [WeakThis](const FString& CourseId)
 	{
 		AGolfRangeHUD* HUD = WeakThis.Get();
 		if (!HUD) { return; }
-		// Persist the chosen name so the next launch's picker pre-fills it.
-		if (!PlayerName.IsEmpty()) { GolfDisplay::WritePlayerName(PlayerName); }
 		// Close both modals before kicking off the round so the load-map transition starts clean.
-		HUD->ClosePreRoundPicker();
+		HUD->CloseRoundSetup();
 		HUD->DismissMainMenu();
 		if (URoundSubsystem* Sub = URoundSubsystem::Get(HUD))
 		{
-			Sub->StartRound(CourseId, D);
+			// Difficulty/scoring moves to the Format step (GOL-142); default Normal this milestone.
+			Sub->StartRound(CourseId, EGolfDifficulty::Normal);
 		}
 		else
 		{
-			UE_LOG(LogTemp, Warning, TEXT("PreRoundPicker: no URoundSubsystem; round not started"));
+			UE_LOG(LogTemp, Warning, TEXT("RoundSetup: no URoundSubsystem; round not started"));
 		}
 	};
-	PreRoundPicker->OnBack = [WeakThis]()
+	RoundSetup->OnClose = [WeakThis]()
 	{
-		if (AGolfRangeHUD* HUD = WeakThis.Get()) { HUD->ClosePreRoundPicker(); }
+		if (AGolfRangeHUD* HUD = WeakThis.Get()) { HUD->CloseRoundSetup(); }
 	};
 
-	PreRoundPicker->AddToViewport(35);   // above the main menu (30) + sessions list (32)
-	PreRoundPicker->SetVisibility(ESlateVisibility::Collapsed);
+	RoundSetup->AddToViewport(35);   // above the main menu (30) + sessions list (32)
+	RoundSetup->SetVisibility(ESlateVisibility::Collapsed);
 }
 
-void AGolfRangeHUD::OpenPreRoundPicker()
+void AGolfRangeHUD::OpenRoundSetup()
 {
-	EnsurePreRoundPicker();
-	if (!PreRoundPicker) { return; }
-	// Refresh the player name in case it changed via a prior round start (or another widget).
-	PreRoundPicker->SetPlayerName(GolfDisplay::ReadPlayerName());
-	bPreRoundOpen = true;
-	PreRoundPicker->SetVisibility(ESlateVisibility::Visible);
+	EnsureRoundSetup();
+	if (!RoundSetup) { return; }
+	RoundSetup->ResetToFirstStep();   // reopen always starts at the Course step with a clean selection
+	bRoundSetupOpen = true;
+	RoundSetup->SetVisibility(ESlateVisibility::Visible);
+	RoundSetup->SetKeyboardFocus();   // wizard owns Enter/Esc while open; CloseRoundSetup hands focus back
 }
 
-void AGolfRangeHUD::ClosePreRoundPicker()
+void AGolfRangeHUD::CloseRoundSetup()
 {
-	if (!PreRoundPicker || !bPreRoundOpen) { return; }
-	bPreRoundOpen = false;
-	PreRoundPicker->SetVisibility(ESlateVisibility::Collapsed);
+	if (!RoundSetup || !bRoundSetupOpen) { return; }
+	bRoundSetupOpen = false;
+	RoundSetup->SetVisibility(ESlateVisibility::Collapsed);
 	if (FSlateApplication::IsInitialized())
 	{
 		FSlateApplication::Get().SetAllUserFocusToGameViewport();
@@ -1270,7 +1266,7 @@ void AGolfRangeHUD::ReturnToMainMenu()
 	// Close any open modal so the next world's HUD doesn't inherit stale state.
 	CloseScorecardPanel();
 	if (bSettingsOpen) { ToggleSettingsMenu(); }
-	ClosePreRoundPicker();
+	CloseRoundSetup();
 	// Defensive: round may or may not be active. AbandonRound is a no-op when !bActive.
 	if (URoundSubsystem* Sub = URoundSubsystem::Get(this))
 	{
@@ -1498,11 +1494,11 @@ void AGolfRangeHUD::EnsureMainMenu()
 	{
 		if (AGolfRangeHUD* HUD = WeakThis.Get()) { HUD->OpenPreviousSessionsList(); }
 	};
-	// GOL-121: Play Course opens the pre-round picker over the main menu. Picker callback starts
-	// the round via URoundSubsystem; auto-load (GOL-117) handles the level transition.
+	// GOL-141: Play Course opens the round-setup wizard over the main menu. Tee Off starts the
+	// round via URoundSubsystem; auto-load (GOL-117) handles the level transition.
 	MainMenu->OnPlayCourse = [WeakThis]()
 	{
-		if (AGolfRangeHUD* HUD = WeakThis.Get()) { HUD->OpenPreRoundPicker(); }
+		if (AGolfRangeHUD* HUD = WeakThis.Get()) { HUD->OpenRoundSetup(); }
 	};
 	// GOL-139: the bento Settings tile opens settings above the menu; the player chip shows the real name.
 	MainMenu->OnSettings = [WeakThis]()

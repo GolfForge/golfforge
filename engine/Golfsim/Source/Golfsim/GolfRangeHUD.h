@@ -20,7 +20,7 @@ class USettingsMenu;
 class UMainMenu;
 class UShotHistoryPanel;
 class UPreviousSessionsList;
-class UPreRoundPicker;
+class URoundSetupWizard;
 class UScorecardPanel;
 class UCheatSheetPanel;
 class USwingMeterWidget;
@@ -73,10 +73,10 @@ private:
 	void CloseHistoryPanel();
 	void CloseSessionsList();
 
-	// GOL-121 pre-round picker. Same Ensure/Open/Close trio as the sessions list; picker reports
-	// chosen course + difficulty + name via TFunction wired in EnsureMainMenu.
-	void EnsurePreRoundPicker();
-	void ClosePreRoundPicker();
+	// GOL-141 round-setup wizard (replaces GOL-121 pre-round picker). Same Ensure/Open/Close trio as
+	// the sessions list; the wizard reports the chosen course via TFunction wired in EnsureMainMenu.
+	void EnsureRoundSetup();
+	void CloseRoundSetup();
 
 	// GOL-120 end-of-round scorecard. Auto-opens when round.complete fires; "Back to Menu" loads
 	// PracticeRange + shows main menu via the standard EnsureInputBound -> ShowMainMenu path.
@@ -138,9 +138,9 @@ public:
 	void ToggleHistoryPanel();
 	// Main-menu entry: open the previous-sessions list over the menu. Selecting one opens the table.
 	void OpenPreviousSessionsList();
-	// GOL-121 main-menu entry: open the pre-round picker over the menu. Picker reports back the
-	// chosen course + difficulty + name; HUD calls URoundSubsystem::StartRound + dismisses both.
-	void OpenPreRoundPicker();
+	// GOL-141 main-menu entry: open the round-setup wizard over the menu. The wizard reports back the
+	// chosen course on Tee Off; HUD calls URoundSubsystem::StartRound + dismisses both.
+	void OpenRoundSetup();
 	// Tab cheat sheet (dev convenience; replaced when a real keybindings UI lands).
 	void ToggleCheatSheet();
 
@@ -165,7 +165,7 @@ private:
 	// Gameplay keys (club select, fire, aim) are dead while any modal is up (settings / main menu /
 	// shot-history table / previous-sessions list / cheat sheet). The manual-shot dialog has its
 	// own visibility flip but does not gate Q/E/Space.
-	bool InputGated() const { return bSettingsOpen || bMenuOpen || bHistoryOpen || bSessionsListOpen || bCheatOpen || bPreRoundOpen || bScorecardOpen; }
+	bool InputGated() const { return bSettingsOpen || bMenuOpen || bHistoryOpen || bSessionsListOpen || bCheatOpen || bRoundSetupOpen || bScorecardOpen; }
 
 	// Follow camera: the "Camera" dropdown picks Tee (0, fixed pawn view) or Follow (1, chase cam).
 	// SetCameraMode switches the view target; UpdateFollowCam (from Tick) chases the active ball and
@@ -213,7 +213,7 @@ private:
 	bool bHistoryOpen = false;           // GOL-65: shot-history table showing (gameplay keys gated)
 	bool bHistoryFromList = false;       // GOL-65: opened from the previous-sessions list -> close returns to list
 	bool bSessionsListOpen = false;      // GOL-65: previous-sessions list overlaying the main menu
-	bool bPreRoundOpen = false;          // GOL-121: pre-round picker overlaying the main menu
+	bool bRoundSetupOpen = false;        // GOL-141: round-setup wizard overlaying the main menu
 	bool bScorecardOpen = false;         // GOL-120: end-of-round scorecard modal
 	bool bCheatOpen = false;             // Tab cheat sheet showing
 
@@ -255,7 +255,7 @@ private:
 	UPROPERTY(Transient) TObjectPtr<UMainMenu> MainMenu;
 	UPROPERTY(Transient) TObjectPtr<UShotHistoryPanel> HistoryPanel;          // GOL-65
 	UPROPERTY(Transient) TObjectPtr<UPreviousSessionsList> SessionsList;      // GOL-65
-	UPROPERTY(Transient) TObjectPtr<UPreRoundPicker> PreRoundPicker;          // GOL-121
+	UPROPERTY(Transient) TObjectPtr<URoundSetupWizard> RoundSetup;            // GOL-141
 	UPROPERTY(Transient) TObjectPtr<UScorecardPanel> Scorecard;               // GOL-120
 	UPROPERTY(Transient) TObjectPtr<UCheatSheetPanel> CheatSheet;
 	UPROPERTY(Transient) TObjectPtr<USwingMeterWidget> SwingMeter;            // GOL-67 (Game mode only)

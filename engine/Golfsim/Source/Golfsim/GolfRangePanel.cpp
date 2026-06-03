@@ -81,6 +81,30 @@ void UGolfRangePanel::BuildTree()
 	Fill->SetVisibility(ESlateVisibility::HitTestInvisible);
 	if (UVerticalBoxSlot* FS = Stack->AddChildToVerticalBox(Fill)) { FS->SetSize(FSlateChildSize(ESlateSizeRule::Fill)); }
 
+	// ── Top-left Menu button (GOL-147) ───────────────────────────────────────────────────────────
+	// Mirrors the in-round round-panel Menu button (same 28px top-left inset). Opens the settings menu.
+	// The HUD hides it in a round (RoundHud provides the in-round one).
+	// Filled glass chip (not a ghost button) so it reads as a solid control floating over the range
+	// scene -- there's no panel behind it here, unlike the in-round round-panel Menu button.
+	MenuButton = WidgetTree->ConstructWidget<UButton>();
+	StyleButton(MenuButton, Color::GlassFill(), Radius::Sm, Color::Border(), 1.f);
+	{
+		UTextBlock* MenuLabel = WidgetTree->ConstructWidget<UTextBlock>();
+		MenuLabel->SetText(FText::FromString(TEXT("Menu")));
+		MenuLabel->SetFont(Body(14, FName(TEXT("SemiBold"))));
+		MenuLabel->SetColorAndOpacity(FSlateColor(Color::Text()));
+		MenuLabel->SetJustification(ETextJustify::Center);
+		MenuButton->SetContent(MenuLabel);
+	}
+	MenuButton->OnClicked.AddDynamic(this, &UGolfRangePanel::HandleMenuClicked);
+	if (UCanvasPanelSlot* MS = Root->AddChildToCanvas(MenuButton))
+	{
+		MS->SetAnchors(FAnchors(0.f, 0.f, 0.f, 0.f));
+		MS->SetAlignment(FVector2D(0.f, 0.f));
+		MS->SetAutoSize(true);
+		MS->SetOffsets(FMargin(28.f, 28.f, 0.f, 0.f));
+	}
+
 	// ── Telemetry readout (bottom-left glass card) ───────────────────────────────────────────────
 	UBorder* Readout = MakeGlassPanel(WidgetTree);
 	if (UVerticalBoxSlot* RS = Stack->AddChildToVerticalBox(Readout))
@@ -357,6 +381,19 @@ void UGolfRangePanel::HandlePrimaryActionClicked()
 {
 	if (OnPrimaryAction) { OnPrimaryAction(); }
 	ReturnFocusToGameViewport();   // so Space/1-6/arrows still reach gameplay after the click
+}
+
+void UGolfRangePanel::HandleMenuClicked()
+{
+	if (OnMenu) { OnMenu(); }   // HUD opens the settings menu (which owns its own keyboard focus)
+}
+
+void UGolfRangePanel::SetMenuButtonVisible(bool bVisible)
+{
+	if (MenuButton)
+	{
+		MenuButton->SetVisibility(bVisible ? ESlateVisibility::Visible : ESlateVisibility::Collapsed);
+	}
 }
 
 void UGolfRangePanel::HandlePinValueChanged(float Value)

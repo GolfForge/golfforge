@@ -77,6 +77,10 @@ public:
 	// the cluster while a round is active so the in-round readout stays clean.
 	void SetRangeControlsVisible(bool bVisible);
 
+	// GOL-147: top-left "Menu" button (mirrors the in-round round-panel Menu). Opens the settings menu
+	// (same as Esc). The HUD hides it in a round, where RoundHud provides its own Menu button.
+	void SetMenuButtonVisible(bool bVisible);
+
 	// Set by the owning HUD; each control pushes the user's pick/action back through its delegate.
 	TFunction<void(int32)> OnClubChosen;
 	TFunction<void(int32)> OnTimeChosen;
@@ -90,6 +94,9 @@ public:
 	// advance the swing meter; a connected LM -> ask the active driver to emit a shot.
 	TFunction<void()> OnPrimaryAction;
 
+	// GOL-147: top-left Menu button -> HUD opens the settings menu.
+	TFunction<void()> OnMenu;
+
 protected:
 	virtual void NativeOnInitialized() override;
 
@@ -99,6 +106,7 @@ protected:
 	UFUNCTION() void HandleLaunchMonitorSelectionChanged(FString SelectedItem, ESelectInfo::Type SelectionType);
 	UFUNCTION() void HandleCameraSelectionChanged(FString SelectedItem, ESelectInfo::Type SelectionType);
 	UFUNCTION() void HandlePrimaryActionClicked();
+	UFUNCTION() void HandleMenuClicked();
 	UFUNCTION() void HandlePinValueChanged(float Value);
 	UFUNCTION() void HandlePuttModeChanged(bool bChecked);
 
@@ -120,6 +128,9 @@ private:
 	UPROPERTY(Transient) TObjectPtr<UComboBoxString> SkyCombo;
 	UPROPERTY(Transient) TObjectPtr<UComboBoxString> CameraCombo;
 	UPROPERTY(Transient) TObjectPtr<UComboBoxString> LMCombo;
+
+	// GOL-147: top-left Menu button (range only; hidden in a round).
+	UPROPERTY(Transient) TObjectPtr<UButton> MenuButton;
 
 	// LM status pill (control bar, right).
 	UPROPERTY(Transient) TObjectPtr<UBorder> StatusPill;

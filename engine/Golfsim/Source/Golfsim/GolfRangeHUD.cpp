@@ -10,6 +10,7 @@
 #include "UI/RoundSetupWizard.h"            // GOL-141: round-setup wizard over main menu
 #include "Game/CourseRegistry.h"            // GOL-141: course-card seed list
 #include "UI/RoundHud.h"                    // GOL-144: in-round glass top HUD
+#include "UI/LeaveConfirmDialog.h"          // GOL-147: leave/quit confirmation modal
 #include "ScorecardPanel.h"                 // GOL-120: end-of-round scorecard modal
 #include "Kismet/GameplayStatics.h"        // OpenLevel for the scorecard's Back-to-Menu
 #include "CheatSheetPanel.h"
@@ -286,6 +287,12 @@ void AGolfRangeHUD::EnsureInputBound()
 			Panel->OnPrimaryAction = [WeakThis]()
 			{
 				if (AGolfRangeHUD* HUD = WeakThis.Get()) { HUD->TriggerPrimaryAction(); }
+			};
+
+			// GOL-147: top-left Menu button opens the settings menu (same as Esc / the in-round Menu).
+			Panel->OnMenu = [WeakThis]()
+			{
+				if (AGolfRangeHUD* HUD = WeakThis.Get()) { HUD->ToggleSettingsMenu(); }
 			};
 
 			// Pin distance (GOL-29). Always start at 150 yd; persistence caused more confusion than
@@ -732,10 +739,11 @@ void AGolfRangeHUD::EnsureSettingsMenu()
 	{
 		if (AGolfRangeHUD* HUD = WeakThis.Get()) { HUD->CloseSettings(); }
 	};
-	// GOL-125: Main Menu button -- abandon active round + LoadMap PracticeRange + show main menu.
+	// GOL-125 / GOL-147: Main Menu button -> mode-aware leave confirm (range copy on the range), then
+	// abandon round + LoadMap PracticeRange + show main menu on confirm.
 	SettingsMenu->OnMainMenu = [WeakThis]()
 	{
-		if (AGolfRangeHUD* HUD = WeakThis.Get()) { HUD->ReturnToMainMenu(); }
+		if (AGolfRangeHUD* HUD = WeakThis.Get()) { HUD->RequestLeaveToMainMenu(); }
 	};
 	SettingsMenu->AddToViewport(40);   // top modal: above the range panel, manual dialog, AND the main menu (30)
 	SettingsMenu->SetVisibility(ESlateVisibility::Collapsed);
@@ -830,11 +838,73 @@ void AGolfRangeHUD::EnsureRoundHud()
 	TWeakObjectPtr<AGolfRangeHUD> WeakThis(this);
 	RoundHud->OnMenu = [WeakThis]()
 	{
-		// Leave to menu. GOL-147 will insert the mode-aware confirm dialog ahead of this path.
-		if (AGolfRangeHUD* HUD = WeakThis.Get()) { HUD->ReturnToMainMenu(); }
+		// GOL-147: Menu opens the settings menu (same as Esc). Leaving the round is a step deeper --
+		// Settings -> "Main Menu" -> the mode-aware leave confirm.
+		if (AGolfRangeHUD* HUD = WeakThis.Get()) { HUD->ToggleSettingsMenu(); }
 	};
 	RoundHud->AddToViewport(20);   // above the legacy panel (0) + swing meter (15), below modals (30+)
 	RoundHud->SetVisibility(ESlateVisibility::Collapsed);
+}
+
+void AGolfRangeHUD::EnsureLeaveDialog()
+{
+	if (LeaveDialog) { return; }
+	APlayerController* PC = GetOwningPlayerController();
+	if (!PC) { return; }
+	LeaveDialog = CreateWidget<ULeaveConfirmDialog>(PC, ULeaveConfirmDialog::StaticClass());
+	if (!LeaveDialog) { return; }
+
+	TWeakObjectPtr<AGolfRangeHUD> WeakThis(this);
+	LeaveDialog->OnConfirm = [WeakThis]()
+	{
+		if (AGolfRangeHUD* HUD = WeakThis.Get()) { HUD->CloseLeaveDialog(); HUD->ReturnToMainMenu(); }
+	};
+	LeaveDialog->OnCancel = [WeakThis]()
+	{
+		if (AGolfRangeHUD* HUD = WeakThis.Get()) { HUD->CloseLeaveDialog(); }
+	};
+	LeaveDialog->AddToViewport(45);   // above the settings modal (40); main menu (30)
+	LeaveDialog->SetVisibility(ESlateVisibility::Collapsed);
+}
+
+void AGolfRangeHUD::RequestLeaveToMainMenu()
+{
+	if (bLeaveConfirmOpen) { return; }
+	// The range path is reached from inside Settings -> drop Settings so the confirm sits over the HUD
+	// and a Cancel returns to the range (not back into Settings).
+	if (bSettingsOpen) { CloseSettings(); }
+
+	EnsureLeaveDialog();
+	if (!LeaveDialog) { return; }
+
+	// Mode-aware copy: an active round is "course" (progress auto-saved); otherwise the range.
+	ELeaveMode Mode = ELeaveMode::Range;
+	int32 HoleNum = 0;
+	if (const URoundSubsystem* Sub = URoundSubsystem::Get(this))
+	{
+		if (Sub->IsActive())
+		{
+			Mode = ELeaveMode::Course;
+			const GolfsimRound::FRoundState& S = Sub->GetState();
+			if (S.Schedule.IsValidIndex(S.HoleIndex)) { HoleNum = S.Schedule[S.HoleIndex].Ref; }
+		}
+	}
+	LeaveDialog->Configure(Mode, HoleNum);
+
+	bLeaveConfirmOpen = true;
+	LeaveDialog->SetVisibility(ESlateVisibility::Visible);
+	LeaveDialog->SetKeyboardFocus();   // owns Esc / Enter while open
+}
+
+void AGolfRangeHUD::CloseLeaveDialog()
+{
+	if (!LeaveDialog) { return; }
+	bLeaveConfirmOpen = false;
+	LeaveDialog->SetVisibility(ESlateVisibility::Collapsed);
+	if (FSlateApplication::IsInitialized())
+	{
+		FSlateApplication::Get().SetAllUserFocusToGameViewport();   // hand keys back to gameplay
+	}
 }
 
 void AGolfRangeHUD::UpdateInRoundHud()
@@ -851,6 +921,7 @@ void AGolfRangeHUD::UpdateInRoundHud()
 	{
 		Panel->SetVisibility(bManualOpen ? ESlateVisibility::Collapsed : ESlateVisibility::SelfHitTestInvisible);
 		Panel->SetRangeControlsVisible(!bRound);
+		Panel->SetMenuButtonVisible(!bRound && !bMenuOpen);   // GOL-147: range-only; RoundHud provides the in-round Menu, the main menu hides it
 	}
 
 	const URoundSubsystem* Round = URoundSubsystem::Get(this);

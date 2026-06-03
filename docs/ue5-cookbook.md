@@ -23,6 +23,16 @@ Heads-up: moving a panel to the bottom can collide with other bottom-anchored wi
 
 ---
 
+## UMG buttons floating over the 3D scene need a fill, not a ghost (GOL-147)
+
+`MakeGhostButton` (transparent fill + hairline border, hover lifts to a faint surface) reads well **on a panel/card** but looks orphaned floating directly over the gameplay viewport — the user flagged the range Menu button as "transparent, doesn't look like other buttons with a darker bg". Fix: give scene-floating buttons a **filled glass chip** — `StyleButton(Btn, Color::GlassFill(), Radius::Sm, Color::Border(), 1.f)` + a `Body` label. Same control reads fine as a ghost when it sits on a glass panel (the in-round round-panel Menu button stays ghost). Rule: pick ghost vs filled by what's *behind* the button, not by what it does.
+
+## Modal opened from another modal: close the parent first (GOL-147)
+
+The leave confirm can be reached from inside the Settings modal (Settings → "Main Menu"). Rather than stack modals (z-order + focus + double input-gating headaches), `RequestLeaveToMainMenu()` calls `CloseSettings()` first, then shows the confirm over the bare HUD — so a Cancel returns to the HUD, not back into Settings. On dismiss, `CloseLeaveDialog()` hands keyboard focus back with `FSlateApplication::Get().SetAllUserFocusToGameViewport()` (the same idiom `CloseSettings` uses) so Space/gameplay keys work again. Each modal still owns its keys while up via `SetIsFocusable(true)` + `SetKeyboardFocus()` on open and an `NativeOnKeyDown` Esc/Enter handler.
+
+---
+
 ## Marketplace / Fab asset dependencies
 
 **License basis (open-source compliance, GOL-44):** Quixel Megascans / Megaplant and marketplace foliage are licensed under the **Fab Standard License**, which lets you ship them *baked into a product* but forbids redistributing the raw assets "on a standalone basis" — so committing the `.uasset` files to this public repo is not allowed. We therefore **gitignore all of them** and each machine re-downloads them from its own Fab account. Nothing here is committed, so there's no redistribution and no attribution obligation in the repo. (Only assets offered under **CC-BY/CC0** on Fab could be committed — CC-BY with attribution in `NOTICE` — but the packs below are Standard-License, not CC.)

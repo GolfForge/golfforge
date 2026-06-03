@@ -2,6 +2,30 @@
 
 > Dated milestone summaries, newest on top. The durable outcome + the committed artifact, not the blow-by-blow — process detail lives in git history, `docs/ue5-cookbook.md`, and the scripts themselves.
 
+## 2026-06-03 — GOL-147 — Leave/quit confirmation: mode-aware modal + Menu→Settings nav (Windows)
+
+Eleventh child of the GOL-137 UI epic. Inserted a mode-aware leave confirm in front of the actual
+leave path and reworked the Menu-button nav model (per user direction mid-build).
+
+- **New `UI/LeaveConfirmDialog.{h,cpp}`** — centered glass card behind a blurred dim scrim, matching
+  `07-hud-leave-dialog.png`: mode-tinted icon tile (green = course/auto-saved, amber = range/practice),
+  title, body copy, **KEEP** (neutral) + **LEAVE** (red/destructive, arrow) buttons, `Esc`/`Enter`
+  hint. `Configure(ELeaveMode, HoleNum)` + `OnConfirm`/`OnCancel`; Esc = cancel, Enter = confirm,
+  click-outside = cancel. **No entrance animation** (per user + BUILD_SPEC §7: resting state IS the
+  visible state; reduced-motion trivially honored). Practice copy present but unreachable (mode disabled).
+- **Nav model reworked (user direction):** the **Menu button now opens the Settings menu** (same as
+  Esc), not the leave path. Leaving is a step deeper — **Settings → "Main Menu" → the mode-aware
+  confirm → `ReturnToMainMenu()`**. Added a **top-left range Menu button** (`UGolfRangePanel`,
+  filled glass chip — a ghost button looked orphaned floating on the scene), shown only on the range
+  (RoundHud provides the in-round one; hidden under the main menu). Both Menu buttons + Esc route to
+  `ToggleSettingsMenu()`.
+- **`GolfRangeHUD`** — `RequestLeaveToMainMenu()` guard (mode = `RoundIsActive() ? Course : Range`,
+  hole from `URoundSubsystem` schedule; drops Settings first so Cancel returns to the HUD),
+  `EnsureLeaveDialog`/`CloseLeaveDialog`, `bLeaveConfirmOpen` added to `InputGated()`. The
+  Settings→Main Menu lambda now routes through the guard; the end-of-round scorecard path stays
+  unguarded (round already over).
+- Full-build clean + 63/63 tests green; PIE-verified in both range + round.
+
 ## 2026-06-03 — GOL-146 — Swing meter: glass reskin + reposition clear of the control bar (Windows)
 
 Tenth child of the GOL-137 UI epic; the deferred swing-meter half of GOL-145. **Visual reskin + reposition only** — the ticket's data-reconciliation half (adopt the JS prototype's CLUBS table / swing tunables / result math) was **intentionally dropped per the user**: the prototype is a Claude-designed website with no ball-flight physics (it fakes shots with lookup tables), so it can't dictate engine behavior — we use it for *look* only. `KeyboardSwingComponent`, `FConfig` tunables, `GBag`, `ResolveShot`, and the GOL-122 difficulty profiles are all untouched (swing-difficulty tests pass unchanged).

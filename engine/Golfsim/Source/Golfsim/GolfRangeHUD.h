@@ -25,6 +25,7 @@ class UScorecardPanel;
 class UCheatSheetPanel;
 class USwingMeterWidget;
 class URoundHud;
+class ULeaveConfirmDialog;
 class AGolfBallActor;
 class AGolfPinActor;
 class ACameraActor;
@@ -90,6 +91,14 @@ private:
 	// the scorecard's Back-to-Menu AND the settings modal's new Main Menu button. The standard
 	// post-load EnsureInputBound -> ShowMainMenu path takes over once the range world is up.
 	void ReturnToMainMenu();
+
+	// GOL-147: mode-aware leave/quit confirmation in front of every leave-to-menu path. The in-round
+	// Menu button and the settings modal's Main Menu button call RequestLeaveToMainMenu (which picks
+	// course vs range copy + gates input); Confirm routes to ReturnToMainMenu, Cancel/Esc/click-outside
+	// dismiss via CloseLeaveDialog.
+	void EnsureLeaveDialog();
+	void RequestLeaveToMainMenu();
+	void CloseLeaveDialog();
 
 	// Settings/credits menu (GOL-52/GOL-59): Esc/Tab toggles a centered modal; gameplay keys are gated
 	// while it's open. ApplyDisplaySettings runs the chosen values through UGameUserSettings.
@@ -180,7 +189,7 @@ private:
 	// Gameplay keys (club select, fire, aim) are dead while any modal is up (settings / main menu /
 	// shot-history table / previous-sessions list / cheat sheet). The manual-shot dialog has its
 	// own visibility flip but does not gate Q/E/Space.
-	bool InputGated() const { return bSettingsOpen || bMenuOpen || bHistoryOpen || bSessionsListOpen || bCheatOpen || bRoundSetupOpen || bScorecardOpen; }
+	bool InputGated() const { return bSettingsOpen || bMenuOpen || bHistoryOpen || bSessionsListOpen || bCheatOpen || bRoundSetupOpen || bScorecardOpen || bLeaveConfirmOpen; }
 
 	// Follow camera: the "Camera" dropdown picks Tee (0, fixed pawn view) or Follow (1, chase cam).
 	// SetCameraMode switches the view target; UpdateFollowCam (from Tick) chases the active ball and
@@ -231,6 +240,7 @@ private:
 	bool bRoundSetupOpen = false;        // GOL-141: round-setup wizard overlaying the main menu
 	bool bScorecardOpen = false;         // GOL-120: end-of-round scorecard modal
 	bool bCheatOpen = false;             // Tab cheat sheet showing
+	bool bLeaveConfirmOpen = false;      // GOL-147: leave/quit confirmation modal showing
 
 	// Carry counts up during flight. On shot.outcome the static metrics + final carry/offline are
 	// cached; Tick then pushes the in-flight ball's live downrange distance into the panel's Carry
@@ -275,6 +285,7 @@ private:
 	UPROPERTY(Transient) TObjectPtr<UCheatSheetPanel> CheatSheet;
 	UPROPERTY(Transient) TObjectPtr<USwingMeterWidget> SwingMeter;            // GOL-67 (Game mode only)
 	UPROPERTY(Transient) TObjectPtr<URoundHud> RoundHud;                      // GOL-144 in-round top HUD
+	UPROPERTY(Transient) TObjectPtr<ULeaveConfirmDialog> LeaveDialog;         // GOL-147 leave/quit confirm
 	EInputMode CurrentInputMode = EInputMode::Game;                           // default Game (renamed to avoid shadowing FInputModeGameAndUI local)
 	GolfsimKeyboardSwing::FState SwingState;
 	GolfsimKeyboardSwing::FConfig SwingConfig;

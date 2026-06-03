@@ -3,12 +3,14 @@
 #include "UI/CourseCard.h"
 #include "UI/OptionCard.h"
 #include "UI/SegmentedControl.h"
+#include "GolfDisplaySettings.h"   // GOL-143: player name + handicap pre-fill
 
 #include "Blueprint/WidgetTree.h"
 #include "Components/Border.h"
 #include "Components/Button.h"
 #include "Components/CanvasPanel.h"
 #include "Components/CanvasPanelSlot.h"
+#include "Components/EditableTextBox.h"
 #include "Components/HorizontalBox.h"
 #include "Components/HorizontalBoxSlot.h"
 #include "Components/Image.h"
@@ -91,9 +93,7 @@ void URoundSetupWizard::BuildTree()
 	if (UScrollBoxSlot* CS = Cast<UScrollBoxSlot>(Flow->AddChild(ContentSwitcher))) { CS->SetHorizontalAlignment(HAlign_Left); }
 	ContentSwitcher->AddChild(BuildCourseStep());
 	ContentSwitcher->AddChild(BuildFormatStep());
-	ContentSwitcher->AddChild(BuildStubStep(TEXT("Step 03 · Who's teeing it up"), TEXT("Add your players"),
-		TEXT("Up to four. Set names, tee boxes and handicaps — then tee off."),
-		TEXT("Coming soon — GOL-143")));
+	ContentSwitcher->AddChild(BuildPlayersStep());
 
 	// footer hairline + bar
 	UBorder* Hair = WidgetTree->ConstructWidget<UBorder>();
@@ -599,33 +599,253 @@ void URoundSetupWizard::HandleHoleQuickClicked()
 	}
 }
 
-UWidget* URoundSetupWizard::BuildStubStep(const FString& Eyebrow, const FString& Title, const FString& Desc, const FString& Soon)
+void URoundSetupWizard::HandlePlayerNameChanged(const FText& Text)
+{
+	if (RoundConfig.Players.Num() == 0) { RoundConfig.Players.AddDefaulted(); }
+	RoundConfig.Players[0].Name = Text.ToString();
+	RefreshPlayerAvatar();
+}
+
+void URoundSetupWizard::HandleTeeClicked()
+{
+	if (RoundConfig.Players.Num() == 0) { RoundConfig.Players.AddDefaulted(); }
+	for (int32 i = 0; i < TeeButtons.Num(); ++i)
+	{
+		if (TeeButtons[i] && TeeButtons[i]->IsHovered())
+		{
+			RoundConfig.Players[0].TeeIndex = i;
+			RefreshTeeSwatches();
+			return;
+		}
+	}
+}
+
+void URoundSetupWizard::HandleHandicapMinus()
+{
+	if (RoundConfig.Players.Num() == 0) { RoundConfig.Players.AddDefaulted(); }
+	RoundConfig.Players[0].Handicap = FMath::Clamp(RoundConfig.Players[0].Handicap - 1, 0, 54);
+	RefreshHandicapText();
+}
+
+void URoundSetupWizard::HandleHandicapPlus()
+{
+	if (RoundConfig.Players.Num() == 0) { RoundConfig.Players.AddDefaulted(); }
+	RoundConfig.Players[0].Handicap = FMath::Clamp(RoundConfig.Players[0].Handicap + 1, 0, 54);
+	RefreshHandicapText();
+}
+
+namespace
+{
+	// Tee swatch colours (sRGB), per setup.js TEES. Index 0=Black 1=Blue 2=White 3=Red.
+	const FLinearColor TeeColors[] = {
+		FLinearColor(FColor::FromHex(TEXT("1C1C1C"))),
+		FLinearColor(FColor::FromHex(TEXT("2F6FD0"))),
+		FLinearColor(FColor::FromHex(TEXT("E8E8E8"))),
+		FLinearColor(FColor::FromHex(TEXT("D24B4B"))),
+	};
+
+	FString InitialsFromName(const FString& Name)
+	{
+		TArray<FString> Parts;
+		Name.TrimStartAndEnd().ParseIntoArray(Parts, TEXT(" "), true);
+		FString Out;
+		if (Parts.Num() > 0 && Parts[0].Len() > 0) { Out += Parts[0].Left(1); }
+		if (Parts.Num() > 1 && Parts.Last().Len() > 0) { Out += Parts.Last().Left(1); }
+		return Out.IsEmpty() ? TEXT("?") : Out.ToUpper();
+	}
+}
+
+UWidget* URoundSetupWizard::BuildPlayersStep()
 {
 	using namespace GolfUI;
 	UVerticalBox* Content = WidgetTree->ConstructWidget<UVerticalBox>();
 
+	// step head
 	UVerticalBox* Head = WidgetTree->ConstructWidget<UVerticalBox>();
-	Head->AddChildToVerticalBox(MakeEyebrow(WidgetTree, Eyebrow));
-	if (UVerticalBoxSlot* HS = Head->AddChildToVerticalBox(MakeTitle(WidgetTree, Title, 40))) { HS->SetPadding(FMargin(0, 4.f, 0, 0)); }
+	Head->AddChildToVerticalBox(MakeEyebrow(WidgetTree, TEXT("Step 03 · Who's teeing it up")));
+	if (UVerticalBoxSlot* HS = Head->AddChildToVerticalBox(MakeTitle(WidgetTree, TEXT("Add your players"), 40))) { HS->SetPadding(FMargin(0, 4.f, 0, 0)); }
 	UTextBlock* D = WidgetTree->ConstructWidget<UTextBlock>();
-	D->SetText(FText::FromString(Desc));
+	D->SetText(FText::FromString(TEXT("Up to four. Set names, tee boxes and handicaps — then tee off.")));
 	D->SetFont(Body(15));
 	D->SetColorAndOpacity(FSlateColor(Color::TextDim()));
 	D->SetAutoWrapText(true);
 	if (UVerticalBoxSlot* DS = Head->AddChildToVerticalBox(D)) { DS->SetPadding(FMargin(0, 9.f, 0, 0)); }
-	if (UVerticalBoxSlot* HeadSlot = Content->AddChildToVerticalBox(Head)) { HeadSlot->SetPadding(FMargin(0, 6.f, 0, 24.f)); }
+	if (UVerticalBoxSlot* HeadSlot = Content->AddChildToVerticalBox(Head)) { HeadSlot->SetPadding(FMargin(0, 6.f, 0, 8.f)); }
 
-	UBorder* Note = WidgetTree->ConstructWidget<UBorder>();
-	Note->SetBrush(RoundedBrush(Color::Surface(), Radius::Lg, Color::Border(), 1.f));
-	Note->SetPadding(FMargin(28.f, 40.f));
-	UTextBlock* SoonText = WidgetTree->ConstructWidget<UTextBlock>();
-	SoonText->SetText(FText::FromString(Soon));
-	SoonText->SetFont(Display(18, FName(TEXT("SemiBold"))));
-	SoonText->SetColorAndOpacity(FSlateColor(Color::TextFaint()));
-	SoonText->SetJustification(ETextJustify::Center);
-	Note->SetContent(SoonText);
-	Content->AddChildToVerticalBox(Note);
+	// ── Player count (1 live; 2-4 disabled = single-player only) ──
+	AddSectionHeader(Content, TEXT("Players"), TEXT("How many in the group"));
+	USegmentedControl* CountSeg = CreateWidget<USegmentedControl>(this);
+	CountSeg->SetOptions({ TEXT("1"), TEXT("2"), TEXT("3"), TEXT("4") });
+	CountSeg->SetSelectedIndex(0, false);
+	for (int32 i = 1; i <= 3; ++i) { CountSeg->SetOptionDisabled(i, true); }
+	CountSeg->OnChanged = [this](int32 Sel) { RoundConfig.PlayerCount = Sel + 1; RefreshRoundSummary(); UpdateSummary(); };
+	if (UVerticalBoxSlot* CSeg = Content->AddChildToVerticalBox(CountSeg)) { CSeg->SetHorizontalAlignment(HAlign_Left); CSeg->SetPadding(FMargin(0, 0, 0, 4.f)); }
 
+	// ── body: player list (left) + round summary card (right) ── (BodyRow, not "Body", to not shadow GolfUI::Body)
+	UHorizontalBox* BodyRow = WidgetTree->ConstructWidget<UHorizontalBox>();
+	if (UVerticalBoxSlot* BodySlot = Content->AddChildToVerticalBox(BodyRow)) { BodySlot->SetPadding(FMargin(0, 18.f, 0, 0)); }
+
+	// --- player 1 row (single row this milestone) ---
+	UBorder* Row = MakeCard(WidgetTree);
+	Row->SetPadding(FMargin(16.f, 14.f));
+	UHorizontalBox* RowBox = WidgetTree->ConstructWidget<UHorizontalBox>();
+	Row->SetContent(RowBox);
+
+	// avatar
+	USizeBox* AvBox = WidgetTree->ConstructWidget<USizeBox>();
+	AvBox->SetWidthOverride(44.f); AvBox->SetHeightOverride(44.f);
+	UBorder* Avatar = WidgetTree->ConstructWidget<UBorder>();
+	Avatar->SetBrush(RoundedBrush(Color::Accent(), 999.f));
+	Avatar->SetHorizontalAlignment(HAlign_Center);   // UBorder content defaults to Fill -> the
+	Avatar->SetVerticalAlignment(VAlign_Center);      // initial would sit top-left and read dim.
+	PlayerAvatarText = WidgetTree->ConstructWidget<UTextBlock>();
+	PlayerAvatarText->SetText(FText::FromString(TEXT("?")));
+	PlayerAvatarText->SetFont(Display(18, FName(TEXT("Bold"))));
+	PlayerAvatarText->SetColorAndOpacity(FSlateColor(Color::AccentInk()));
+	PlayerAvatarText->SetJustification(ETextJustify::Center);
+	Avatar->SetContent(PlayerAvatarText);
+	AvBox->SetContent(Avatar);
+	if (UHorizontalBoxSlot* AS = RowBox->AddChildToHorizontalBox(AvBox)) { AS->SetVerticalAlignment(VAlign_Center); AS->SetPadding(FMargin(0, 0, 14.f, 0)); }
+
+	// name field (PLAYER 1 eyebrow + editable box)
+	UVerticalBox* NameCol = WidgetTree->ConstructWidget<UVerticalBox>();
+	NameCol->AddChildToVerticalBox(MakeEyebrow(WidgetTree, TEXT("Player 1")));
+	PlayerNameBox = WidgetTree->ConstructWidget<UEditableTextBox>();
+	{
+		FEditableTextBoxStyle TBStyle;
+		TBStyle.SetBackgroundImageNormal(RoundedBrush(Color::Bg0(), Radius::Sm, Color::Border(), 1.f));
+		TBStyle.SetBackgroundImageHovered(RoundedBrush(Color::Bg0(), Radius::Sm, Color::BorderStrong(), 1.f));
+		TBStyle.SetBackgroundImageFocused(RoundedBrush(Color::Bg0(), Radius::Sm, Color::AccentLine(), 1.f));
+		TBStyle.SetForegroundColor(Color::Text());
+		TBStyle.SetFont(Body(15));
+		TBStyle.SetPadding(FMargin(11.f, 9.f));
+		PlayerNameBox->WidgetStyle = TBStyle;
+	}
+	PlayerNameBox->SetHintText(FText::FromString(TEXT("Name")));
+	PlayerNameBox->OnTextChanged.AddDynamic(this, &URoundSetupWizard::HandlePlayerNameChanged);
+	if (UVerticalBoxSlot* NBS = NameCol->AddChildToVerticalBox(PlayerNameBox)) { NBS->SetPadding(FMargin(0, 5.f, 0, 0)); }
+	if (UHorizontalBoxSlot* NCS = RowBox->AddChildToHorizontalBox(NameCol)) { NCS->SetSize(FSlateChildSize(ESlateSizeRule::Fill)); NCS->SetVerticalAlignment(VAlign_Center); }
+
+	// tee box swatches
+	UVerticalBox* TeeCol = WidgetTree->ConstructWidget<UVerticalBox>();
+	TeeCol->AddChildToVerticalBox(MakeEyebrow(WidgetTree, TEXT("Tee box")));
+	UHorizontalBox* TeeRow = WidgetTree->ConstructWidget<UHorizontalBox>();
+	TeeButtons.Reset();
+	for (int32 i = 0; i < 4; ++i)
+	{
+		USizeBox* SwBox = WidgetTree->ConstructWidget<USizeBox>();
+		SwBox->SetWidthOverride(34.f); SwBox->SetHeightOverride(30.f);
+		UButton* Sw = WidgetTree->ConstructWidget<UButton>();
+		Sw->OnClicked.AddDynamic(this, &URoundSetupWizard::HandleTeeClicked);
+		SwBox->SetContent(Sw);
+		if (UHorizontalBoxSlot* SwS = TeeRow->AddChildToHorizontalBox(SwBox)) { SwS->SetPadding(FMargin(0, 0, 4.f, 0)); }
+		TeeButtons.Add(Sw);
+	}
+	if (UVerticalBoxSlot* TRS = TeeCol->AddChildToVerticalBox(TeeRow)) { TRS->SetPadding(FMargin(0, 5.f, 0, 0)); }
+	if (UHorizontalBoxSlot* TCS = RowBox->AddChildToHorizontalBox(TeeCol)) { TCS->SetVerticalAlignment(VAlign_Center); TCS->SetPadding(FMargin(14.f, 0, 0, 0)); }
+
+	// handicap stepper
+	UVerticalBox* HcpCol = WidgetTree->ConstructWidget<UVerticalBox>();
+	HcpCol->AddChildToVerticalBox(MakeEyebrow(WidgetTree, TEXT("Handicap")));
+	UHorizontalBox* HcpRow = WidgetTree->ConstructWidget<UHorizontalBox>();
+	auto MakeStepBtn = [&](const TCHAR* Glyph, bool bMinus)
+	{
+		USizeBox* BBox = WidgetTree->ConstructWidget<USizeBox>();
+		BBox->SetWidthOverride(30.f); BBox->SetHeightOverride(30.f);
+		UButton* B = WidgetTree->ConstructWidget<UButton>();
+		{
+			// Tight icon button: zero padding so the glyph centers in the 30x30 box (StyleButton's
+			// default 18px label padding is wider than the button and shoves the glyph off-center).
+			FButtonStyle S;
+			S.SetNormal(RoundedBrush(Color::Surface(), Radius::Sm, Color::Border(), 1.f));
+			S.SetHovered(RoundedBrush(Color::Surface2(), Radius::Sm, Color::BorderStrong(), 1.f));
+			S.SetPressed(RoundedBrush(Color::Surface(), Radius::Sm, Color::Border(), 1.f));
+			S.SetDisabled(RoundedBrush(Color::Surface(), Radius::Sm));
+			S.SetNormalPadding(FMargin(0.f)); S.SetPressedPadding(FMargin(0.f));
+			B->SetStyle(S);
+		}
+		if (bMinus) { B->OnClicked.AddDynamic(this, &URoundSetupWizard::HandleHandicapMinus); }
+		else        { B->OnClicked.AddDynamic(this, &URoundSetupWizard::HandleHandicapPlus); }
+		UTextBlock* T = WidgetTree->ConstructWidget<UTextBlock>();
+		T->SetText(FText::FromString(Glyph));
+		T->SetFont(Mono(15));
+		T->SetColorAndOpacity(FSlateColor(Color::TextDim()));
+		T->SetJustification(ETextJustify::Center);
+		B->SetContent(T);
+		BBox->SetContent(B);
+		return BBox;
+	};
+	if (UHorizontalBoxSlot* MS = HcpRow->AddChildToHorizontalBox(MakeStepBtn(TEXT("−"), true))) { MS->SetVerticalAlignment(VAlign_Center); }
+	HandicapText = WidgetTree->ConstructWidget<UTextBlock>();
+	HandicapText->SetText(FText::FromString(TEXT("0")));
+	HandicapText->SetFont(Mono(16));
+	HandicapText->SetColorAndOpacity(FSlateColor(Color::Text()));
+	HandicapText->SetJustification(ETextJustify::Center);
+	if (UHorizontalBoxSlot* HVS = HcpRow->AddChildToHorizontalBox(HandicapText)) { HVS->SetVerticalAlignment(VAlign_Center); HVS->SetPadding(FMargin(10.f, 0)); }
+	if (UHorizontalBoxSlot* PS = HcpRow->AddChildToHorizontalBox(MakeStepBtn(TEXT("+"), false))) { PS->SetVerticalAlignment(VAlign_Center); }
+	if (UVerticalBoxSlot* HRS = HcpCol->AddChildToVerticalBox(HcpRow)) { HRS->SetPadding(FMargin(0, 5.f, 0, 0)); }
+	if (UHorizontalBoxSlot* HCS = RowBox->AddChildToHorizontalBox(HcpCol)) { HCS->SetVerticalAlignment(VAlign_Center); HCS->SetPadding(FMargin(20.f, 0, 0, 0)); }
+
+	// player-list column wraps the single row
+	UVerticalBox* PlayerList = WidgetTree->ConstructWidget<UVerticalBox>();
+	PlayerList->AddChildToVerticalBox(Row);
+	if (UHorizontalBoxSlot* PLS = BodyRow->AddChildToHorizontalBox(PlayerList)) { PLS->SetSize(FSlateChildSize(ESlateSizeRule::Fill)); PLS->SetVerticalAlignment(VAlign_Top); }
+
+	// --- round summary card (right) ---
+	USizeBox* SummaryBox = WidgetTree->ConstructWidget<USizeBox>();
+	SummaryBox->SetWidthOverride(320.f);
+	UBorder* SummaryCard = MakeGlassPanel(WidgetTree);
+	UVerticalBox* SummaryCol = WidgetTree->ConstructWidget<UVerticalBox>();
+	SummaryCard->SetContent(SummaryCol);
+	{
+		UBorder* HeadPad = WidgetTree->ConstructWidget<UBorder>();
+		HeadPad->SetBrushColor(FLinearColor(0, 0, 0, 0));
+		HeadPad->SetPadding(FMargin(18.f, 16.f, 18.f, 14.f));
+		UVerticalBox* HeadCol = WidgetTree->ConstructWidget<UVerticalBox>();
+		HeadCol->AddChildToVerticalBox(MakeEyebrow(WidgetTree, TEXT("Round summary")));
+		SummaryCourseName = WidgetTree->ConstructWidget<UTextBlock>();
+		SummaryCourseName->SetFont(Display(22, FName(TEXT("Bold"))));
+		SummaryCourseName->SetColorAndOpacity(FSlateColor(Color::Text()));
+		if (UVerticalBoxSlot* SNS = HeadCol->AddChildToVerticalBox(SummaryCourseName)) { SNS->SetPadding(FMargin(0, 6.f, 0, 0)); }
+		SummaryCourseLoc = WidgetTree->ConstructWidget<UTextBlock>();
+		SummaryCourseLoc->SetFont(Body(12));
+		SummaryCourseLoc->SetColorAndOpacity(FSlateColor(Color::TextFaint()));
+		if (UVerticalBoxSlot* SLS = HeadCol->AddChildToVerticalBox(SummaryCourseLoc)) { SLS->SetPadding(FMargin(0, 3.f, 0, 0)); }
+		HeadPad->SetContent(HeadCol);
+		SummaryCol->AddChildToVerticalBox(HeadPad);
+	}
+	auto AddSummaryRow = [&](const FString& Key) -> UTextBlock*
+	{
+		UHorizontalBox* SRow = WidgetTree->ConstructWidget<UHorizontalBox>();
+		UTextBlock* K = WidgetTree->ConstructWidget<UTextBlock>();
+		K->SetText(FText::FromString(Key.ToUpper()));
+		{ FSlateFontInfo F = Mono(10); F.LetterSpacing = 120; K->SetFont(F); }
+		K->SetColorAndOpacity(FSlateColor(Color::TextFaint()));
+		if (UHorizontalBoxSlot* KS = SRow->AddChildToHorizontalBox(K)) { KS->SetSize(FSlateChildSize(ESlateSizeRule::Fill)); KS->SetVerticalAlignment(VAlign_Center); }
+		UTextBlock* Val = WidgetTree->ConstructWidget<UTextBlock>();
+		Val->SetFont(Display(15, FName(TEXT("SemiBold"))));
+		Val->SetColorAndOpacity(FSlateColor(Color::Text()));
+		Val->SetJustification(ETextJustify::Right);
+		if (UHorizontalBoxSlot* VS = SRow->AddChildToHorizontalBox(Val)) { VS->SetVerticalAlignment(VAlign_Center); }
+		UBorder* RowPad = WidgetTree->ConstructWidget<UBorder>();
+		RowPad->SetBrushColor(FLinearColor(0, 0, 0, 0));
+		RowPad->SetPadding(FMargin(18.f, 9.f));
+		RowPad->SetContent(SRow);
+		SummaryCol->AddChildToVerticalBox(RowPad);
+		return Val;
+	};
+	SummaryHolesVal   = AddSummaryRow(TEXT("Holes"));
+	SummaryGameVal    = AddSummaryRow(TEXT("Game"));
+	SummaryTurnVal    = AddSummaryRow(TEXT("Turn order"));
+	SummaryHoleOutVal = AddSummaryRow(TEXT("Hole-out"));
+	SummaryPlayersVal = AddSummaryRow(TEXT("Players"));
+	SummaryBox->SetContent(SummaryCard);
+	if (UHorizontalBoxSlot* SBS = BodyRow->AddChildToHorizontalBox(SummaryBox)) { SBS->SetVerticalAlignment(VAlign_Top); SBS->SetPadding(FMargin(22.f, 0, 0, 0)); }
+
+	// seed player 0 + the row from persisted settings
+	PrefillPlayer();
+
+	// 1180-wide left-aligned column
 	USizeBox* ColBox = WidgetTree->ConstructWidget<USizeBox>();
 	ColBox->SetWidthOverride(1180.f);
 	ColBox->SetContent(Content);
@@ -636,6 +856,69 @@ UWidget* URoundSetupWizard::BuildStubStep(const FString& Eyebrow, const FString&
 	Pad->SetVerticalAlignment(VAlign_Top);
 	Pad->SetContent(ColBox);
 	return Pad;
+}
+
+void URoundSetupWizard::PrefillPlayer()
+{
+	if (RoundConfig.Players.Num() == 0) { RoundConfig.Players.AddDefaulted(); }
+	FRoundPlayer& P = RoundConfig.Players[0];
+	P.Name = GolfDisplay::ReadPlayerName();
+	P.Handicap = GolfDisplay::ReadHandicap();
+	if (PlayerNameBox) { PlayerNameBox->SetText(FText::FromString(P.Name)); }
+	RefreshPlayerAvatar();
+	RefreshTeeSwatches();
+	RefreshHandicapText();
+}
+
+void URoundSetupWizard::RefreshPlayerAvatar()
+{
+	if (PlayerAvatarText && RoundConfig.Players.Num() > 0)
+	{
+		PlayerAvatarText->SetText(FText::FromString(InitialsFromName(RoundConfig.Players[0].Name)));
+	}
+}
+
+void URoundSetupWizard::RefreshTeeSwatches()
+{
+	using namespace GolfUI;
+	const int32 Sel = RoundConfig.Players.Num() > 0 ? RoundConfig.Players[0].TeeIndex : 1;
+	for (int32 i = 0; i < TeeButtons.Num(); ++i)
+	{
+		if (!TeeButtons[i]) { continue; }
+		const FLinearColor Col = TeeColors[FMath::Clamp(i, 0, 3)];
+		const bool bSel = (i == Sel);
+		FButtonStyle S;
+		// selected = white 2px ring; otherwise a thin border.
+		S.SetNormal(RoundedBrush(Col, Radius::Sm, bSel ? FLinearColor::White : Color::Border(), bSel ? 2.f : 1.f));
+		S.SetHovered(RoundedBrush(Col, Radius::Sm, bSel ? FLinearColor::White : Color::BorderStrong(), bSel ? 2.f : 1.f));
+		S.SetPressed(RoundedBrush(Col, Radius::Sm, FLinearColor::White, 2.f));
+		S.SetDisabled(RoundedBrush(Col, Radius::Sm));
+		S.SetNormalPadding(FMargin(0.f)); S.SetPressedPadding(FMargin(0.f));
+		TeeButtons[i]->SetStyle(S);
+	}
+}
+
+void URoundSetupWizard::RefreshHandicapText()
+{
+	if (HandicapText && RoundConfig.Players.Num() > 0)
+	{
+		HandicapText->SetText(FText::FromString(FString::FromInt(RoundConfig.Players[0].Handicap)));
+	}
+}
+
+void URoundSetupWizard::RefreshRoundSummary()
+{
+	if (SummaryCourseName) { SummaryCourseName->SetText(FText::FromString(SelectedCourseName.IsEmpty() ? TEXT("—") : SelectedCourseName)); }
+	if (SummaryCourseLoc)  { SummaryCourseLoc->SetText(FText::FromString(SelectedCourseLoc)); }
+	if (SummaryHolesVal)   { SummaryHolesVal->SetText(FText::FromString(HolesSummaryLabel())); }
+	if (SummaryGameVal)    { SummaryGameVal->SetText(FText::FromString(GameSummaryLabel())); }
+	if (SummaryTurnVal)    { SummaryTurnVal->SetText(FText::FromString(RoundConfig.TurnOrder == ETurnOrder::PlayItOut ? TEXT("Play it out") : TEXT("Stroke by stroke"))); }
+	if (SummaryHoleOutVal)
+	{
+		SummaryHoleOutVal->SetText(FText::FromString(RoundConfig.HoleOutRule == EHoleOutRule::Gimme
+			? FString::Printf(TEXT("Gimmes %d ft"), RoundConfig.GimmeFeet) : TEXT("Everyone holes out")));
+	}
+	if (SummaryPlayersVal) { SummaryPlayersVal->SetText(FText::FromString(FString::FromInt(RoundConfig.PlayerCount))); }
 }
 
 void URoundSetupWizard::BuildFooter(UHorizontalBox* Footer)
@@ -678,9 +961,11 @@ void URoundSetupWizard::SetCourses(const TArray<FGolfCourseInfo>& Courses)
 		{
 			const FString Id = Info.Id;
 			const FString Name = Info.Name;
-			Card->OnSelected = [this, Id, Name]()
+			const FString Loc = Info.Location;
+			Card->OnSelected = [this, Id, Name, Loc]()
 			{
 				SelectedCourseName = Name;
+				SelectedCourseLoc = Loc;
 				HandleCardSelected(Id);
 			};
 		}
@@ -702,7 +987,9 @@ void URoundSetupWizard::ResetToFirstStep()
 {
 	SelectedCourseId.Empty();
 	SelectedCourseName.Empty();
+	SelectedCourseLoc.Empty();
 	for (UCourseCard* Card : Cards) { if (Card) { Card->SetSelected(false); } }
+	PrefillPlayer();   // re-read name/handicap in case they changed since last open
 	ShowStep(1);
 }
 
@@ -724,6 +1011,7 @@ void URoundSetupWizard::ShowStep(int32 Step)
 	RefreshStepper();
 	RefreshNav();
 	UpdateSummary();
+	RefreshRoundSummary();
 }
 
 void URoundSetupWizard::RefreshStepper()
@@ -817,6 +1105,10 @@ void URoundSetupWizard::UpdateSummary()
 	{
 		AddChip(HolesSummaryLabel());
 		AddChip(GameSummaryLabel());
+	}
+	if (CurrentStep >= 3)
+	{
+		AddChip(FString::Printf(TEXT("%d player%s"), RoundConfig.PlayerCount, RoundConfig.PlayerCount == 1 ? TEXT("") : TEXT("s")));
 	}
 }
 

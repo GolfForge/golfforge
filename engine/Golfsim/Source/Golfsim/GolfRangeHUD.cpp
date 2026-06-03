@@ -1176,6 +1176,13 @@ void AGolfRangeHUD::EnsureRoundSetup()
 	{
 		AGolfRangeHUD* HUD = WeakThis.Get();
 		if (!HUD) { return; }
+		// GOL-143: persist the single player's name + handicap (the scorecard + menu chip read these).
+		if (Config.Players.Num() > 0)
+		{
+			const FRoundPlayer& P = Config.Players[0];
+			if (!P.Name.IsEmpty()) { GolfDisplay::WritePlayerName(P.Name); }
+			GolfDisplay::WriteHandicap(P.Handicap);
+		}
 		// Close both modals before kicking off the round so the load-map transition starts clean.
 		HUD->CloseRoundSetup();
 		HUD->DismissMainMenu();

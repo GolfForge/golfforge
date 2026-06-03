@@ -175,6 +175,51 @@ bool FGolfsimSettingsPlayerNameRoundTripTest::RunTest(const FString&)
 	return true;
 }
 
+// GOL-143: player handicap round-trip + clamp + default.
+namespace
+{
+	struct FHandicapKeyGuard
+	{
+		bool bHadKey = false;
+		FString PriorValue;
+		FHandicapKeyGuard()
+		{
+			if (GConfig) { bHadKey = GConfig->GetString(TEXT("GolfForge.Round"), TEXT("Handicap"), PriorValue, GGameUserSettingsIni); }
+		}
+		~FHandicapKeyGuard()
+		{
+			if (!GConfig) { return; }
+			if (bHadKey) { GConfig->SetString(TEXT("GolfForge.Round"), TEXT("Handicap"), *PriorValue, GGameUserSettingsIni); }
+			else { GConfig->RemoveKey(TEXT("GolfForge.Round"), TEXT("Handicap"), GGameUserSettingsIni); }
+			GConfig->Flush(/*bRead=*/false, GGameUserSettingsIni);
+		}
+	};
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FGolfsimSettingsHandicapRoundTripTest, "Golfsim.Settings.HandicapRoundTrip",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FGolfsimSettingsHandicapRoundTripTest::RunTest(const FString&)
+{
+	FHandicapKeyGuard Guard;
+
+	GolfDisplay::WriteHandicap(12);
+	TestEqual(TEXT("handicap round-trips"), GolfDisplay::ReadHandicap(), 12);
+
+	GolfDisplay::WriteHandicap(99);
+	TestEqual(TEXT("write clamps to 54"), GolfDisplay::ReadHandicap(), 54);
+
+	GolfDisplay::WriteHandicap(-5);
+	TestEqual(TEXT("write clamps to 0"), GolfDisplay::ReadHandicap(), 0);
+
+	if (GConfig)
+	{
+		GConfig->RemoveKey(TEXT("GolfForge.Round"), TEXT("Handicap"), GGameUserSettingsIni);
+		GConfig->Flush(/*bRead=*/false, GGameUserSettingsIni);
+	}
+	TestEqual(TEXT("missing key -> 0 default"), GolfDisplay::ReadHandicap(), 0);
+	return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FGolfsimSettingsPinDistanceDefaultTest, "Golfsim.Settings.PinDistanceDefault",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 bool FGolfsimSettingsPinDistanceDefaultTest::RunTest(const FString&)

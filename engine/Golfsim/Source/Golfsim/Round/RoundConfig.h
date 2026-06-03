@@ -45,6 +45,18 @@ enum class EHoleOutRule : uint8
 	Gimme   = 1,   // concede inside GimmeFeet
 };
 
+// One player in the group (GOL-143). Single-player consumes Players[0]; 2..4 are a GOL-69 seam.
+// TeeIndex: 0=Black 1=Blue 2=White 3=Red (single tee geometry today, so cosmetic). Handicap 0..54.
+USTRUCT(BlueprintType)
+struct GOLFSIM_API FRoundPlayer
+{
+	GENERATED_BODY()
+
+	UPROPERTY() FString Name;
+	UPROPERTY() int32   TeeIndex = 1;   // Blue by default (matches the design's player 1)
+	UPROPERTY() int32   Handicap = 0;
+};
+
 USTRUCT(BlueprintType)
 struct GOLFSIM_API FRoundConfig
 {
@@ -56,4 +68,6 @@ struct GOLFSIM_API FRoundConfig
 	UPROPERTY() ETurnOrder      TurnOrder = ETurnOrder::PlayItOut;
 	UPROPERTY() EHoleOutRule    HoleOutRule = EHoleOutRule::HoleOut;
 	UPROPERTY() int32           GimmeFeet = 3;
+	UPROPERTY() int32           PlayerCount = 1;       // 1 live; 2..4 disabled this milestone
+	UPROPERTY() TArray<FRoundPlayer> Players;          // the HUD persists Players[0] at Tee Off
 };

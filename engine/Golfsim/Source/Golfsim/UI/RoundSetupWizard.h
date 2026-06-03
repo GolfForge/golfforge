@@ -24,6 +24,7 @@ class UWidgetSwitcher;
 class UHorizontalBox;
 class UVerticalBox;
 class UUniformGridPanel;
+class UEditableTextBox;
 class UCourseCard;
 class UOptionCard;
 class USegmentedControl;
@@ -52,6 +53,10 @@ protected:
 	UFUNCTION() void HandleStepperClicked();   // bound to every pill; resolves which via IsHovered()
 	UFUNCTION() void HandleHoleChipClicked();  // bound to every custom-hole chip; resolves via IsHovered()
 	UFUNCTION() void HandleHoleQuickClicked(); // bound to All/Front/Back/Clear; resolves via IsHovered()
+	UFUNCTION() void HandlePlayerNameChanged(const FText& Text);
+	UFUNCTION() void HandleTeeClicked();       // bound to every tee swatch; resolves via IsHovered()
+	UFUNCTION() void HandleHandicapMinus();
+	UFUNCTION() void HandleHandicapPlus();
 
 private:
 	void BuildTree();
@@ -59,8 +64,15 @@ private:
 	void BuildStepper(UHorizontalBox* Bar);
 	UWidget* BuildCourseStep();
 	UWidget* BuildFormatStep();
-	UWidget* BuildStubStep(const FString& Eyebrow, const FString& Title, const FString& Desc, const FString& Soon);
+	UWidget* BuildPlayersStep();
 	void BuildFooter(UHorizontalBox* Footer);
+
+	// Players-step helpers
+	void PrefillPlayer();          // seed Players[0] + the row from GolfDisplay (name + handicap)
+	void RefreshPlayerAvatar();    // initials from the player-1 name
+	void RefreshTeeSwatches();     // selected-ring on the chosen tee
+	void RefreshHandicapText();
+	void RefreshRoundSummary();    // fill the summary card from RoundConfig + selected course
 
 	// Format-step helpers
 	void AddSectionHeader(UVerticalBox* Col, const FString& Label, const FString& Desc);
@@ -109,9 +121,23 @@ private:
 	UPROPERTY(Transient) TArray<TObjectPtr<UOptionCard>> TurnCards;
 	UPROPERTY(Transient) TObjectPtr<UWidget>            GimmeBlock;       // "Concede inside" + 3/5/8 ft; shown when Gimmes on
 
+	// Players step (single row this milestone)
+	UPROPERTY(Transient) TObjectPtr<UTextBlock>        PlayerAvatarText;  // initials
+	UPROPERTY(Transient) TObjectPtr<UEditableTextBox>  PlayerNameBox;
+	UPROPERTY(Transient) TArray<TObjectPtr<UButton>>   TeeButtons;        // Black/Blue/White/Red
+	UPROPERTY(Transient) TObjectPtr<UTextBlock>        HandicapText;
+	UPROPERTY(Transient) TObjectPtr<UTextBlock>        SummaryCourseName;
+	UPROPERTY(Transient) TObjectPtr<UTextBlock>        SummaryCourseLoc;
+	UPROPERTY(Transient) TObjectPtr<UTextBlock>        SummaryHolesVal;
+	UPROPERTY(Transient) TObjectPtr<UTextBlock>        SummaryGameVal;
+	UPROPERTY(Transient) TObjectPtr<UTextBlock>        SummaryTurnVal;
+	UPROPERTY(Transient) TObjectPtr<UTextBlock>        SummaryHoleOutVal;
+	UPROPERTY(Transient) TObjectPtr<UTextBlock>        SummaryPlayersVal;
+
 	FRoundConfig RoundConfig;        // collected Format selections; handed to OnTeeOff
 
 	int32 CurrentStep = 1;          // 1 Course / 2 Format / 3 Players
 	FString SelectedCourseId;
 	FString SelectedCourseName;
+	FString SelectedCourseLoc;
 };

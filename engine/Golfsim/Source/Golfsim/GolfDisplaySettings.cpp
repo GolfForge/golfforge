@@ -274,4 +274,21 @@ namespace GolfDisplay
 		GConfig->SetString(PlayerNameSection, PlayerNameKey, *Name, GGameUserSettingsIni);
 		GConfig->Flush(/*bRead=*/false, GGameUserSettingsIni);
 	}
+
+	// GOL-143 player handicap. Same [GolfForge.Round] section as the name.
+	static const TCHAR* HandicapKey = TEXT("Handicap");
+
+	int32 ReadHandicap()
+	{
+		int32 V = 0;
+		if (GConfig) { GConfig->GetInt(PlayerNameSection, HandicapKey, V, GGameUserSettingsIni); }
+		return FMath::Clamp(V, 0, 54);
+	}
+
+	void WriteHandicap(int32 Handicap)
+	{
+		if (!GConfig) { return; }
+		GConfig->SetInt(PlayerNameSection, HandicapKey, FMath::Clamp(Handicap, 0, 54), GGameUserSettingsIni);
+		GConfig->Flush(/*bRead=*/false, GGameUserSettingsIni);
+	}
 }

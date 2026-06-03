@@ -47,4 +47,9 @@ namespace GolfDisplay
 	// pin-distance helper; the section is split so round-specific keys don't crowd range-specific.
 	FString ReadPlayerName();
 	void WritePlayerName(const FString& Name);
+
+	// Player handicap (GOL-143). Same [GolfForge.Round] section, key Handicap. Default 0; clamped to
+	// [0, 54]. Stored for the round-setup wizard's player row; net scoring that consumes it is GOL-69.
+	int32 ReadHandicap();
+	void WriteHandicap(int32 Handicap);
 }

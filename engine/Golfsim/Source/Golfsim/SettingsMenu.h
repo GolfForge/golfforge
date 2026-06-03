@@ -1,20 +1,25 @@
-// Settings/Credits menu (UMG). Pure-C++ UUserWidget, no WBP -- same idiom as UGolfRangePanel. A
-// centered modal with a dimmed backdrop, a Display | Credits nav, the display controls, and a
-// credits scroll. Dumb view: reports the user's Apply/Close via TFunctions; AGolfRangeHUD owns logic.
+// Settings modal (GOL-140, epic GOL-137). Pure-C++ UUserWidget rebuilt as the GolfForge design: a
+// glass card with a left rail (Graphics / Audio / Gameplay / Controls / Credits) and label+description+
+// control rows, using the reusable USegmentedControl / UToggleSwitch atoms. Graphics drives the real
+// FGolfDisplaySettings pipeline (resolution dropdown + segmented window/quality/upscaler/render-scale,
+// with the upscaler->mode carry-over + borderless lock preserved); Audio/Gameplay/Controls are disabled
+// "Coming soon" seams. Public API unchanged from the old version so AGolfRangeHUD's wiring is untouched.
+// Dumb view: reports Apply/Close/MainMenu via TFunctions.
+
 #pragma once
 
 #include "CoreMinimal.h"
 #include "Blueprint/UserWidget.h"
-#include "Types/SlateEnums.h"
 #include "GolfDisplaySettings.h"
 #include "SettingsMenu.generated.h"
 
 class UButton;
 class UComboBoxString;
-class USlider;
 class UTextBlock;
 class UVerticalBox;
 class UScrollBox;
+class UWidgetSwitcher;
+class USegmentedControl;
 
 UCLASS()
 class GOLFSIM_API USettingsMenu : public UUserWidget
@@ -26,41 +31,48 @@ public:
 	void SetCurrent(const FGolfDisplaySettings& S);   // seed controls from current values
 	void SetCreditsText(const FString& Text);
 	void SetUpscalerOptions(const TArray<int32>& Indices);
-	void ShowSection(int32 Index);                    // 0 = Display, 1 = Credits
+	void ShowSection(int32 Index);                    // 0 Graphics, 1 Audio, 2 Gameplay, 3 Controls, 4 Credits
+	void SetActionButtonsVisible(bool bVisible);      // hide Main Menu + Quit when opened from the main menu
 
 	// Set by the owning HUD.
 	TFunction<void(const FGolfDisplaySettings&)> OnApplyDisplay;
 	TFunction<void()> OnClose;
-	TFunction<void()> OnMainMenu;   // GOL-125: exit to main menu (loads PracticeRange + abandons round)
+	TFunction<void()> OnMainMenu;
 
 protected:
 	virtual void NativeOnInitialized() override;
+	virtual FReply NativeOnKeyDown(const FGeometry& Geo, const FKeyEvent& KeyEvent) override;   // Esc -> close
 
+	UFUNCTION() void HandleRailClicked();   // resolves which rail tab via IsHovered()
 	UFUNCTION() void HandleApplyClicked();
 	UFUNCTION() void HandleCloseClicked();
 	UFUNCTION() void HandleMainMenuClicked();
 	UFUNCTION() void HandleQuitClicked();
-	UFUNCTION() void HandleDisplayNavClicked();
-	UFUNCTION() void HandleCreditsNavClicked();
-	UFUNCTION() void HandleUpscalerChanged(FString SelectedItem, ESelectInfo::Type SelectionType);   // refill mode list
-	UFUNCTION() void HandleWindowModeChanged(FString SelectedItem, ESelectInfo::Type SelectionType); // borderless locks res to desktop
 
 private:
 	void BuildTree();
-	UButton* MakeButton(const TCHAR* Label);          // light button + black centered label
-	void RepopulateModeCombo(int32 UpscalerFixedIndex, float TargetPct);   // fill Upscale Mode for an upscaler
-	void UpdateResolutionEnabledForMode(int32 WindowModeIndex);            // disable the picker in Borderless (desktop-locked)
+	UScrollBox* BuildGraphicsTab();
+	UScrollBox* BuildDisabledTab(const TArray<TArray<FString>>& Rows);   // representative "Coming soon" rows
+	void AddRow(UScrollBox* Tab, const FString& Label, const FString& Desc, UWidget* Control, bool bDisabled);
+
+	void RepopulateModeCombo(int32 UpscalerFixedIndex, float TargetPct);   // fill render-scale tiers for an upscaler
+	void UpdateResolutionEnabledForMode(int32 WindowModeIndex);          // Borderless = desktop-locked
+	void RefreshRail();
+
+	UPROPERTY(Transient) TObjectPtr<UWidgetSwitcher> ContentSwitcher;
+	UPROPERTY(Transient) TArray<TObjectPtr<UButton>> RailButtons;
 
 	UPROPERTY(Transient) TObjectPtr<UComboBoxString> ResCombo;
-	UPROPERTY(Transient) TObjectPtr<UComboBoxString> WindowCombo;
-	UPROPERTY(Transient) TObjectPtr<UComboBoxString> QualityCombo;
-	UPROPERTY(Transient) TObjectPtr<UComboBoxString> UpscalerCombo;
-	UPROPERTY(Transient) TObjectPtr<UComboBoxString> UpscaleModeCombo;   // DLSS-style quality presets
-	UPROPERTY(Transient) TObjectPtr<UVerticalBox> DisplayBox;
-	UPROPERTY(Transient) TObjectPtr<UScrollBox> CreditsScroll;
+	UPROPERTY(Transient) TObjectPtr<USegmentedControl> WindowSeg;
+	UPROPERTY(Transient) TObjectPtr<USegmentedControl> QualitySeg;
+	UPROPERTY(Transient) TObjectPtr<USegmentedControl> UpscalerSeg;
+	UPROPERTY(Transient) TObjectPtr<UComboBoxString> UpscaleModeCombo;   // render-scale tiers (dropdown; 5-7 options)
 	UPROPERTY(Transient) TObjectPtr<UTextBlock> CreditsBody;
+	UPROPERTY(Transient) TObjectPtr<UButton> MainMenuBtn;
+	UPROPERTY(Transient) TObjectPtr<UButton> QuitBtn;
 
-	TArray<FIntPoint> ResOptions;   // index-aligned with ResCombo options
-	TArray<int32> UpscalerOptionIndices;   // fixed upscaler index per UpscalerCombo option
-	int32 ModeComboUpscaler = 0;           // which upscaler the Upscale Mode combo is populated for
+	TArray<FIntPoint> ResOptions;          // index-aligned with ResCombo options
+	TArray<int32> UpscalerOptionIndices;   // fixed upscaler index per UpscalerSeg option
+	int32 ModeSegUpscaler = 0;             // which upscaler the render-scale seg is populated for
+	int32 CurrentSection = 0;
 };

@@ -27,6 +27,8 @@ class UButton;
 class UTextBlock;
 class UWidget;
 class UImage;
+class UComboBoxString;
+class USlider;
 
 namespace GolfUI
 {
@@ -105,6 +107,10 @@ namespace GolfUI
 	GOLFSIM_API UImage* MakeLinearGradient(UWidgetTree* Tree, const FLinearColor& Bottom, const FLinearColor& Top);
 	GOLFSIM_API UImage* MakeRadialGradient(UWidgetTree* Tree, const FLinearColor& Inner, const FLinearColor& Outer,
 		FVector2D Center = FVector2D(0.5f, 0.5f), float Radius = 0.7f);
+
+	// ------------------------------------------------------------------ style existing controls (GOL-140)
+	GOLFSIM_API void StyleComboBox(UComboBoxString* Combo);   // mono font + readable (white) dropdown items
+	GOLFSIM_API void StyleSlider(USlider* Slider);            // surface track + accent handle
 
 	// ------------------------------------------------------------------ interaction / motion
 	// Apply a rounded FButtonStyle with Normal/Hovered/Pressed/Disabled fills (hover/pressed derive

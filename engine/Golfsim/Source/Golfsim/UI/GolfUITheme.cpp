@@ -12,6 +12,8 @@
 #include "Components/Image.h"           // gradient material brushes (GOL-150)
 #include "Materials/MaterialInterface.h"
 #include "Materials/MaterialInstanceDynamic.h"
+#include "Components/ComboBoxString.h"  // StyleComboBox (GOL-140)
+#include "Components/Slider.h"          // StyleSlider (GOL-140)
 
 namespace
 {
@@ -200,6 +202,8 @@ namespace GolfUI
 		S.SetHovered(RoundedBrush(Hover, Radius, Outline, OutlineWidth));
 		S.SetPressed(RoundedBrush(Press, Radius, Outline, OutlineWidth));
 		S.SetDisabled(RoundedBrush(Disabled, Radius, Outline, OutlineWidth));
+		S.SetNormalPadding(FMargin(18.f, 10.f));   // comfortable label padding (callers wanting a tight/icon button set their own)
+		S.SetPressedPadding(FMargin(18.f, 10.f));
 		Button->SetStyle(S);
 	}
 
@@ -225,6 +229,8 @@ namespace GolfUI
 		S.SetHovered(RoundedBrush(Color::Surface2(), Radius::Md, Color::AccentLine(), 1.f));
 		S.SetPressed(RoundedBrush(Color::Surface(), Radius::Md, Color::AccentLine(), 1.f));
 		S.SetDisabled(RoundedBrush(FLinearColor(0, 0, 0, 0), Radius::Md, WithAlpha(Color::Border(), 0.04f), 1.f));
+		S.SetNormalPadding(FMargin(18.f, 10.f));
+		S.SetPressedPadding(FMargin(18.f, 10.f));
 		B->SetStyle(S);
 
 		UTextBlock* T = Tree->ConstructWidget<UTextBlock>();
@@ -270,5 +276,37 @@ namespace GolfUI
 				MID->SetScalarParameterValue(TEXT("CenterY"), (float)Center.Y);
 				MID->SetScalarParameterValue(TEXT("Radius"), Radius);
 			});
+	}
+
+	void StyleComboBox(UComboBoxString* Combo)
+	{
+		if (!Combo) { return; }
+		// Dropdown list rows: readable white text.
+		FTableRowStyle Item = Combo->GetItemStyle();
+		Item.TextColor = FSlateColor(Color::Text());
+		Combo->SetItemStyle(Item);
+
+		// Closed box: read like our rounded surface buttons (instead of the grey engine default),
+		// with an accent border on hover.
+		FComboBoxStyle CS = Combo->GetWidgetStyle();
+		CS.ComboButtonStyle.ButtonStyle.SetNormal(RoundedBrush(Color::Surface(), Radius::Sm, Color::Border(), 1.f));
+		CS.ComboButtonStyle.ButtonStyle.SetHovered(RoundedBrush(Color::Surface2(), Radius::Sm, Color::AccentLine(), 1.f));
+		CS.ComboButtonStyle.ButtonStyle.SetPressed(RoundedBrush(Color::Surface2(), Radius::Sm, Color::AccentLine(), 1.f));
+		CS.ComboButtonStyle.ButtonStyle.SetNormalPadding(FMargin(12.f, 8.f));
+		CS.ComboButtonStyle.ButtonStyle.SetPressedPadding(FMargin(12.f, 8.f));
+		CS.ComboButtonStyle.MenuBorderBrush = RoundedBrush(Color::Bg1(), Radius::Sm, Color::BorderStrong(), 1.f);
+		Combo->SetWidgetStyle(CS);
+
+		// Closed-box text: Font/ForegroundColor have no non-deprecated setter yet (C4996), but they're
+		// consumed at the slate build (after this runs), so they DO apply -- needed for readable text.
+		Combo->Font = Mono(12);
+		Combo->ForegroundColor = FSlateColor(Color::Text());
+	}
+
+	void StyleSlider(USlider* Slider)
+	{
+		if (!Slider) { return; }
+		Slider->SetSliderBarColor(Color::Surface3());
+		Slider->SetSliderHandleColor(Color::Accent());
 	}
 }

@@ -508,11 +508,9 @@ void AGolfRangeHUD::EnsureInputBound()
 	InputComponent->BindKey(EKeys::Escape,   IE_Pressed,  this, &AGolfRangeHUD::ToggleSettingsMenu);
 	// Tab: dev cheat sheet listing every key binding. Replaced by a real keybindings UI later.
 	InputComponent->BindKey(EKeys::Tab,      IE_Pressed,  this, &AGolfRangeHUD::ToggleCheatSheet);
-#if WITH_EDITOR
-	// Z: re-open the main menu mid-session. Editor / PIE only -- so a dev can reach "Previous
-	// Sessions" or quit without re-launching the editor. Compiled out of cooked builds.
-	InputComponent->BindKey(EKeys::Z,        IE_Pressed,  this, &AGolfRangeHUD::ToggleMainMenuDev);
-#endif
+	// Z: alternate to Esc -- opens Settings in-game (which carries the Main Menu + Quit shortcuts).
+	// In-game never jumps straight to the main menu; it always routes through Settings (GOL-140).
+	InputComponent->BindKey(EKeys::Z,        IE_Pressed,  this, &AGolfRangeHUD::ToggleSettingsMenu);
 	// Follow-cam orbit: right mouse + drag to circle the resting ball (Follow mode).
 	InputComponent->BindKey(EKeys::RightMouseButton, IE_Pressed,  this, &AGolfRangeHUD::OrbitPressed);
 	InputComponent->BindKey(EKeys::RightMouseButton, IE_Released, this, &AGolfRangeHUD::OrbitReleased);
@@ -774,6 +772,7 @@ void AGolfRangeHUD::ToggleSettingsMenu()
 	}
 	bSettingsOpen = true;
 	SettingsMenu->SetCurrent(GolfDisplay::ReadCurrent());   // reseed in case values changed elsewhere
+	SettingsMenu->SetActionButtonsVisible(true);            // in-range/mid-round: keep Main Menu + Quit
 	SettingsMenu->SetVisibility(ESlateVisibility::Visible);
 }
 
@@ -786,6 +785,7 @@ void AGolfRangeHUD::OpenSettingsOverMenu()
 	}
 	bSettingsOpen = true;
 	SettingsMenu->SetCurrent(GolfDisplay::ReadCurrent());
+	SettingsMenu->SetActionButtonsVisible(false);   // from the main menu: Main Menu + Quit are redundant
 	SettingsMenu->SetVisibility(ESlateVisibility::Visible);
 	SettingsMenu->SetKeyboardFocus();   // settings owns keys while open; CloseSettings hands focus back to the menu
 }
@@ -1279,22 +1279,6 @@ void AGolfRangeHUD::ReturnToMainMenu()
 	UGameplayStatics::OpenLevel(this, FName(TEXT("PracticeRange")));
 }
 
-#if WITH_EDITOR
-void AGolfRangeHUD::ToggleMainMenuDev()
-{
-	// Defensive: don't pop the menu over another modal -- those have their own close paths.
-	if (bSettingsOpen || bHistoryOpen || bSessionsListOpen || bCheatOpen) { return; }
-	if (bMenuOpen)
-	{
-		DismissMainMenu();
-	}
-	else
-	{
-		ShowMainMenu();   // recomputes "Previous Sessions" enabled state based on on-disk sessions
-	}
-}
-#endif
-
 // --- GOL-67: Game / Simulation mode + swing meter ----------------------------------------------
 
 namespace
@@ -1483,7 +1467,7 @@ void AGolfRangeHUD::OpenCreditsSection()
 	{
 		ToggleSettingsMenu();
 	}
-	SettingsMenu->ShowSection(1);
+	SettingsMenu->ShowSection(4);   // GOL-140: Credits is now the 5th rail section (0=Graphics..4=Credits)
 }
 
 void AGolfRangeHUD::EnsureMainMenu()

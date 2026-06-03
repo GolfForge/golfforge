@@ -154,11 +154,6 @@ public:
 	void SetSwingDifficulty(EGolfDifficulty D);
 	EGolfDifficulty GetSwingDifficulty() const { return ActiveDifficulty; }
 
-#if WITH_EDITOR
-	// Z: re-open the main menu mid-session. Editor / PIE only -- cooked builds don't bind this.
-	// Lets a developer reach "Previous Sessions" etc. without quitting back to launch.
-	void ToggleMainMenuDev();
-#endif
 private:
 
 	// Startup main menu (Range / Play Course [disabled] / Exit). Shown over the already-loaded range

@@ -2,6 +2,15 @@
 
 > Dated milestone summaries, newest on top. The durable outcome + the committed artifact, not the blow-by-blow — process detail lives in git history, `docs/ue5-cookbook.md`, and the scripts themselves.
 
+## 2026-06-02 — GOL-140 — Settings overlay redesign + reusable segmented/toggle controls (Windows)
+
+Fourth child of the GOL-137 UI-elevation epic. Rebuilt the settings modal into the GolfForge design while keeping the exact backing + public API. Commit `c75eb6f`.
+
+- **New `UI/SegmentedControl.{h,cpp}` + `UI/ToggleSwitch.{h,cpp}`** — reusable control atoms (pure-C++ `UUserWidget`, GolfUITheme-built, `OnChanged` `TFunction`, `SetControlEnabled`). The segmented one (option pills in a rounded track; selected = accent fill + ink text) is what the round-setup wizard (GOL-142/143) reuses. It resolves the clicked option via `IsHovered()` since a dynamic `OnClicked` has no sender. `GolfUITheme` gained `StyleSlider` + `StyleComboBox` helpers and comfortable content-padding on the button atoms.
+- **`SettingsMenu.{h,cpp}` rewritten** — glass card, full-screen scrim (click-outside → close), header (title + close-X), left rail (Graphics/Audio/Gameplay/Controls/Credits) + `UWidgetSwitcher` sections, `label·description·control` rows w/ hairline separators, footer (Apply + Main Menu + Quit). Same public API → `AGolfRangeHUD::EnsureSettingsMenu` wiring untouched. Graphics drives the real `FGolfDisplaySettings` (Resolution + Render-scale dropdowns, segmented Window mode / Quality / Upscaler), preserving the upscaler→render-% carry-over and the borderless "resolution locked" lock; Audio/Gameplay/Controls render to spec as disabled "Coming soon" rows. Close via X / click-outside / Esc.
+- **Combo styling** — dropdowns restyled to the rounded-surface button look via `Get/SetWidgetStyle` → `ComboButtonStyle.ButtonStyle`; menu background via `ComboButtonStyle.MenuBorderBrush`. The closed-box `Font`/`ForegroundColor` have no non-deprecated setter, so closed-box text styling emits 2 expected C4996 warnings (clean fix = `OnGenerateWidget` later). Gotchas banked in `docs/ue5-cookbook.md`.
+- **In-game menu flow** — both Esc and Z now open Settings (which carries the Main Menu + Quit shortcuts); removed the direct-to-main-menu dev path (`ToggleMainMenuDev`). Main Menu + Quit are hidden when Settings is opened from the main menu (`SetActionButtonsVisible(false)`).
+
 ## 2026-06-02 — GOL-150 — UI gradient material + apply (bg ambiance, rounded hover-wash); menu version/title (Windows)
 
 Third child of the GOL-137 UI-elevation epic; closes the last visual gap vs. the prototype where the bento used flat fills (Slate has no native gradient brush). Commit `7edacce`.

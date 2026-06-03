@@ -2,6 +2,15 @@
 
 > Dated milestone summaries, newest on top. The durable outcome + the committed artifact, not the blow-by-blow — process detail lives in git history, `docs/ue5-cookbook.md`, and the scripts themselves.
 
+## 2026-06-03 — GOL-146 — Swing meter: glass reskin + reposition clear of the control bar (Windows)
+
+Tenth child of the GOL-137 UI epic; the deferred swing-meter half of GOL-145. **Visual reskin + reposition only** — the ticket's data-reconciliation half (adopt the JS prototype's CLUBS table / swing tunables / result math) was **intentionally dropped per the user**: the prototype is a Claude-designed website with no ball-flight physics (it fakes shots with lookup tables), so it can't dictate engine behavior — we use it for *look* only. `KeyboardSwingComponent`, `FConfig` tunables, `GBag`, `ResolveShot`, and the GOL-122 difficulty profiles are all untouched (swing-difficulty tests pass unchanged).
+
+- **`SwingMeterWidget.{h,cpp}` rebuilt** against `GolfUITheme` to match `06-hud-gamemode.png`: glass panel; header eyebrow + green `GAME MODE · KEYBOARD` pill; a width-driven **power fill bar** + live `NN%`; an **accuracy track** with an always-visible green 80–90 sweet zone + a moving marker (replaced the old accuracy progress-fill); per-bar value readouts; a `[Space]`-keycap prompt line. Hardcoded colors dropped for theme tokens. New API: `OnPowerLocked` / `OnAccuracyResult(bInZone, accuracy)` / `ResetMeter`; `SetMeters` now drives the power% + marker.
+- **Reposition** — lifted clear of GOL-145's full-width control bar via a **negative `Offset.Top`** on the bottom-anchored autosize canvas slot (the old `Offset.Bottom` was silently ignored in autosize mode — see cookbook).
+- **`GolfRangeHUD::OnSpaceForCurrentMode`** — each press now drives the richer feedback (`ResetMeter` → `OnPowerLocked` → `OnAccuracyResult`) with prototype-style copy ("…stop in the green", "Striped it — dead straight", "Pushed right"…). The accuracy verdict is **qualitative** (`Pure` / `Push R` / `Pull L`, from which side of the zone the marker stopped) — no fabricated yardage; the real offline number stays physics-derived in the readout. `SetInputMode` resets the meter on mode-enter.
+- Full-build clean + 63/63 automation tests green; PIE-verified (power fill grows green, tracks legible, panel clear of the bar, three-press flow + Pure/miss feedback correct).
+
 ## 2026-06-03 — GOL-145 — In-round HUD: telemetry readout + control bar + §6 LM gating (Windows)
 
 Ninth child of the GOL-137 UI epic; partner to GOL-144 (top panels). Rebuilt the **bottom** HUD to match `06-hud-gamemode.png` / `08-hud-lm-connected.png` and wired the spec **§6 launch-monitor gating**. Commit `19cdb3d`.

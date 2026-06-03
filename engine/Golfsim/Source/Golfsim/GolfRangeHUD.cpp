@@ -1403,8 +1403,7 @@ void AGolfRangeHUD::SetInputMode(EInputMode NewMode)
 		}
 		if (SwingMeter)
 		{
-			SwingMeter->SetMeters(0.0, 0.0);
-			SwingMeter->SetHintText(TEXT("Press Space to start your swing"));
+			SwingMeter->ResetMeter();   // dashes, marker home, neutral colors, default prompt
 			SwingMeter->SetVisibility(ESlateVisibility::HitTestInvisible);
 		}
 	}
@@ -1478,19 +1477,22 @@ void AGolfRangeHUD::OnSpaceForCurrentMode()
 	GolfsimKeyboardSwing::FResolution Res;
 	const bool bResolved = GolfsimKeyboardSwing::OnSpace(SwingState, SwingConfig, SwingClub, Res);
 
-	// Update the hint text on every press so the player knows what the next press will do.
+	// Drive the meter feedback for the *new* state so the player knows what the next press does.
+	// OnSpace has already advanced SwingState.State: press 1 -> Power, press 2 -> Accuracy,
+	// press 3 -> Idle (resolved, handled below after the bResolved check).
 	if (SwingMeter)
 	{
 		switch (SwingState.State)
 		{
 			case GolfsimKeyboardSwing::EState::Power:
-				SwingMeter->SetHintText(TEXT("Press Space to lock POWER"));
+				SwingMeter->ResetMeter();   // press 1: clear any prior result, start fresh
+				SwingMeter->SetHintText(TEXT("to set your power"));
 				break;
 			case GolfsimKeyboardSwing::EState::Accuracy:
-				SwingMeter->SetHintText(TEXT("Press Space to lock ACCURACY"));
+				SwingMeter->OnPowerLocked();   // press 2: power locked, accuracy phase begins
+				SwingMeter->SetHintText(TEXT("— stop in the green"));
 				break;
 			default:
-				SwingMeter->SetHintText(TEXT("Press Space to start your swing"));
 				break;
 		}
 	}
@@ -1504,10 +1506,30 @@ void AGolfRangeHUD::OnSpaceForCurrentMode()
 			SwingState.Power, SwingState.Accuracy);
 		if (SwingMeter)
 		{
-			SwingMeter->SetMeters(0.0, 0.0);
-			SwingMeter->SetHintText(TEXT("Whiff! Press Space to try again"));
+			SwingMeter->ResetMeter();
+			SwingMeter->SetHintText(TEXT("Whiff — try again"));
 		}
 		return;
+	}
+
+	// Resolved (press 3): show the verdict on the meter, then publish the shot to the physics sim.
+	// The "Pure / Push / Pull" read is qualitative (which side of the zone the marker stopped) -- the
+	// real offline yardage comes from physics and lands in the launch-monitor readout.
+	if (SwingMeter)
+	{
+		const double Mid = 0.5 * (SwingConfig.SweetSpotLow + SwingConfig.SweetSpotHigh);
+		const double HalfZone = 0.5 * (SwingConfig.SweetSpotHigh - SwingConfig.SweetSpotLow);
+		const bool bInZone = SwingState.Accuracy >= SwingConfig.SweetSpotLow
+		                  && SwingState.Accuracy <= SwingConfig.SweetSpotHigh;
+		SwingMeter->OnAccuracyResult(bInZone, SwingState.Accuracy);
+
+		const bool bRight = SwingState.Accuracy > Mid;
+		const double Over = FMath::Abs(SwingState.Accuracy - Mid) - HalfZone;   // >0 -> outside the zone
+		FString Prompt;
+		if (bInZone)            { Prompt = TEXT("Striped it — dead straight"); }
+		else if (Over <= 0.06)  { Prompt = bRight ? TEXT("Slight fade right") : TEXT("Slight draw left"); }
+		else                    { Prompt = bRight ? TEXT("Pushed right") : TEXT("Pushed left"); }
+		SwingMeter->SetHintText(Prompt);
 	}
 
 	UE_LOG(LogTemp, Display,

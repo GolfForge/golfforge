@@ -13,9 +13,13 @@ Mixed canvas anchors (stretch one axis, point the other) are fiddly to get right
 
 Hit-testing: set the `UVerticalBox` (and the fill spacer) to `SelfHitTestInvisible` / `HitTestInvisible` so the empty middle passes clicks through to gameplay; only the actual control widgets (bar, cards, dropdowns) capture input. (`FSlateChildSize`/`ESlateSizeRule` live in `Components/SlateWrapperTypes.h` — include it.)
 
-For autosize **point-anchored** corner panels, the offset component on the side you're aligned to is the inset: top-right (`align (1,0)`) uses `Offsets.Right/Top`; bottom-center (`align (0.5,1)`) uses `Offsets.Bottom`; bottom-left (`align (0,1)`) uses `Offsets.Left/Bottom`.
+For autosize **point-anchored** panels, **only `Offsets.Left` (X) and `Offsets.Top` (Y) position the widget** — `Offsets.Right/Bottom` are the width/height, which autosize computes and therefore *ignores*. Alignment then shifts the widget by `-Alignment * size`. So to inset a bottom/right-aligned panel **away from that edge you must use a negative Left/Top**, NOT Right/Bottom. Concretely, a bottom-centre card (`anchors (0.5,1)`, `align (0.5,1)`, autosize): `Offsets.Top = 0` sits its bottom flush on the screen edge; `Offsets.Top = -110` lifts it 110px up. (Corrected GOL-146: the earlier "bottom-center uses Offsets.Bottom" note was wrong — setting `Bottom` did nothing across three rebuilds; negative `Top` is what moved it.)
 
-Heads-up: moving a panel to the bottom can collide with other bottom-anchored widgets (the swing meter's bottom-center card overlapped the new GOL-145 control bar) — z-order doesn't help if both are visible; reposition one. (Swing-meter reposition deferred to GOL-146.)
+Heads-up: moving a panel to the bottom can collide with other bottom-anchored widgets — the swing meter's bottom-centre card overlapped the GOL-145 control bar. Z-order doesn't help if both are visible; reposition one (GOL-146 lifted the meter with a negative `Offset.Top` per above).
+
+## UMG `FSlateRoundedBoxBrush`: radius 999 fails to render on wide boxes (GOL-146)
+
+`RoundedBrush(Col, 999.f, ...)` (the "fully rounded pill" idiom from CSS `border-radius: 999px`) renders fine on small **square** widgets (e.g. `MakeStatusDot`, ~9x9) but **silently doesn't draw** on wide/short rectangles (a 404x15 progress track, a header pill). The fill/outline just vanish — easy to misread as "my widget isn't being added" or "the color's too faint". Use a concrete radius instead: `Radius::Sm` (8) for pills, or ~half the box height (`7.f` for a 15px track) for pill ends. The rest of the UI already does this (the GOL-145 status pill uses `Radius::Sm`, `MakeKbd` uses 6) — 999 was the outlier. Symptom checklist when a themed box is invisible: (1) radius too large, (2) for canvas children, a zero `Offsets.Right` = zero width.
 
 ---
 

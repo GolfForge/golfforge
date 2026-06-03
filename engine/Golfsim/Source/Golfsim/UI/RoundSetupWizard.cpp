@@ -1,6 +1,8 @@
 #include "UI/RoundSetupWizard.h"
 #include "UI/GolfUITheme.h"
 #include "UI/CourseCard.h"
+#include "UI/OptionCard.h"
+#include "UI/SegmentedControl.h"
 
 #include "Blueprint/WidgetTree.h"
 #include "Components/Border.h"
@@ -88,9 +90,7 @@ void URoundSetupWizard::BuildTree()
 	ContentSwitcher = WidgetTree->ConstructWidget<UWidgetSwitcher>();
 	if (UScrollBoxSlot* CS = Cast<UScrollBoxSlot>(Flow->AddChild(ContentSwitcher))) { CS->SetHorizontalAlignment(HAlign_Left); }
 	ContentSwitcher->AddChild(BuildCourseStep());
-	ContentSwitcher->AddChild(BuildStubStep(TEXT("Step 02 · How we're playing"), TEXT("Set the format"),
-		TEXT("Choose the holes, the scoring game, and whether everyone putts everything out."),
-		TEXT("Coming soon — GOL-142")));
+	ContentSwitcher->AddChild(BuildFormatStep());
 	ContentSwitcher->AddChild(BuildStubStep(TEXT("Step 03 · Who's teeing it up"), TEXT("Add your players"),
 		TEXT("Up to four. Set names, tee boxes and handicaps — then tee off."),
 		TEXT("Coming soon — GOL-143")));
@@ -279,6 +279,324 @@ UWidget* URoundSetupWizard::BuildCourseStep()
 	Pad->SetVerticalAlignment(VAlign_Top);
 	Pad->SetContent(ColBox);
 	return Pad;
+}
+
+namespace
+{
+	struct FGameDef { ERoundGameType Game; const TCHAR* Name; const TCHAR* Desc; };
+	const FGameDef GameDefs[] = {
+		{ ERoundGameType::Stroke,     TEXT("Stroke Play"), TEXT("Total strokes count — lowest score wins.") },
+		{ ERoundGameType::Stableford, TEXT("Stableford"),  TEXT("Points earned per hole vs par. Highest wins.") },
+		{ ERoundGameType::Match,      TEXT("Match Play"),  TEXT("Win holes head-to-head. Most holes won.") },
+		{ ERoundGameType::Skins,      TEXT("Skins"),       TEXT("Each hole is worth a skin. Win it outright.") },
+	};
+	struct FTurnDef { ETurnOrder Turn; const TCHAR* Name; const TCHAR* Desc; };
+	const FTurnDef TurnDefs[] = {
+		{ ETurnOrder::PlayItOut, TEXT("Play it out"),     TEXT("Each player finishes the entire hole before the next tees off.") },
+		{ ETurnOrder::Rotate,    TEXT("Stroke by stroke"), TEXT("The group rotates every shot — the player away from the hole plays next.") },
+	};
+}
+
+UWidget* URoundSetupWizard::BuildFormatStep()
+{
+	using namespace GolfUI;
+	UVerticalBox* Content = WidgetTree->ConstructWidget<UVerticalBox>();
+
+	// step head
+	UVerticalBox* Head = WidgetTree->ConstructWidget<UVerticalBox>();
+	Head->AddChildToVerticalBox(MakeEyebrow(WidgetTree, TEXT("Step 02 · How we're playing")));
+	if (UVerticalBoxSlot* HS = Head->AddChildToVerticalBox(MakeTitle(WidgetTree, TEXT("Set the format"), 40))) { HS->SetPadding(FMargin(0, 4.f, 0, 0)); }
+	UTextBlock* Desc = WidgetTree->ConstructWidget<UTextBlock>();
+	Desc->SetText(FText::FromString(TEXT("Choose the holes, the scoring game, and whether everyone putts everything out.")));
+	Desc->SetFont(Body(15));
+	Desc->SetColorAndOpacity(FSlateColor(Color::TextDim()));
+	Desc->SetAutoWrapText(true);
+	if (UVerticalBoxSlot* DS = Head->AddChildToVerticalBox(Desc)) { DS->SetPadding(FMargin(0, 9.f, 0, 0)); }
+	if (UVerticalBoxSlot* HeadSlot = Content->AddChildToVerticalBox(Head)) { HeadSlot->SetPadding(FMargin(0, 6.f, 0, 8.f)); }
+
+	// ── Holes ──
+	AddSectionHeader(Content, TEXT("Holes"), TEXT("Which stretch of the course to play"));
+	HolesSeg = CreateWidget<USegmentedControl>(this);
+	HolesSeg->SetOptions(
+		{ TEXT("Front 9"), TEXT("Back 9"), TEXT("Full 18"), TEXT("Custom") },
+		{ TEXT("1–9"), TEXT("10–18"), TEXT("par 72"), TEXT("") });
+	HolesSeg->SetSelectedIndex((int32)ERoundHolesMode::Full18, false);
+	HolesSeg->OnChanged = [this](int32 Sel) { SetHolesMode((ERoundHolesMode)Sel); };
+	if (UVerticalBoxSlot* SegSlot = Content->AddChildToVerticalBox(HolesSeg)) { SegSlot->SetHorizontalAlignment(HAlign_Left); }
+
+	BuildHolePicker(Content);
+
+	// ── Game type (4-up) ──
+	AddSectionHeader(Content, TEXT("Game type"), TEXT("How scoring works"));
+	UUniformGridPanel* GameGrid = WidgetTree->ConstructWidget<UUniformGridPanel>();
+	GameGrid->SetSlotPadding(FMargin(6.f));
+	GameCards.Reset();
+	for (int32 i = 0; i < UE_ARRAY_COUNT(GameDefs); ++i)
+	{
+		const FGameDef& G = GameDefs[i];
+		UOptionCard* Card = CreateWidget<UOptionCard>(this);
+		Card->Configure(G.Name, G.Desc);
+		const bool bEnabled = (G.Game == ERoundGameType::Stroke);   // only Stroke live this milestone
+		Card->SetDisabled(!bEnabled);
+		Card->SetSelected(G.Game == RoundConfig.GameType);
+		if (bEnabled)
+		{
+			const ERoundGameType Game = G.Game;
+			Card->OnSelected = [this, Game]() { SelectGameType(Game); };
+		}
+		if (UUniformGridSlot* GS = GameGrid->AddChildToUniformGrid(Card, 0, i)) { GS->SetHorizontalAlignment(HAlign_Fill); GS->SetVerticalAlignment(VAlign_Fill); }
+		GameCards.Add(Card);
+	}
+	Content->AddChildToVerticalBox(GameGrid);
+
+	// ── Turn order (2-up, capped width) ──
+	AddSectionHeader(Content, TEXT("Turn order"), TEXT("How the group works through each hole"));
+	UUniformGridPanel* TurnGrid = WidgetTree->ConstructWidget<UUniformGridPanel>();
+	TurnGrid->SetSlotPadding(FMargin(6.f));
+	TurnCards.Reset();
+	for (int32 i = 0; i < UE_ARRAY_COUNT(TurnDefs); ++i)
+	{
+		const FTurnDef& Tn = TurnDefs[i];
+		UOptionCard* Card = CreateWidget<UOptionCard>(this);
+		Card->Configure(Tn.Name, Tn.Desc);
+		const bool bEnabled = (Tn.Turn == ETurnOrder::PlayItOut);   // only Play-it-out live
+		Card->SetDisabled(!bEnabled);
+		Card->SetSelected(Tn.Turn == RoundConfig.TurnOrder);
+		if (bEnabled)
+		{
+			const ETurnOrder Turn = Tn.Turn;
+			Card->OnSelected = [this, Turn]() { SelectTurnOrder(Turn); };
+		}
+		if (UUniformGridSlot* GS = TurnGrid->AddChildToUniformGrid(Card, 0, i)) { GS->SetHorizontalAlignment(HAlign_Fill); GS->SetVerticalAlignment(VAlign_Fill); }
+		TurnCards.Add(Card);
+	}
+	USizeBox* TurnBox = WidgetTree->ConstructWidget<USizeBox>();
+	TurnBox->SetWidthOverride(720.f);
+	TurnBox->SetContent(TurnGrid);
+	if (UVerticalBoxSlot* TurnSlot = Content->AddChildToVerticalBox(TurnBox)) { TurnSlot->SetHorizontalAlignment(HAlign_Left); }
+
+	// ── Hole-out rule ── ("Gimmes on" reveals a concede distance; the radius loosens the auto-hole
+	// tolerance at round time -- see GolfsimRound::EffectiveGimmeRadiusFt).
+	AddSectionHeader(Content, TEXT("Hole-out rule"), TEXT("Putting discipline for the group"));
+	UHorizontalBox* HoleOutRow = WidgetTree->ConstructWidget<UHorizontalBox>();
+
+	USegmentedControl* HoleOutSeg = CreateWidget<USegmentedControl>(this);
+	HoleOutSeg->SetOptions({ TEXT("Everyone holes out"), TEXT("Gimmes on") });
+	HoleOutSeg->SetSelectedIndex((int32)EHoleOutRule::HoleOut, false);
+	HoleOutSeg->OnChanged = [this](int32 Sel)
+	{
+		RoundConfig.HoleOutRule = (EHoleOutRule)Sel;
+		if (GimmeBlock) { GimmeBlock->SetVisibility(RoundConfig.HoleOutRule == EHoleOutRule::Gimme ? ESlateVisibility::Visible : ESlateVisibility::Collapsed); }
+	};
+	if (UHorizontalBoxSlot* HoSlot = HoleOutRow->AddChildToHorizontalBox(HoleOutSeg)) { HoSlot->SetVerticalAlignment(VAlign_Center); }
+
+	// gimme concede-distance block (hidden unless Gimmes on)
+	UHorizontalBox* Gimme = WidgetTree->ConstructWidget<UHorizontalBox>();
+	UTextBlock* GimmeLbl = WidgetTree->ConstructWidget<UTextBlock>();
+	GimmeLbl->SetText(FText::FromString(TEXT("Concede inside")));
+	GimmeLbl->SetFont(Body(13));
+	GimmeLbl->SetColorAndOpacity(FSlateColor(Color::TextFaint()));
+	if (UHorizontalBoxSlot* GLS = Gimme->AddChildToHorizontalBox(GimmeLbl)) { GLS->SetVerticalAlignment(VAlign_Center); GLS->SetPadding(FMargin(0, 0, 12.f, 0)); }
+	USegmentedControl* GimmeSeg = CreateWidget<USegmentedControl>(this);
+	GimmeSeg->SetOptions({ TEXT("3 ft"), TEXT("5 ft"), TEXT("8 ft") });
+	GimmeSeg->SetSelectedIndex(0, false);
+	GimmeSeg->OnChanged = [this](int32 Sel)
+	{
+		static const int32 Feet[] = { 3, 5, 8 };
+		RoundConfig.GimmeFeet = Feet[FMath::Clamp(Sel, 0, 2)];
+	};
+	if (UHorizontalBoxSlot* GSS = Gimme->AddChildToHorizontalBox(GimmeSeg)) { GSS->SetVerticalAlignment(VAlign_Center); }
+	GimmeBlock = Gimme;
+	GimmeBlock->SetVisibility(ESlateVisibility::Collapsed);
+	if (UHorizontalBoxSlot* GBSlot = HoleOutRow->AddChildToHorizontalBox(GimmeBlock)) { GBSlot->SetVerticalAlignment(VAlign_Center); GBSlot->SetPadding(FMargin(14.f, 0, 0, 0)); }
+
+	if (UVerticalBoxSlot* HoSlot = Content->AddChildToVerticalBox(HoleOutRow)) { HoSlot->SetHorizontalAlignment(HAlign_Left); }
+
+	// 1180-wide left-aligned column (same as the other steps)
+	USizeBox* ColBox = WidgetTree->ConstructWidget<USizeBox>();
+	ColBox->SetWidthOverride(1180.f);
+	ColBox->SetContent(Content);
+	UBorder* Pad = WidgetTree->ConstructWidget<UBorder>();
+	Pad->SetBrushColor(FLinearColor(0, 0, 0, 0));
+	Pad->SetPadding(FMargin(40.f, 4.f, 40.f, 20.f));
+	Pad->SetHorizontalAlignment(HAlign_Left);
+	Pad->SetVerticalAlignment(VAlign_Top);
+	Pad->SetContent(ColBox);
+	return Pad;
+}
+
+void URoundSetupWizard::AddSectionHeader(UVerticalBox* Col, const FString& Label, const FString& InDesc)
+{
+	using namespace GolfUI;
+	UHorizontalBox* Row = WidgetTree->ConstructWidget<UHorizontalBox>();
+	UTextBlock* Lbl = WidgetTree->ConstructWidget<UTextBlock>();
+	Lbl->SetText(FText::FromString(Label));
+	Lbl->SetFont(Display(17, FName(TEXT("SemiBold"))));
+	Lbl->SetColorAndOpacity(FSlateColor(Color::Text()));
+	if (UHorizontalBoxSlot* LS = Row->AddChildToHorizontalBox(Lbl)) { LS->SetVerticalAlignment(VAlign_Bottom); }
+	UTextBlock* D = WidgetTree->ConstructWidget<UTextBlock>();
+	D->SetText(FText::FromString(InDesc));
+	D->SetFont(Body(13));
+	D->SetColorAndOpacity(FSlateColor(Color::TextFaint()));
+	if (UHorizontalBoxSlot* DS = Row->AddChildToHorizontalBox(D)) { DS->SetVerticalAlignment(VAlign_Bottom); DS->SetPadding(FMargin(10.f, 0, 0, 0)); }
+	if (UVerticalBoxSlot* RS = Col->AddChildToVerticalBox(Row)) { RS->SetPadding(FMargin(0, 22.f, 0, 12.f)); }
+}
+
+void URoundSetupWizard::BuildHolePicker(UVerticalBox* Col)
+{
+	using namespace GolfUI;
+	// default the custom set to all 18 (matches the prototype) so switching to Custom starts full.
+	RoundConfig.CustomHoles.Reset();
+	for (int32 n = 1; n <= 18; ++n) { RoundConfig.CustomHoles.Add(n); }
+
+	UVerticalBox* Picker = WidgetTree->ConstructWidget<UVerticalBox>();
+
+	// quick buttons: Select all / Front 9 / Back 9 / Clear
+	HoleQuickButtons.Reset();
+	UHorizontalBox* Quick = WidgetTree->ConstructWidget<UHorizontalBox>();
+	const TCHAR* QuickLabels[] = { TEXT("Select all"), TEXT("Front 9"), TEXT("Back 9"), TEXT("Clear") };
+	for (const TCHAR* QLabel : QuickLabels)
+	{
+		UButton* B = WidgetTree->ConstructWidget<UButton>();
+		StyleButton(B, Color::Surface(), Radius::Sm, Color::Border(), 1.f);
+		B->OnClicked.AddDynamic(this, &URoundSetupWizard::HandleHoleQuickClicked);
+		UTextBlock* T = WidgetTree->ConstructWidget<UTextBlock>();
+		T->SetText(FText::FromString(QLabel));
+		{ FSlateFontInfo F = Mono(10); F.LetterSpacing = 60; T->SetFont(F); }
+		T->SetColorAndOpacity(FSlateColor(Color::TextDim()));
+		B->SetContent(T);
+		if (UHorizontalBoxSlot* QS = Quick->AddChildToHorizontalBox(B)) { QS->SetPadding(FMargin(0, 0, 8.f, 0)); }
+		HoleQuickButtons.Add(B);
+	}
+	if (UVerticalBoxSlot* QRow = Picker->AddChildToVerticalBox(Quick)) { QRow->SetPadding(FMargin(0, 0, 0, 10.f)); }
+
+	// 1-18 chip grid (9 cols x 2 rows)
+	HoleChips.Reset();
+	HoleChipTexts.Reset();
+	UUniformGridPanel* Chips = WidgetTree->ConstructWidget<UUniformGridPanel>();
+	Chips->SetSlotPadding(FMargin(4.f));
+	for (int32 i = 0; i < 18; ++i)
+	{
+		UButton* Chip = WidgetTree->ConstructWidget<UButton>();
+		Chip->OnClicked.AddDynamic(this, &URoundSetupWizard::HandleHoleChipClicked);
+		UTextBlock* T = WidgetTree->ConstructWidget<UTextBlock>();
+		T->SetText(FText::FromString(FString::FromInt(i + 1)));
+		T->SetFont(Mono(13));
+		T->SetJustification(ETextJustify::Center);
+		Chip->SetContent(T);
+		if (UUniformGridSlot* CS = Chips->AddChildToUniformGrid(Chip, i / 9, i % 9)) { CS->SetHorizontalAlignment(HAlign_Fill); CS->SetVerticalAlignment(VAlign_Fill); }
+		HoleChips.Add(Chip);
+		HoleChipTexts.Add(T);
+	}
+	USizeBox* ChipBox = WidgetTree->ConstructWidget<USizeBox>();
+	ChipBox->SetWidthOverride(560.f);
+	ChipBox->SetContent(Chips);
+	Picker->AddChildToVerticalBox(ChipBox);
+
+	CustomPicker = Picker;
+	CustomPicker->SetVisibility(ESlateVisibility::Collapsed);   // shown only when Holes = Custom
+	if (UVerticalBoxSlot* PS = Col->AddChildToVerticalBox(CustomPicker)) { PS->SetPadding(FMargin(0, 14.f, 0, 0)); }
+	RefreshHoleChips();
+}
+
+void URoundSetupWizard::RefreshHoleChips()
+{
+	using namespace GolfUI;
+	const TSet<int32> On(RoundConfig.CustomHoles);
+	for (int32 i = 0; i < HoleChips.Num(); ++i)
+	{
+		const bool bOn = On.Contains(i + 1);
+		if (UButton* Chip = HoleChips[i])
+		{
+			FButtonStyle S;
+			S.SetNormal(RoundedBrush(bOn ? Color::Accent() : Color::Surface(), Radius::Sm, bOn ? Color::Accent() : Color::Border(), 1.f));
+			S.SetHovered(RoundedBrush(bOn ? Color::Accent() : Color::Surface2(), Radius::Sm, bOn ? Color::Accent() : Color::BorderStrong(), 1.f));
+			S.SetPressed(RoundedBrush(bOn ? Color::Accent() : Color::Surface(), Radius::Sm));
+			S.SetDisabled(RoundedBrush(Color::Surface(), Radius::Sm));
+			S.SetNormalPadding(FMargin(0, 8.f));
+			S.SetPressedPadding(FMargin(0, 8.f));
+			Chip->SetStyle(S);
+		}
+		if (HoleChipTexts.IsValidIndex(i) && HoleChipTexts[i])
+		{
+			HoleChipTexts[i]->SetColorAndOpacity(FSlateColor(bOn ? Color::AccentInk() : Color::TextDim()));
+		}
+	}
+}
+
+void URoundSetupWizard::SetHolesMode(ERoundHolesMode Mode)
+{
+	RoundConfig.HolesMode = Mode;
+	if (CustomPicker) { CustomPicker->SetVisibility(Mode == ERoundHolesMode::Custom ? ESlateVisibility::Visible : ESlateVisibility::Collapsed); }
+	UpdateSummary();
+	RefreshNav();
+}
+
+void URoundSetupWizard::SelectGameType(ERoundGameType Game)
+{
+	RoundConfig.GameType = Game;
+	for (int32 i = 0; i < GameCards.Num(); ++i) { if (GameCards[i]) { GameCards[i]->SetSelected((ERoundGameType)i == Game); } }
+	UpdateSummary();
+}
+
+void URoundSetupWizard::SelectTurnOrder(ETurnOrder Turn)
+{
+	RoundConfig.TurnOrder = Turn;
+	for (int32 i = 0; i < TurnCards.Num(); ++i) { if (TurnCards[i]) { TurnCards[i]->SetSelected((ETurnOrder)i == Turn); } }
+}
+
+FString URoundSetupWizard::HolesSummaryLabel() const
+{
+	switch (RoundConfig.HolesMode)
+	{
+		case ERoundHolesMode::Front9: return TEXT("Front 9");
+		case ERoundHolesMode::Back9:  return TEXT("Back 9");
+		case ERoundHolesMode::Custom: return FString::Printf(TEXT("%d hole%s"), RoundConfig.CustomHoles.Num(), RoundConfig.CustomHoles.Num() == 1 ? TEXT("") : TEXT("s"));
+		case ERoundHolesMode::Full18:
+		default: return TEXT("Full 18");
+	}
+}
+
+FString URoundSetupWizard::GameSummaryLabel() const
+{
+	for (const FGameDef& G : GameDefs) { if (G.Game == RoundConfig.GameType) { return G.Name; } }
+	return TEXT("Stroke Play");
+}
+
+void URoundSetupWizard::HandleHoleChipClicked()
+{
+	for (int32 i = 0; i < HoleChips.Num(); ++i)
+	{
+		if (HoleChips[i] && HoleChips[i]->IsHovered())
+		{
+			const int32 Ref = i + 1;
+			if (RoundConfig.CustomHoles.Contains(Ref)) { RoundConfig.CustomHoles.Remove(Ref); }
+			else { RoundConfig.CustomHoles.Add(Ref); }
+			RefreshHoleChips();
+			UpdateSummary();
+			RefreshNav();
+			return;
+		}
+	}
+}
+
+void URoundSetupWizard::HandleHoleQuickClicked()
+{
+	for (int32 q = 0; q < HoleQuickButtons.Num(); ++q)
+	{
+		if (HoleQuickButtons[q] && HoleQuickButtons[q]->IsHovered())
+		{
+			RoundConfig.CustomHoles.Reset();
+			if (q == 0) { for (int32 n = 1; n <= 18; ++n) { RoundConfig.CustomHoles.Add(n); } }       // Select all
+			else if (q == 1) { for (int32 n = 1; n <= 9; ++n) { RoundConfig.CustomHoles.Add(n); } }    // Front 9
+			else if (q == 2) { for (int32 n = 10; n <= 18; ++n) { RoundConfig.CustomHoles.Add(n); } }  // Back 9
+			// q == 3 Clear -> leave empty
+			RefreshHoleChips();
+			UpdateSummary();
+			RefreshNav();
+			return;
+		}
+	}
 }
 
 UWidget* URoundSetupWizard::BuildStubStep(const FString& Eyebrow, const FString& Title, const FString& Desc, const FString& Soon)
@@ -478,8 +796,8 @@ void URoundSetupWizard::UpdateSummary()
 	if (!FootSummary) { return; }
 	FootSummary->ClearChildren();
 
-	// live summary chips (left of the footer). GOL-141 shows the chosen course; later steps append more.
-	if (!SelectedCourseName.IsEmpty())
+	// live summary chips (left of the footer): course, then holes + game once past the Course step.
+	auto AddChip = [&](const FString& Text)
 	{
 		UHorizontalBox* Chip = WidgetTree->ConstructWidget<UHorizontalBox>();
 		USizeBox* DotBox = WidgetTree->ConstructWidget<USizeBox>();
@@ -487,25 +805,34 @@ void URoundSetupWizard::UpdateSummary()
 		DotBox->SetContent(MakeStatusDot(WidgetTree, Color::Accent()));
 		if (UHorizontalBoxSlot* DS = Chip->AddChildToHorizontalBox(DotBox)) { DS->SetVerticalAlignment(VAlign_Center); DS->SetPadding(FMargin(0, 0, 8.f, 0)); }
 		UTextBlock* T = WidgetTree->ConstructWidget<UTextBlock>();
-		T->SetText(FText::FromString(SelectedCourseName));
+		T->SetText(FText::FromString(Text));
 		T->SetFont(Mono(12));
 		T->SetColorAndOpacity(FSlateColor(Color::Text()));
 		if (UHorizontalBoxSlot* TS = Chip->AddChildToHorizontalBox(T)) { TS->SetVerticalAlignment(VAlign_Center); }
-		FootSummary->AddChildToHorizontalBox(Chip);
+		if (UHorizontalBoxSlot* CS = FootSummary->AddChildToHorizontalBox(Chip)) { CS->SetPadding(FMargin(0, 0, 18.f, 0)); }
+	};
+
+	if (!SelectedCourseName.IsEmpty()) { AddChip(SelectedCourseName); }
+	if (CurrentStep >= 2)
+	{
+		AddChip(HolesSummaryLabel());
+		AddChip(GameSummaryLabel());
 	}
 }
 
 bool URoundSetupWizard::CanAdvance() const
 {
 	if (CurrentStep == 1) { return !SelectedCourseId.IsEmpty(); }
-	return true;   // steps 2/3 are stubs this milestone
+	// Step 2: a Custom hole selection must have at least one hole.
+	if (CurrentStep == 2) { return RoundConfig.HolesMode != ERoundHolesMode::Custom || RoundConfig.CustomHoles.Num() > 0; }
+	return true;   // step 3 is a stub this milestone
 }
 
 void URoundSetupWizard::GoNext()
 {
 	if (!CanAdvance()) { return; }
 	if (CurrentStep < 3) { ShowStep(CurrentStep + 1); }
-	else if (OnTeeOff) { OnTeeOff(SelectedCourseId); }
+	else if (OnTeeOff) { OnTeeOff(SelectedCourseId, RoundConfig); }
 }
 
 void URoundSetupWizard::GoBack()

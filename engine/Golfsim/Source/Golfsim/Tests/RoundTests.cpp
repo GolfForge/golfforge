@@ -311,4 +311,89 @@ bool FGolfsimRoundAbandonTest::RunTest(const FString&)
 	return true;
 }
 
+// GOL-142: SelectHoles filters a full schedule to the round's chosen subset (in Ref order).
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FGolfsimRoundSelectHolesTest, "Golfsim.Round.SelectHoles",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FGolfsimRoundSelectHolesTest::RunTest(const FString&)
+{
+	using namespace GolfsimRound;
+	const TArray<FHoleSpec> Full = MakePar72Schedule();   // Refs 1..18
+
+	auto Refs = [](const TArray<FHoleSpec>& S)
+	{
+		TArray<int32> R; for (const FHoleSpec& H : S) { R.Add(H.Ref); } return R;
+	};
+
+	// Full 18 -> all, unchanged order.
+	{
+		FRoundConfig C; C.HolesMode = ERoundHolesMode::Full18;
+		const TArray<FHoleSpec> Out = SelectHoles(Full, C);
+		TestEqual(TEXT("Full18 -> 18 holes"), Out.Num(), 18);
+		TestEqual(TEXT("Full18 first ref"), Out[0].Ref, 1);
+		TestEqual(TEXT("Full18 last ref"), Out[17].Ref, 18);
+	}
+
+	// Front 9 -> Refs 1..9.
+	{
+		FRoundConfig C; C.HolesMode = ERoundHolesMode::Front9;
+		const TArray<FHoleSpec> Out = SelectHoles(Full, C);
+		TestEqual(TEXT("Front9 -> 9 holes"), Out.Num(), 9);
+		TestEqual(TEXT("Front9 first ref"), Out[0].Ref, 1);
+		TestEqual(TEXT("Front9 last ref"), Out[8].Ref, 9);
+	}
+
+	// Back 9 -> Refs 10..18.
+	{
+		FRoundConfig C; C.HolesMode = ERoundHolesMode::Back9;
+		const TArray<FHoleSpec> Out = SelectHoles(Full, C);
+		TestEqual(TEXT("Back9 -> 9 holes"), Out.Num(), 9);
+		TestEqual(TEXT("Back9 first ref"), Out[0].Ref, 10);
+		TestEqual(TEXT("Back9 last ref"), Out[8].Ref, 18);
+	}
+
+	// Custom {3,7,12} -> those three in Ref order (the set order doesn't matter).
+	{
+		FRoundConfig C; C.HolesMode = ERoundHolesMode::Custom; C.CustomHoles = { 12, 3, 7 };
+		const TArray<FHoleSpec> Out = SelectHoles(Full, C);
+		TestEqual(TEXT("Custom -> 3 holes"), Out.Num(), 3);
+		TestTrue(TEXT("Custom preserves Ref order"), Refs(Out) == (TArray<int32>{ 3, 7, 12 }));
+	}
+
+	// Custom with a Ref absent from the course -> intersection only (no phantom holes).
+	{
+		FRoundConfig C; C.HolesMode = ERoundHolesMode::Custom; C.CustomHoles = { 5, 99 };
+		const TArray<FHoleSpec> Out = SelectHoles(Full, C);
+		TestEqual(TEXT("Custom intersects available refs"), Out.Num(), 1);
+		TestEqual(TEXT("Custom kept the valid ref"), Out[0].Ref, 5);
+	}
+
+	return true;
+}
+
+// GOL-142: the hole-out radius honors the gimme rule, and a concession only ever loosens it.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FGolfsimRoundGimmeRuleTest, "Golfsim.Round.GimmeRuleRadius",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FGolfsimRoundGimmeRuleTest::RunTest(const FString&)
+{
+	using namespace GolfsimRound;
+	const double DiffFt = 6.0;   // e.g. Normal's natural tolerance
+
+	// Everyone holes out -> difficulty tolerance, GimmeFeet ignored.
+	{
+		FRoundConfig C; C.HoleOutRule = EHoleOutRule::HoleOut; C.GimmeFeet = 8;
+		TestEqual(TEXT("HoleOut keeps difficulty radius"), EffectiveGimmeRadiusFt(C, DiffFt), 6.0);
+	}
+	// Gimme looser than tolerance -> use the gimme.
+	{
+		FRoundConfig C; C.HoleOutRule = EHoleOutRule::Gimme; C.GimmeFeet = 8;
+		TestEqual(TEXT("Gimme 8ft loosens to 8"), EffectiveGimmeRadiusFt(C, DiffFt), 8.0);
+	}
+	// Gimme tighter than tolerance -> clamp up to tolerance (concession can't make holing harder).
+	{
+		FRoundConfig C; C.HoleOutRule = EHoleOutRule::Gimme; C.GimmeFeet = 3;
+		TestEqual(TEXT("Gimme 3ft can't tighten below 6"), EffectiveGimmeRadiusFt(C, DiffFt), 6.0);
+	}
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

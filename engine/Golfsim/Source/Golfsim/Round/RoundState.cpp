@@ -247,10 +247,36 @@ namespace GolfsimRound
 		return ParseHoleScheduleJson(HoleText, MinLon, MinLat, MaxLon, MaxLat, TrackName, Out, OutErr);
 	}
 
+	TArray<FHoleSpec> SelectHoles(const TArray<FHoleSpec>& Full, const FRoundConfig& Config)
+	{
+		switch (Config.HolesMode)
+		{
+			case ERoundHolesMode::Front9:
+				return Full.FilterByPredicate([](const FHoleSpec& H) { return H.Ref >= 1 && H.Ref <= 9; });
+			case ERoundHolesMode::Back9:
+				return Full.FilterByPredicate([](const FHoleSpec& H) { return H.Ref >= 10 && H.Ref <= 18; });
+			case ERoundHolesMode::Custom:
+			{
+				const TSet<int32> Wanted(Config.CustomHoles);
+				return Full.FilterByPredicate([&Wanted](const FHoleSpec& H) { return Wanted.Contains(H.Ref); });
+			}
+			case ERoundHolesMode::Full18:
+			default:
+				return Full;
+		}
+	}
+
 	// --- State machine ---------------------------------------------------------------------
 
+	double EffectiveGimmeRadiusFt(const FRoundConfig& Config, double DifficultyRadiusFt)
+	{
+		return Config.HoleOutRule == EHoleOutRule::Gimme
+			? FMath::Max(DifficultyRadiusFt, (double)Config.GimmeFeet)
+			: DifficultyRadiusFt;
+	}
+
 	FRoundStep StartRound(FRoundState& S, const FString& CourseId, EGolfDifficulty D,
-		TArray<FHoleSpec> Schedule)
+		TArray<FHoleSpec> Schedule, const FRoundConfig& Config)
 	{
 		S = FRoundState{};
 		if (Schedule.Num() == 0)
@@ -261,6 +287,7 @@ namespace GolfsimRound
 		S.RoundId         = MakeRoundId();
 		S.CourseId        = CourseId;
 		S.Difficulty      = D;
+		S.Config          = Config;
 		S.bActive         = true;
 		S.HoleIndex       = 0;
 		S.StrokesThisHole = 0;

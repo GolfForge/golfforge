@@ -16,6 +16,7 @@
 
 #include "CoreMinimal.h"
 #include "Game/GolfDifficulty.h"
+#include "Round/RoundConfig.h"
 
 namespace GolfsimRound
 {
@@ -37,6 +38,7 @@ namespace GolfsimRound
 		FString RoundId;
 		FString CourseId;
 		EGolfDifficulty Difficulty = EGolfDifficulty::Easy;
+		FRoundConfig Config;                    // GOL-142: holes subset + hole-out rule (gimme radius)
 		bool bActive = false;
 		int32 HoleIndex = 0;                    // 0-based; Schedule[HoleIndex] is the active hole
 		int32 StrokesThisHole = 0;
@@ -89,6 +91,17 @@ namespace GolfsimRound
 	 *  Returns false on missing/malformed files; OutErr explains. */
 	GOLFSIM_API bool LoadHoleSchedule(const FString& CourseId, TArray<FHoleSpec>& Out, FString& OutErr);
 
+	/** GOL-142: filter a full (Ref-ascending) schedule to the holes the round will actually play.
+	 *  Full18 -> all; Front9 -> Ref 1..9; Back9 -> Ref 10..18; Custom -> entries whose Ref is in
+	 *  Config.CustomHoles. Order is preserved (so the round plays them in Ref order and round.complete
+	 *  fires after the last). Pure -- no world -- so it's unit-tested headlessly. */
+	GOLFSIM_API TArray<FHoleSpec> SelectHoles(const TArray<FHoleSpec>& Full, const FRoundConfig& Config);
+
+	/** GOL-142: the auto-hole-out radius for a round, in feet. With "everyone holes out" the round
+	 *  keeps the difficulty's natural tolerance (DifficultyRadiusFt); a gimme concession only ever
+	 *  loosens it (max), never tightens -- conceding a putt can't make holing harder. */
+	GOLFSIM_API double EffectiveGimmeRadiusFt(const FRoundConfig& Config, double DifficultyRadiusFt);
+
 	/** Same as above but takes the raw bytes + bbox directly -- the test helper. Public so the
 	 *  geojson-shape tests don't need filesystem fixtures. */
 	GOLFSIM_API bool ParseHoleScheduleJson(const FString& JsonText,
@@ -98,9 +111,10 @@ namespace GolfsimRound
 
 	// --- State-machine entry points ---------------------------------------------------------
 
-	/** Fills S, returns "publish RoundStart + first HoleStart". Schedule MUST be non-empty. */
+	/** Fills S, returns "publish RoundStart + first HoleStart". Schedule MUST be non-empty.
+	 *  Config carries the round's hole-out rule (read later by the hole-out subsystem). */
 	GOLFSIM_API FRoundStep StartRound(FRoundState& S, const FString& CourseId, EGolfDifficulty D,
-		TArray<FHoleSpec> Schedule);
+		TArray<FHoleSpec> Schedule, const FRoundConfig& Config = FRoundConfig());
 
 	/** Increments StrokesThisHole. Returns HoleComplete + advance if the cap trips, else empty step. */
 	GOLFSIM_API FRoundStep OnShotOutcome(FRoundState& S);

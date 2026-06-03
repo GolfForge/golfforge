@@ -13,15 +13,20 @@
 #include "CoreMinimal.h"
 #include "Blueprint/UserWidget.h"
 #include "Game/CourseRegistry.h"
+#include "Round/RoundConfig.h"
 #include "RoundSetupWizard.generated.h"
 
 class UButton;
 class UBorder;
 class UTextBlock;
+class UWidget;
 class UWidgetSwitcher;
 class UHorizontalBox;
+class UVerticalBox;
 class UUniformGridPanel;
 class UCourseCard;
+class UOptionCard;
+class USegmentedControl;
 
 UCLASS()
 class GOLFSIM_API URoundSetupWizard : public UUserWidget
@@ -33,7 +38,8 @@ public:
 	void SetResumeVisible(bool bVisible);                      // resume banner seam (hidden until backing lands)
 	void ResetToFirstStep();                                  // call on open: back to Course, clear selection
 
-	TFunction<void(const FString& /*CourseId*/)> OnTeeOff;   // final step -> HUD starts the round
+	// final step -> HUD starts the round with the collected Format config (GOL-142)
+	TFunction<void(const FString& /*CourseId*/, const FRoundConfig& /*Config*/)> OnTeeOff;
 	TFunction<void()> OnClose;                                // close-X / Esc on step 1 -> back to menu
 
 protected:
@@ -44,14 +50,27 @@ protected:
 	UFUNCTION() void HandleBackClicked();
 	UFUNCTION() void HandleCloseClicked();
 	UFUNCTION() void HandleStepperClicked();   // bound to every pill; resolves which via IsHovered()
+	UFUNCTION() void HandleHoleChipClicked();  // bound to every custom-hole chip; resolves via IsHovered()
+	UFUNCTION() void HandleHoleQuickClicked(); // bound to All/Front/Back/Clear; resolves via IsHovered()
 
 private:
 	void BuildTree();
 	void BuildTopbar(UHorizontalBox* Bar);
 	void BuildStepper(UHorizontalBox* Bar);
 	UWidget* BuildCourseStep();
+	UWidget* BuildFormatStep();
 	UWidget* BuildStubStep(const FString& Eyebrow, const FString& Title, const FString& Desc, const FString& Soon);
 	void BuildFooter(UHorizontalBox* Footer);
+
+	// Format-step helpers
+	void AddSectionHeader(UVerticalBox* Col, const FString& Label, const FString& Desc);
+	void BuildHolePicker(UVerticalBox* Col);   // the custom 1-18 chip grid + quick buttons (hidden unless Custom)
+	void SetHolesMode(ERoundHolesMode Mode);   // segmented change -> config + custom-picker visibility
+	void RefreshHoleChips();                   // restyle chips per RoundConfig.CustomHoles
+	void SelectGameType(ERoundGameType Game);
+	void SelectTurnOrder(ETurnOrder Turn);
+	FString HolesSummaryLabel() const;
+	FString GameSummaryLabel() const;
 
 	void ShowStep(int32 Step);
 	void RefreshStepper();
@@ -79,6 +98,18 @@ private:
 	UPROPERTY(Transient) TObjectPtr<UBorder>            ResumeBanner;
 	UPROPERTY(Transient) TObjectPtr<UUniformGridPanel>  CourseGrid;
 	UPROPERTY(Transient) TArray<TObjectPtr<UCourseCard>> Cards;
+
+	// Format step
+	UPROPERTY(Transient) TObjectPtr<USegmentedControl>  HolesSeg;
+	UPROPERTY(Transient) TObjectPtr<UWidget>            CustomPicker;     // hole-chip block; shown only in Custom
+	UPROPERTY(Transient) TArray<TObjectPtr<UButton>>    HoleChips;        // 18 toggle chips (Ref = index+1)
+	UPROPERTY(Transient) TArray<TObjectPtr<UTextBlock>> HoleChipTexts;
+	UPROPERTY(Transient) TArray<TObjectPtr<UButton>>    HoleQuickButtons; // All / Front 9 / Back 9 / Clear
+	UPROPERTY(Transient) TArray<TObjectPtr<UOptionCard>> GameCards;
+	UPROPERTY(Transient) TArray<TObjectPtr<UOptionCard>> TurnCards;
+	UPROPERTY(Transient) TObjectPtr<UWidget>            GimmeBlock;       // "Concede inside" + 3/5/8 ft; shown when Gimmes on
+
+	FRoundConfig RoundConfig;        // collected Format selections; handed to OnTeeOff
 
 	int32 CurrentStep = 1;          // 1 Course / 2 Format / 3 Players
 	FString SelectedCourseId;

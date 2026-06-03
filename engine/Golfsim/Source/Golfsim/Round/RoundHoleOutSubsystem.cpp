@@ -62,7 +62,9 @@ void URoundHoleOutSubsystem::Tick(float /*DeltaTime*/)
 	const FVector PinLoc = State.Schedule[State.HoleIndex].PinWorldLoc;
 
 	const auto Profile = GolfsimKeyboardSwing::FSwingDifficultyProfile::For(State.Difficulty);
-	if (!GolfsimRound::IsWithinGimme(BallLoc, PinLoc, Profile.GimmeRadiusFt))
+	// GOL-142: the round's hole-out rule can loosen the auto-hole tolerance via a gimme concession.
+	const double RadiusFt = GolfsimRound::EffectiveGimmeRadiusFt(State.Config, Profile.GimmeRadiusFt);
+	if (!GolfsimRound::IsWithinGimme(BallLoc, PinLoc, RadiusFt))
 	{
 		return;
 	}
@@ -70,7 +72,7 @@ void URoundHoleOutSubsystem::Tick(float /*DeltaTime*/)
 	const FVector2D Delta(BallLoc.X - PinLoc.X, BallLoc.Y - PinLoc.Y);
 	UE_LOG(LogTemp, Display,
 		TEXT("RoundHoleOutSubsystem: ball settled %.1f cm from pin (gimme %.1f ft) -- holing out"),
-		Delta.Size(), Profile.GimmeRadiusFt);
+		Delta.Size(), RadiusFt);
 	Round->OnHoleHoled();
 }
 

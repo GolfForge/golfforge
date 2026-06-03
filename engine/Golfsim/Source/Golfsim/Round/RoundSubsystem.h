@@ -16,6 +16,7 @@
 #include "Events/EventBusSubsystem.h"   // FGolfEventSubscription, EEventKind
 #include "Game/GolfDifficulty.h"
 #include "Round/RoundState.h"
+#include "Round/RoundConfig.h"
 #include "RoundSubsystem.generated.h"
 
 UCLASS()
@@ -36,7 +37,7 @@ public:
 	 *  range), stashes a pending-start and OpenLevels to the course; the actual StartRound runs
 	 *  after PostLoadMapWithWorld fires on the new world. Course -> level mapping is hard-coded
 	 *  (golfforge-demo-black -> GolfForgeDemoBlack); add entries as new courses land. */
-	void StartRound(const FString& CourseId, EGolfDifficulty Difficulty);
+	void StartRound(const FString& CourseId, EGolfDifficulty Difficulty, const FRoundConfig& Config = FRoundConfig());
 
 	/** Course-id -> UE5 level name (mirror of CourseIdByLevelName in CourseSurfaceSubsystem.cpp).
 	 *  Empty if the course has no level mapping yet -- caller should error out. */
@@ -84,5 +85,6 @@ private:
 	bool bPendingStart = false;
 	FString PendingCourseId;
 	EGolfDifficulty PendingDifficulty = EGolfDifficulty::Easy;
+	FRoundConfig PendingConfig;
 	FDelegateHandle PostLoadMapHandle;
 };

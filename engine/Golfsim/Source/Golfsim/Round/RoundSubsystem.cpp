@@ -76,7 +76,7 @@ URoundSubsystem* URoundSubsystem::Get(const UObject* WorldContext)
 	return nullptr;
 }
 
-void URoundSubsystem::StartRound(const FString& CourseId, EGolfDifficulty Difficulty)
+void URoundSubsystem::StartRound(const FString& CourseId, EGolfDifficulty Difficulty, const FRoundConfig& Config)
 {
 	// If the caller is on a different level than the course's map, defer + OpenLevel. The actual
 	// StartRound logic runs again from OnPostLoadMap once the new world is up. Without this,
@@ -96,6 +96,7 @@ void URoundSubsystem::StartRound(const FString& CourseId, EGolfDifficulty Diffic
 			bPendingStart = true;
 			PendingCourseId = CourseId;
 			PendingDifficulty = Difficulty;
+			PendingConfig = Config;
 			UGameplayStatics::OpenLevel(World, FName(*TargetLevel));
 			return;
 		}
@@ -116,13 +117,24 @@ void URoundSubsystem::StartRound(const FString& CourseId, EGolfDifficulty Diffic
 		return;
 	}
 
+	// GOL-142: play only the selected hole subset (Full 18 by default). Empty subset -> nothing to
+	// play (e.g. a Custom set that matched no course holes); bail rather than start a 0-hole round.
+	Schedule = GolfsimRound::SelectHoles(Schedule, Config);
+	if (Schedule.Num() == 0)
+	{
+		UE_LOG(LogTemp, Warning,
+			TEXT("URoundSubsystem::StartRound: course=%s holes-mode=%d selected 0 holes; not starting"),
+			*CourseId, (int32)Config.HolesMode);
+		return;
+	}
+
 	const GolfsimRound::FRoundStep Step =
-		GolfsimRound::StartRound(State, CourseId, Difficulty, MoveTemp(Schedule));
+		GolfsimRound::StartRound(State, CourseId, Difficulty, MoveTemp(Schedule), Config);
 
 	ApplyDifficultyToHUDIfPresent(Difficulty);
 	UE_LOG(LogTemp, Display,
-		TEXT("URoundSubsystem::StartRound: course=%s difficulty=%d round=%s holes=%d"),
-		*CourseId, (int32)Difficulty, *State.RoundId, State.Schedule.Num());
+		TEXT("URoundSubsystem::StartRound: course=%s difficulty=%d round=%s holes=%d (mode=%d)"),
+		*CourseId, (int32)Difficulty, *State.RoundId, State.Schedule.Num(), (int32)Config.HolesMode);
 
 	ApplyStep(Step);
 }
@@ -140,10 +152,12 @@ void URoundSubsystem::OnPostLoadMap(UWorld* LoadedWorld)
 	bPendingStart = false;
 	const FString CourseId = PendingCourseId;
 	const EGolfDifficulty Difficulty = PendingDifficulty;
+	const FRoundConfig Config = PendingConfig;
 	PendingCourseId.Empty();
+	PendingConfig = FRoundConfig{};
 	UE_LOG(LogTemp, Display,
 		TEXT("URoundSubsystem::OnPostLoadMap: target map '%s' loaded; resuming StartRound"), *MapName);
-	StartRound(CourseId, Difficulty);
+	StartRound(CourseId, Difficulty, Config);
 }
 
 void URoundSubsystem::OnHoleHoled()

@@ -1172,7 +1172,7 @@ void AGolfRangeHUD::EnsureRoundSetup()
 	RoundSetup->SetCourses(GolfCourseRegistry::All());
 
 	TWeakObjectPtr<AGolfRangeHUD> WeakThis(this);
-	RoundSetup->OnTeeOff = [WeakThis](const FString& CourseId)
+	RoundSetup->OnTeeOff = [WeakThis](const FString& CourseId, const FRoundConfig& Config)
 	{
 		AGolfRangeHUD* HUD = WeakThis.Get();
 		if (!HUD) { return; }
@@ -1181,8 +1181,8 @@ void AGolfRangeHUD::EnsureRoundSetup()
 		HUD->DismissMainMenu();
 		if (URoundSubsystem* Sub = URoundSubsystem::Get(HUD))
 		{
-			// Difficulty/scoring moves to the Format step (GOL-142); default Normal this milestone.
-			Sub->StartRound(CourseId, EGolfDifficulty::Normal);
+			// Difficulty stays Normal (scoring moves to GOL-69); Config carries the live Holes subset.
+			Sub->StartRound(CourseId, EGolfDifficulty::Normal, Config);
 		}
 		else
 		{

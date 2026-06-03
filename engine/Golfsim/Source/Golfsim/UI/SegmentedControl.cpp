@@ -19,9 +19,11 @@ void USegmentedControl::NativeOnInitialized()
 	WidgetTree->RootWidget = Track;
 }
 
-void USegmentedControl::SetOptions(const TArray<FString>& Options)
+void USegmentedControl::SetOptions(const TArray<FString>& Options, const TArray<FString>& SubLabels)
 {
 	OptionLabels = Options;
+	OptionSubLabels = SubLabels;
+	OptionDisabled.Init(false, Options.Num());
 	SelectedIndex = FMath::Clamp(SelectedIndex, 0, FMath::Max(0, OptionLabels.Num() - 1));
 	Rebuild();
 }
@@ -31,26 +33,43 @@ void USegmentedControl::Rebuild()
 	using namespace GolfUI;
 	OptionButtons.Reset();
 	OptionTexts.Reset();
+	OptionSubTexts.Reset();
 	if (!Track) { return; }
 
 	UHorizontalBox* Box = WidgetTree->ConstructWidget<UHorizontalBox>();
 	Track->SetContent(Box);
 
-	for (const FString& Label : OptionLabels)
+	for (int32 i = 0; i < OptionLabels.Num(); ++i)
 	{
 		UButton* B = WidgetTree->ConstructWidget<UButton>();
 		B->OnClicked.AddDynamic(this, &USegmentedControl::HandleOptionClicked);
+
+		// Option content = main label, plus an optional small dim sub-label suffix.
+		UHorizontalBox* Row = WidgetTree->ConstructWidget<UHorizontalBox>();
 		UTextBlock* T = WidgetTree->ConstructWidget<UTextBlock>();
-		T->SetText(FText::FromString(Label));
+		T->SetText(FText::FromString(OptionLabels[i]));
 		T->SetFont(Mono(12));
 		T->SetJustification(ETextJustify::Center);
-		B->SetContent(T);
-		if (UHorizontalBoxSlot* BS = Box->AddChildToHorizontalBox(B))
+		if (UHorizontalBoxSlot* TS = Row->AddChildToHorizontalBox(T)) { TS->SetVerticalAlignment(VAlign_Center); }
+
+		UTextBlock* Sub = nullptr;
+		const FString SubLabel = OptionSubLabels.IsValidIndex(i) ? OptionSubLabels[i] : FString();
+		if (!SubLabel.IsEmpty())
 		{
-			BS->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
+			Sub = WidgetTree->ConstructWidget<UTextBlock>();
+			Sub->SetText(FText::FromString(SubLabel));
+			Sub->SetFont(Mono(9));
+			Sub->SetJustification(ETextJustify::Center);
+			if (UHorizontalBoxSlot* SS = Row->AddChildToHorizontalBox(Sub)) { SS->SetVerticalAlignment(VAlign_Center); SS->SetPadding(FMargin(6.f, 0, 0, 0)); }
 		}
+
+		B->SetContent(Row);
+		// Auto-size each option to its content (matches the design). Fill-equal width clipped long
+		// labels like "Everyone holes out" down to a short sibling's width.
+		Box->AddChildToHorizontalBox(B);
 		OptionButtons.Add(B);
 		OptionTexts.Add(T);
+		OptionSubTexts.Add(Sub);
 	}
 	RefreshVisual();
 }
@@ -62,11 +81,13 @@ void USegmentedControl::RefreshVisual()
 	{
 		UButton* B = OptionButtons[i];
 		UTextBlock* T = OptionTexts.IsValidIndex(i) ? OptionTexts[i] : nullptr;
+		UTextBlock* Sub = OptionSubTexts.IsValidIndex(i) ? OptionSubTexts[i] : nullptr;
 		if (!B) { continue; }
 		const bool bSel = (i == SelectedIndex);
+		const bool bDisabled = OptionDisabled.IsValidIndex(i) && OptionDisabled[i];
 
 		FButtonStyle S;
-		if (bSel)
+		if (bSel && !bDisabled)
 		{
 			const FLinearColor Hover = FMath::Lerp(Color::Accent(), FLinearColor::White, 0.10f);
 			S.SetNormal(RoundedBrush(Color::Accent(), 6.f));
@@ -76,15 +97,19 @@ void USegmentedControl::RefreshVisual()
 		else
 		{
 			S.SetNormal(RoundedBrush(FLinearColor(0, 0, 0, 0), 6.f));
-			S.SetHovered(RoundedBrush(Color::Surface2(), 6.f));
-			S.SetPressed(RoundedBrush(Color::Surface(), 6.f));
+			// Disabled options don't react to hover/press.
+			S.SetHovered(RoundedBrush(bDisabled ? FLinearColor(0, 0, 0, 0) : Color::Surface2(), 6.f));
+			S.SetPressed(RoundedBrush(bDisabled ? FLinearColor(0, 0, 0, 0) : Color::Surface(), 6.f));
 		}
 		S.SetDisabled(RoundedBrush(FLinearColor(0, 0, 0, 0), 6.f));
-		S.SetNormalPadding(FMargin(12.f, 6.f));
-		S.SetPressedPadding(FMargin(12.f, 6.f));
+		S.SetNormalPadding(FMargin(16.f, 7.f));
+		S.SetPressedPadding(FMargin(16.f, 7.f));
 		B->SetStyle(S);
 
-		if (T) { T->SetColorAndOpacity(FSlateColor(bSel ? Color::AccentInk() : Color::TextDim())); }
+		// Selected = ink on the accent fill; disabled = faint; otherwise dim.
+		const FLinearColor MainCol = bDisabled ? Color::TextFaint() : (bSel ? Color::AccentInk() : Color::TextDim());
+		if (T) { T->SetColorAndOpacity(FSlateColor(MainCol)); }
+		if (Sub) { Sub->SetColorAndOpacity(FSlateColor(bDisabled ? Color::TextFaint() : (bSel ? Color::AccentInk() : Color::TextFaint()))); }
 	}
 }
 
@@ -95,10 +120,18 @@ void USegmentedControl::HandleOptionClicked()
 	{
 		if (OptionButtons[i] && OptionButtons[i]->IsHovered())
 		{
+			if (OptionDisabled.IsValidIndex(i) && OptionDisabled[i]) { return; }   // ignore disabled option
 			SetSelectedIndex(i, /*bBroadcast*/ true);
 			return;
 		}
 	}
+}
+
+void USegmentedControl::SetOptionDisabled(int32 Index, bool bDisabled)
+{
+	if (!OptionDisabled.IsValidIndex(Index)) { return; }
+	OptionDisabled[Index] = bDisabled;
+	RefreshVisual();
 }
 
 void USegmentedControl::SetSelectedIndex(int32 Index, bool bBroadcast)

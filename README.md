@@ -39,7 +39,7 @@ Round setup is a three-step wizard — pick the course, set the format, add your
 
 Then you're on the course:
 
-![Mid-round on the course — glass HUD with the hole panel, conditions strip, hole map, launch-monitor readout and swing meter](docs/screenshots/coursehud.jpg)
+![Mid-round on the course under the afternoon sky — glass HUD with the hole panel, conditions strip, hole map, launch-monitor readout and swing meter](docs/screenshots/coursehud.jpg)
 
 ![Practice range — launch-monitor panel, swing meter and control bar over the tree-lined range](docs/screenshots/range.jpg)
 

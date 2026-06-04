@@ -11,7 +11,7 @@
 #include "Physics/BallFlightSolver.h"
 #include "Physics/GroundRoll.h"
 #include "GolfBallActor.h"
-#include "GolfRangeEnvironment.h"
+#include "GolfEnvironment.h"
 #include "GolfRangeHUD.h"
 #include "GolfDisplaySettings.h"
 #include "Events/EventBusSubsystem.h"
@@ -207,14 +207,15 @@ namespace
 			TEXT("golfsim.TestCourseLie: (%.1f, %.1f) m -> %s"), X, Y, *LieToProtocol(Lie));
 	}
 
-	// The range's time-of-day/weather director, if present. Range-only -- GolfForgeDemo has none.
-	AGolfRangeEnvironment* FindRangeEnv(UWorld* World)
+	// The level's time-of-day/weather director, if present. The range find-or-spawns one in PIE; the
+	// course has one placed in its umap. Returns the first found, or null on maps without a director.
+	AGolfEnvironment* FindGolfEnv(UWorld* World)
 	{
 		if (!World)
 		{
 			return nullptr;
 		}
-		for (TActorIterator<AGolfRangeEnvironment> It(World); It; ++It)
+		for (TActorIterator<AGolfEnvironment> It(World); It; ++It)
 		{
 			return *It;
 		}
@@ -225,16 +226,16 @@ namespace
 	{
 		if (Args.Num() < 1)
 		{
-			UE_LOG(LogTemp, Warning, TEXT("Usage: golfsim.SetTime <index>  (0=Dawn 1=Morning 2=Noon 3=Dusk 4=Night)"));
+			UE_LOG(LogTemp, Warning, TEXT("Usage: golfsim.SetTime <index>  (0=Dawn 1=Morning 2=Noon 3=Dusk 4=Night 5=Afternoon)"));
 			return;
 		}
-		if (AGolfRangeEnvironment* Env = FindRangeEnv(World))
+		if (AGolfEnvironment* Env = FindGolfEnv(World))
 		{
 			Env->SetTime(FCString::Atoi(*Args[0]));
 		}
 		else
 		{
-			UE_LOG(LogTemp, Warning, TEXT("golfsim.SetTime: no AGolfRangeEnvironment in this level (range only)"));
+			UE_LOG(LogTemp, Warning, TEXT("golfsim.SetTime: no AGolfEnvironment in this level"));
 		}
 	}
 
@@ -245,15 +246,36 @@ namespace
 			UE_LOG(LogTemp, Warning, TEXT("Usage: golfsim.SetSky <index>  (0=Clear 1=Cloudy 2=Overcast)"));
 			return;
 		}
-		if (AGolfRangeEnvironment* Env = FindRangeEnv(World))
+		if (AGolfEnvironment* Env = FindGolfEnv(World))
 		{
 			Env->SetSky(FCString::Atoi(*Args[0]));
 		}
 		else
 		{
-			UE_LOG(LogTemp, Warning, TEXT("golfsim.SetSky: no AGolfRangeEnvironment in this level (range only)"));
+			UE_LOG(LogTemp, Warning, TEXT("golfsim.SetSky: no AGolfEnvironment in this level"));
 		}
 	}
+
+#if WITH_EDITOR
+	// GOL-161 live tuning: drive the active director's sun directly from a 0-24 hour, bypassing the
+	// discrete presets, for fast in-PIE iteration of the course look. Editor builds only.
+	void SetTimeOfDayCmd(const TArray<FString>& Args, UWorld* World)
+	{
+		if (Args.Num() < 1)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("Usage: golfsim.SetTimeOfDay <hour 0-24>"));
+			return;
+		}
+		if (AGolfEnvironment* Env = FindGolfEnv(World))
+		{
+			Env->ApplyTimeOfDayHour(FCString::Atof(*Args[0]));
+		}
+		else
+		{
+			UE_LOG(LogTemp, Warning, TEXT("golfsim.SetTimeOfDay: no AGolfEnvironment in this level"));
+		}
+	}
+#endif
 
 	// EventBus round-trip exerciser (GOL-7): publish a shot.taken through the bus; the built-in
 	// integrator subscriber runs the solver and publishes session.shot_outcome. A temporary local
@@ -683,6 +705,13 @@ static FAutoConsoleCommandWithWorldAndArgs GSetSkyCmd(
 	TEXT("golfsim.SetSky"),
 	TEXT("Range sky/weather preset: golfsim.SetSky <index>  (0=Clear 1=Cloudy 2=Overcast)"),
 	FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&SetSkyCmd));
+
+#if WITH_EDITOR
+static FAutoConsoleCommandWithWorldAndArgs GSetTimeOfDayCmd(
+	TEXT("golfsim.SetTimeOfDay"),
+	TEXT("Live-tune the active environment director's sun by hour: golfsim.SetTimeOfDay <0-24>. Editor builds only."),
+	FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&SetTimeOfDayCmd));
+#endif
 
 static FAutoConsoleCommandWithWorldAndArgs GSetStimpCmd(
 	TEXT("golfsim.SetStimp"),

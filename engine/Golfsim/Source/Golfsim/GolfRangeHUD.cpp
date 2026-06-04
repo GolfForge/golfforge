@@ -1,7 +1,7 @@
 #include "GolfRangeHUD.h"
 
 #include "GolfBallActor.h"
-#include "GolfRangeEnvironment.h"
+#include "GolfEnvironment.h"
 #include "ManualShotDialog.h"              // manual-shot dialog (GOL-8)
 #include "Range/GolfPinActor.h"            // range target pin (GOL-29)
 #include "Session/ShotHistorySubsystem.h"  // session shot history (GOL-65)
@@ -98,15 +98,15 @@ namespace
 
 	// Find the range's environment director, or spawn one if absent. Logic-only + PIE-only, so
 	// nothing is persisted into the umap. Mirrors GetOrSpawnBallAt / GolfsimConsole's helpers.
-	AGolfRangeEnvironment* GetOrSpawnRangeEnv(UWorld* World)
+	AGolfEnvironment* GetOrSpawnRangeEnv(UWorld* World)
 	{
-		for (TActorIterator<AGolfRangeEnvironment> It(World); It; ++It)
+		for (TActorIterator<AGolfEnvironment> It(World); It; ++It)
 		{
 			return *It;
 		}
 		FActorSpawnParameters Params;
 		Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
-		return World->SpawnActor<AGolfRangeEnvironment>(AGolfRangeEnvironment::StaticClass(),
+		return World->SpawnActor<AGolfEnvironment>(AGolfEnvironment::StaticClass(),
 			FVector::ZeroVector, FRotator::ZeroRotator, Params);
 	}
 }
@@ -332,17 +332,17 @@ void AGolfRangeHUD::EnsureInputBound()
 			// the club bag); weak capture so a dropdown can never call into a destroyed actor.
 			if (UWorld* World = GetWorld())
 			{
-				if (AGolfRangeEnvironment* Env = GetOrSpawnRangeEnv(World))
+				if (AGolfEnvironment* Env = GetOrSpawnRangeEnv(World))
 				{
-					TWeakObjectPtr<AGolfRangeEnvironment> WeakEnv(Env);
+					TWeakObjectPtr<AGolfEnvironment> WeakEnv(Env);
 					Panel->OnTimeChosen = [WeakEnv, WeakThis](int32 Idx)
 					{
-						if (AGolfRangeEnvironment* E = WeakEnv.Get()) { E->SetTime(Idx); }
+						if (AGolfEnvironment* E = WeakEnv.Get()) { E->SetTime(Idx); }
 						if (AGolfRangeHUD* HUD = WeakThis.Get()) { HUD->ReturnFocusToGame(); }
 					};
 					Panel->OnSkyChosen = [WeakEnv, WeakThis](int32 Idx)
 					{
-						if (AGolfRangeEnvironment* E = WeakEnv.Get()) { E->SetSky(Idx); }
+						if (AGolfEnvironment* E = WeakEnv.Get()) { E->SetSky(Idx); }
 						if (AGolfRangeHUD* HUD = WeakThis.Get()) { HUD->ReturnFocusToGame(); }
 					};
 					Panel->SetTimeOptions(Env->GetTimePresetNames());
@@ -979,9 +979,9 @@ void AGolfRangeHUD::UpdateInRoundHud()
 	// -- spawning on the course map would re-light it). Wind + temp stay seams ("--") for GOL-154.
 	if (UWorld* World = GetWorld())
 	{
-		for (TActorIterator<AGolfRangeEnvironment> It(World); It; ++It)
+		for (TActorIterator<AGolfEnvironment> It(World); It; ++It)
 		{
-			const AGolfRangeEnvironment* Env = *It;
+			const AGolfEnvironment* Env = *It;
 			const TArray<FString> SkyNames = Env->GetSkyPresetNames();
 			const TArray<FString> TimeNames = Env->GetTimePresetNames();
 			if (SkyNames.IsValidIndex(Env->GetSkyIndex()))   { D.SkyName = SkyNames[Env->GetSkyIndex()]; }

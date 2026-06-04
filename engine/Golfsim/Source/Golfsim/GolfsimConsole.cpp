@@ -226,7 +226,7 @@ namespace
 	{
 		if (Args.Num() < 1)
 		{
-			UE_LOG(LogTemp, Warning, TEXT("Usage: golfsim.SetTime <index>  (0=Dawn 1=Morning 2=Noon 3=Dusk 4=Night 5=Afternoon)"));
+			UE_LOG(LogTemp, Warning, TEXT("Usage: golfsim.SetTime <index>  (0=Dawn 1=Morning 2=Noon 3=Dusk 4=Afternoon)"));
 			return;
 		}
 		if (AGolfEnvironment* Env = FindGolfEnv(World))
@@ -698,7 +698,7 @@ static FAutoConsoleCommandWithWorldAndArgs GTestCourseLieCmd(
 
 static FAutoConsoleCommandWithWorldAndArgs GSetTimeCmd(
 	TEXT("golfsim.SetTime"),
-	TEXT("Range time-of-day preset: golfsim.SetTime <index>  (0=Dawn 1=Morning 2=Noon 3=Dusk 4=Night)"),
+	TEXT("Time-of-day preset: golfsim.SetTime <index>  (0=Dawn 1=Morning 2=Noon 3=Dusk 4=Afternoon)"),
 	FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&SetTimeCmd));
 
 static FAutoConsoleCommandWithWorldAndArgs GSetSkyCmd(

@@ -40,10 +40,13 @@ AGolfEnvironment::AGolfEnvironment()
 	TimePresets.Add(MakeTime(TEXT("Morning"), -9.f,  35.f, 5000.f, 6.0f, 0.030f, 1.0f));
 	TimePresets.Add(MakeTime(TEXT("Noon"),   -55.f,  10.f, 6500.f, 9.0f, 0.020f, 1.0f));
 	TimePresets.Add(MakeTime(TEXT("Dusk"),    -3.f, -60.f, 2600.f, 3.0f, 0.045f, 0.7f));
-	TimePresets.Add(MakeTime(TEXT("Night"),  -10.f, 200.f, 9000.f, 0.5f, 0.050f, 0.3f));
+	// Night is deferred to GOL-169 (proper low-light mode: range/course artificial lights + a night
+	// grade). A plain dark-sky + raised-ambient either reads unplayably black or washes out to day, so
+	// it's out of the dropdown until then. Seeds preserved for restoration:
+	//   TimePresets.Add(MakeTime(TEXT("Night"), -10.f, 200.f, 9000.f, 0.5f, 0.050f, 0.3f));
 	// GOL-161 canonical "tournament Saturday afternoon": sun ~35deg above the horizon, warm-neutral
-	// 5000K, full open-air brightness, thin fog. This is the course's placed-director default (set
-	// CurrentTimeIdx=5 + bApplyPostProcess on the placed instance); also a usable range time-of-day.
+	// 5000K, full open-air brightness, thin fog. Course placed-director default (CurrentTimeIdx=4 = this
+	// entry, since Night is commented out + bApplyPostProcess on the placed instance); also a range time.
 	TimePresets.Add(MakeTime(TEXT("Afternoon"), -35.f, 50.f, 5000.f, 8.0f, 0.018f, 1.1f));
 	//                      Name            Cover  Dens   SunScale FogAdd  SkyScale
 	SkyPresets.Add(MakeSky(TEXT("Clear"),    0.05f, 0.3f, 1.00f, 0.000f, 1.00f));

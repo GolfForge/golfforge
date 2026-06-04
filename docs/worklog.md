@@ -2,6 +2,17 @@
 
 > Dated milestone summaries, newest on top. The durable outcome + the committed artifact, not the blow-by-blow — process detail lives in git history, `docs/ue5-cookbook.md`, and the scripts themselves.
 
+## 2026-06-04 — GOL-161 course atmosphere pass + AGolfEnvironment generalization (Windows)
+
+First child of the **GOL-160 alpha-3 vibe-pass epic**. Landed the canonical "tournament Saturday afternoon" lighting on `GolfForgeDemoBlack.umap` and generalized the range's runtime sky director into a shared, course-agnostic system.
+
+- **`AGolfRangeEnvironment` -> shared `AGolfEnvironment`** (`engine/Golfsim/Source/Golfsim/GolfEnvironment.{h,cpp}`). Atmosphere is a dynamic, course-agnostic domain (GOL-154 live weather rides this), so one director now drives every map: range PIE-spawns it (interactive Time x Sky), the course places one in the umap at a fixed preset. No CoreRedirect needed (PIE-spawned, never serialized). Consumers updated: `GolfsimConsole.cpp`, `GolfRangeHUD.cpp`.
+- **New on the director:** `FGolfPostProcessPreset` + find-or-spawn unbound `APostProcessVolume` (course-only via `bApplyPostProcess`); an `Afternoon` time preset; an editor `CallInEditor ApplyToLevel()` that stamps the preset into the placed sky actors (bake-ready for GOL-101, skips the transient cloud MID); `golfsim.SetTimeOfDay <0-24>` console command for live tuning.
+- **Placed in the course umap** (`GolfForgeDemoBlack.umap`): `AGolfEnvironment` director (Afternoon x FewClouds, post-process on) + an added `VolumetricCloud` + an unbound `PostProcessVolume`; DirectionalLight + SkyLight flipped to **Movable** (Lumen, alpha-3). Looks great + holds the perf gate with **DLSS** (the cloud cost is the expensive bit). Final preset values in `docs/ue5-cookbook.md`.
+- **Cloud-scale discovery:** `m_SimpleVolumetricCloud_Inst`'s `Cloud_GlobalCoverage` is a *bias* (default -0.2) where **higher = thinner**; the engine default already reads as a nice moderate sky. The range's old R4 cloud values are inverted/over-dense on this scale — noted as a follow-up, range left as-is.
+- **Night deferred -> GOL-169.** Commented out of `TimePresets` (seeds preserved) because a brightness-only night reads as day; it needs real low-light treatment (range/course lights + a night grade). Dropdown is now Dawn/Morning/Noon/Dusk/Afternoon.
+- **Files:** `GolfEnvironment.{h,cpp}` (rename + new features), `GolfsimConsole.cpp` (SetTimeOfDay + help), `GolfRangeHUD.cpp` (type rename), `GolfForgeDemoBlack.umap` (placed atmosphere), `docs/ue5-cookbook.md` (recipe), `docs/worklog.md`, `CLAUDE.md`. C++ committed in two passes (`6937a2f` generalization + Night-deferral follow-up). **Remaining on GOL-161:** README screenshots (user-driven).
+
 ## 2026-06-04 — GOL-157 v0.0.4-alpha macOS arm64 SHIPPED — first Mac build with course play (Mac)
 
 - **Release complete cross-platform.** `GolfForge-macos-arm64.zip` (cooked + dylib-fixed + course-staged + renamed + xattr-cleared) uploaded to the existing `v0.0.4-alpha` GitHub Release alongside `GolfForge-windows-x64-v0.0.4-alpha.zip`. First Mac binary that includes the full UI overhaul (themed menu, round-setup wizard, glass HUD, Lucide icons, scorecard) **and** the playable demo course. Cook time 2m 13s warm-cache on M4 base, exit 0.

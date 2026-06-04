@@ -13,13 +13,17 @@ In-game captures for the main README + future store pages (itch, Steam, Epic). C
 Captured at 4K (3840x2160) from the packaged build. Flat-UI screens stay PNG (sharp text, compress
 tiny); photographic course/range scenes are JPEG q85 (~10x smaller than PNG at this resolution).
 
-| File | What it shows | Referenced from |
-|---|---|---|
-| `mainmenu.png` | Themed main-menu bento — Play Course / Range / Practice / Settings, brand mark, live clock + conditions cluster, Lucide icons throughout. | README "Try it" |
-| `roundsetup.png` | Round-setup wizard step 1 — the course grid (links / parkland / desert / heathland / resort) with the selected card + stepper. | README "Try it" |
-| `coursehud.jpg` | Mid-round on the course — glass HUD (hole panel + conditions strip), hole map, launch-monitor readout, swing meter, shot tracer. | README "Try it" |
-| `format.png` | Round-setup step 2 — Format: game-type + turn-order option cards with their Lucide icons, holes + hole-out segmented controls. | _unused — store pages / release notes_ |
-| `range.jpg` | Practice range — launch-monitor panel, swing meter, control bar over the tree-lined range. | _unused — store pages / release notes_ |
+All seven are referenced from the README "Try it" section, in tour order (menu → setup steps → course → range → settings).
+
+| File | What it shows |
+|---|---|
+| `mainmenu.png` | Themed main-menu bento — Play Course / Range / Practice / Settings, brand mark, live clock + conditions cluster, Lucide icons throughout. |
+| `roundsetup.png` | Round-setup step 1 — the course grid (links / parkland / desert / heathland / resort) with the selected card + stepper. |
+| `format.png` | Round-setup step 2 — Format: game-type + turn-order option cards with their Lucide icons, holes + hole-out segmented controls. |
+| `players.png` | Round-setup step 3 — players row (name / tee box / handicap stepper) + the live round-summary card. |
+| `coursehud.jpg` | Mid-round on the course — glass HUD (hole panel + conditions strip), hole map, launch-monitor readout, swing meter, shot tracer. |
+| `range.jpg` | Practice range — launch-monitor panel, swing meter, control bar over the tree-lined range. |
+| `options.jpg` | In-game settings overlay — resolution, window mode, quality, upscaler (TSR / DLSS / XeSS), render scale. |
 
 ## File size note
 

@@ -29,9 +29,21 @@ Pre-built packages are attached to the latest [GitHub Release](https://github.co
 
 ![Main menu — Play Course / Range / Practice / Settings bento, with a live clock + conditions cluster](docs/screenshots/mainmenu.png)
 
-![Round setup — pick your course, then set the format and players](docs/screenshots/roundsetup.png)
+Round setup is a three-step wizard — pick the course, set the format, add your players:
+
+![Round setup, step 1 — pick your course (links / parkland / desert / heathland / resort)](docs/screenshots/roundsetup.png)
+
+![Round setup, step 2 — set the format: game type, holes, turn order and hole-out rule](docs/screenshots/format.png)
+
+![Round setup, step 3 — add up to four players with names, tee boxes and handicaps, with a live round summary](docs/screenshots/players.png)
+
+Then you're on the course:
 
 ![Mid-round on the course — glass HUD with the hole panel, conditions strip, hole map, launch-monitor readout and swing meter](docs/screenshots/coursehud.jpg)
+
+![Practice range — launch-monitor panel, swing meter and control bar over the tree-lined range](docs/screenshots/range.jpg)
+
+![In-game settings — resolution, window mode, quality preset, upscaler (TSR / DLSS / XeSS) and render scale](docs/screenshots/options.jpg)
 
 ### Windows
 

@@ -74,14 +74,9 @@ void UCourseCard::BuildTree()
 	CheckBadge = WidgetTree->ConstructWidget<UBorder>();
 	CheckBadge->SetBrush(RoundedBrush(Color::Accent(), 999.f));
 	CheckBadge->SetVisibility(ESlateVisibility::Collapsed);
-	{
-		UTextBlock* Check = WidgetTree->ConstructWidget<UTextBlock>();
-		Check->SetText(FText::FromString(TEXT("✓")));   // checkmark; GOL-151 icon font is the real fix
-		Check->SetFont(Mono(13));
-		Check->SetColorAndOpacity(FSlateColor(Color::AccentInk()));
-		Check->SetJustification(ETextJustify::Center);
-		CheckBadge->SetContent(Check);
-	}
+	CheckBadge->SetHorizontalAlignment(HAlign_Center);
+	CheckBadge->SetVerticalAlignment(VAlign_Center);
+	CheckBadge->SetContent(MakeIcon(WidgetTree, EIcon::Check, 13, Color::AccentInk()));   // GOL-151 Lucide check
 	CheckBox->SetContent(CheckBadge);
 	if (UOverlaySlot* CS = Cast<UOverlaySlot>(ImgOverlay->AddChildToOverlay(CheckBox)))
 	{

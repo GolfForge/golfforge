@@ -4,13 +4,14 @@
 // border, selected = accent ring + check, disabled = dim + non-interactive) -- and it lives in the
 // flow scrollbox, where rounded-box brushes repaint fine (unlike the topbar; see GOL-153).
 //
-// The icon is a placeholder accent/surface square for now (no glyph); the real Lucide icon lands with
-// GOL-151. Dumb view: reports selection via OnSelected.
+// The icon square holds a per-option Lucide glyph (GOL-151), accent-tinted when selected. Dumb view:
+// reports selection via OnSelected.
 
 #pragma once
 
 #include "CoreMinimal.h"
 #include "Blueprint/UserWidget.h"
+#include "UI/GolfUITheme.h"   // GolfUI::EIcon
 #include "OptionCard.generated.h"
 
 class UBorder;
@@ -23,7 +24,7 @@ class GOLFSIM_API UOptionCard : public UUserWidget
 	GENERATED_BODY()
 
 public:
-	void Configure(const FString& Title, const FString& Desc);
+	void Configure(const FString& Title, const FString& Desc, GolfUI::EIcon Icon);
 	void SetSelected(bool bSelected);
 	void SetDisabled(bool bDisabled);
 	bool IsDisabled() const { return bIsDisabled; }
@@ -40,11 +41,14 @@ private:
 	void BuildTree();
 	void RefreshVisualState();
 
-	UPROPERTY(Transient) TObjectPtr<UBorder>    BgBorder;     // card fill + border (recolored on state)
-	UPROPERTY(Transient) TObjectPtr<UBorder>    IconSquare;   // placeholder icon (accent when selected)
-	UPROPERTY(Transient) TObjectPtr<UBorder>    CheckBadge;   // accent check, shown when selected
+	UPROPERTY(Transient) TObjectPtr<UBorder>    BgBorder;       // card fill + border (recolored on state)
+	UPROPERTY(Transient) TObjectPtr<UBorder>    IconSquare;     // icon chip (accent fill when selected)
+	UPROPERTY(Transient) TObjectPtr<UTextBlock> IconGlyphText;  // the Lucide glyph inside the chip
+	UPROPERTY(Transient) TObjectPtr<UBorder>    CheckBadge;     // accent check, shown when selected
 	UPROPERTY(Transient) TObjectPtr<UTextBlock> TitleText;
 	UPROPERTY(Transient) TObjectPtr<UTextBlock> DescText;
+
+	GolfUI::EIcon IconGlyph = GolfUI::EIcon::ListOrdered;   // set by Configure
 
 	bool bIsDisabled = false;
 	bool bIsSelected = false;

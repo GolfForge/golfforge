@@ -283,17 +283,17 @@ UWidget* URoundSetupWizard::BuildCourseStep()
 
 namespace
 {
-	struct FGameDef { ERoundGameType Game; const TCHAR* Name; const TCHAR* Desc; };
+	struct FGameDef { ERoundGameType Game; const TCHAR* Name; const TCHAR* Desc; GolfUI::EIcon Icon; };
 	const FGameDef GameDefs[] = {
-		{ ERoundGameType::Stroke,     TEXT("Stroke Play"), TEXT("Total strokes count — lowest score wins.") },
-		{ ERoundGameType::Stableford, TEXT("Stableford"),  TEXT("Points earned per hole vs par. Highest wins.") },
-		{ ERoundGameType::Match,      TEXT("Match Play"),  TEXT("Win holes head-to-head. Most holes won.") },
-		{ ERoundGameType::Skins,      TEXT("Skins"),       TEXT("Each hole is worth a skin. Win it outright.") },
+		{ ERoundGameType::Stroke,     TEXT("Stroke Play"), TEXT("Total strokes count — lowest score wins."),     GolfUI::EIcon::ListOrdered },
+		{ ERoundGameType::Stableford, TEXT("Stableford"),  TEXT("Points earned per hole vs par. Highest wins."), GolfUI::EIcon::Star },
+		{ ERoundGameType::Match,      TEXT("Match Play"),  TEXT("Win holes head-to-head. Most holes won."),      GolfUI::EIcon::Swords },
+		{ ERoundGameType::Skins,      TEXT("Skins"),       TEXT("Each hole is worth a skin. Win it outright."),  GolfUI::EIcon::Coins },
 	};
-	struct FTurnDef { ETurnOrder Turn; const TCHAR* Name; const TCHAR* Desc; };
+	struct FTurnDef { ETurnOrder Turn; const TCHAR* Name; const TCHAR* Desc; GolfUI::EIcon Icon; };
 	const FTurnDef TurnDefs[] = {
-		{ ETurnOrder::PlayItOut, TEXT("Play it out"),     TEXT("Each player finishes the entire hole before the next tees off.") },
-		{ ETurnOrder::Rotate,    TEXT("Stroke by stroke"), TEXT("The group rotates every shot — the player away from the hole plays next.") },
+		{ ETurnOrder::PlayItOut, TEXT("Play it out"),     TEXT("Each player finishes the entire hole before the next tees off."),      GolfUI::EIcon::Flag },
+		{ ETurnOrder::Rotate,    TEXT("Stroke by stroke"), TEXT("The group rotates every shot — the player away from the hole plays next."), GolfUI::EIcon::RotateCw },
 	};
 }
 
@@ -335,7 +335,7 @@ UWidget* URoundSetupWizard::BuildFormatStep()
 	{
 		const FGameDef& G = GameDefs[i];
 		UOptionCard* Card = CreateWidget<UOptionCard>(this);
-		Card->Configure(G.Name, G.Desc);
+		Card->Configure(G.Name, G.Desc, G.Icon);
 		const bool bEnabled = (G.Game == ERoundGameType::Stroke);   // only Stroke live this milestone
 		Card->SetDisabled(!bEnabled);
 		Card->SetSelected(G.Game == RoundConfig.GameType);
@@ -358,7 +358,7 @@ UWidget* URoundSetupWizard::BuildFormatStep()
 	{
 		const FTurnDef& Tn = TurnDefs[i];
 		UOptionCard* Card = CreateWidget<UOptionCard>(this);
-		Card->Configure(Tn.Name, Tn.Desc);
+		Card->Configure(Tn.Name, Tn.Desc, Tn.Icon);
 		const bool bEnabled = (Tn.Turn == ETurnOrder::PlayItOut);   // only Play-it-out live
 		Card->SetDisabled(!bEnabled);
 		Card->SetSelected(Tn.Turn == RoundConfig.TurnOrder);
@@ -748,7 +748,7 @@ UWidget* URoundSetupWizard::BuildPlayersStep()
 	UVerticalBox* HcpCol = WidgetTree->ConstructWidget<UVerticalBox>();
 	HcpCol->AddChildToVerticalBox(MakeEyebrow(WidgetTree, TEXT("Handicap")));
 	UHorizontalBox* HcpRow = WidgetTree->ConstructWidget<UHorizontalBox>();
-	auto MakeStepBtn = [&](const TCHAR* Glyph, bool bMinus)
+	auto MakeStepBtn = [&](bool bMinus)
 	{
 		USizeBox* BBox = WidgetTree->ConstructWidget<USizeBox>();
 		BBox->SetWidthOverride(30.f); BBox->SetHeightOverride(30.f);
@@ -766,23 +766,18 @@ UWidget* URoundSetupWizard::BuildPlayersStep()
 		}
 		if (bMinus) { B->OnClicked.AddDynamic(this, &URoundSetupWizard::HandleHandicapMinus); }
 		else        { B->OnClicked.AddDynamic(this, &URoundSetupWizard::HandleHandicapPlus); }
-		UTextBlock* T = WidgetTree->ConstructWidget<UTextBlock>();
-		T->SetText(FText::FromString(Glyph));
-		T->SetFont(Mono(15));
-		T->SetColorAndOpacity(FSlateColor(Color::TextDim()));
-		T->SetJustification(ETextJustify::Center);
-		B->SetContent(T);
+		B->SetContent(MakeIcon(WidgetTree, bMinus ? EIcon::Minus : EIcon::Plus, 15, Color::TextDim()));   // GOL-151 Lucide minus/plus
 		BBox->SetContent(B);
 		return BBox;
 	};
-	if (UHorizontalBoxSlot* MS = HcpRow->AddChildToHorizontalBox(MakeStepBtn(TEXT("−"), true))) { MS->SetVerticalAlignment(VAlign_Center); }
+	if (UHorizontalBoxSlot* MS = HcpRow->AddChildToHorizontalBox(MakeStepBtn(true))) { MS->SetVerticalAlignment(VAlign_Center); }
 	HandicapText = WidgetTree->ConstructWidget<UTextBlock>();
 	HandicapText->SetText(FText::FromString(TEXT("0")));
 	HandicapText->SetFont(Mono(16));
 	HandicapText->SetColorAndOpacity(FSlateColor(Color::Text()));
 	HandicapText->SetJustification(ETextJustify::Center);
 	if (UHorizontalBoxSlot* HVS = HcpRow->AddChildToHorizontalBox(HandicapText)) { HVS->SetVerticalAlignment(VAlign_Center); HVS->SetPadding(FMargin(10.f, 0)); }
-	if (UHorizontalBoxSlot* PS = HcpRow->AddChildToHorizontalBox(MakeStepBtn(TEXT("+"), false))) { PS->SetVerticalAlignment(VAlign_Center); }
+	if (UHorizontalBoxSlot* PS = HcpRow->AddChildToHorizontalBox(MakeStepBtn(false))) { PS->SetVerticalAlignment(VAlign_Center); }
 	if (UVerticalBoxSlot* HRS = HcpCol->AddChildToVerticalBox(HcpRow)) { HRS->SetPadding(FMargin(0, 5.f, 0, 0)); }
 	if (UHorizontalBoxSlot* HCS = RowBox->AddChildToHorizontalBox(HcpCol)) { HCS->SetVerticalAlignment(VAlign_Center); HCS->SetPadding(FMargin(20.f, 0, 0, 0)); }
 

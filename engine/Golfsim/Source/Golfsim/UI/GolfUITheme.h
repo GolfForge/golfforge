@@ -77,6 +77,38 @@ namespace GolfUI
 	GOLFSIM_API FSlateFontInfo Display(int32 Size, FName Weight = FName(TEXT("SemiBold"))); // Barlow Condensed
 	GOLFSIM_API FSlateFontInfo Body(int32 Size, FName Weight = FName(TEXT("Regular")));     // Barlow
 	GOLFSIM_API FSlateFontInfo Mono(int32 Size, FName Weight = FName(TEXT("Regular")));     // JetBrains Mono
+	GOLFSIM_API FSlateFontInfo Icon(int32 Size);                                            // Lucide line icons (GOL-151)
+
+	// ------------------------------------------------------------------ icon glyphs (GOL-151)
+	// Lucide (ISC + Feather MIT) line icons, rendered as font glyphs since UMG has no SVG renderer.
+	// Values ARE the Private-Use-Area codepoints from lucide-static@0.544.0 (font/info.json) — the
+	// committed source of truth for the subset we use. All BMP, so a single TCHAR per glyph.
+	enum class EIcon : int32
+	{
+		ArrowRight        = 0xE049,
+		CornerDownLeft    = 0xE0A1,  // Enter / Return (↵)
+		Power             = 0xE140,
+		FlagTriangleRight = 0xE238,  // golf flag (brand mark)
+		Clock             = 0xE087,
+		Cloud             = 0xE088,
+		LogOut            = 0xE10E,
+		Check             = 0xE06C,
+		Wind              = 0xE1B0,
+		Thermometer       = 0xE186,
+		Minus             = 0xE11C,
+		Plus              = 0xE13D,
+		Target            = 0xE180,  // reserved (HUD / launch-monitor, forward use)
+		Monitor           = 0xE11D,  // reserved
+		Gamepad           = 0xE0DF,  // reserved (gamepad-2)
+
+		// round-setup format options (GOL-151)
+		ListOrdered       = 0xE1D1,  // Stroke Play
+		Star              = 0xE176,  // Stableford
+		Swords            = 0xE2B4,  // Match Play
+		Coins             = 0xE097,  // Skins
+		Flag              = 0xE0D1,  // Play it out
+		RotateCw          = 0xE149,  // Stroke by stroke
+	};
 
 	// ------------------------------------------------------------------ brushes
 	// Rounded fill, optional outline. Radius is one of GolfUI::Radius::*.
@@ -93,7 +125,10 @@ namespace GolfUI
 		const FLinearColor& Col = Color::Text());                                                      // tabular telemetry number
 	GOLFSIM_API UBorder*    MakeGlassPanel(UWidgetTree* Tree);                                         // glass border, fill content via SetContent
 	GOLFSIM_API UBorder*    MakeCard(UWidgetTree* Tree);                                               // solid card
+	GOLFSIM_API UTextBlock* MakeIcon(UWidgetTree* Tree, EIcon Glyph, int32 Size,
+		const FLinearColor& Col = Color::Text());                                                      // Lucide icon glyph (GOL-151)
 	GOLFSIM_API UBorder*    MakeKbd(UWidgetTree* Tree, const FString& Key);                            // keycap chip
+	GOLFSIM_API UBorder*    MakeKbd(UWidgetTree* Tree, EIcon Glyph, int32 Size = 11);                  // keycap chip with an icon glyph
 	GOLFSIM_API UBorder*    MakeStatusDot(UWidgetTree* Tree, const FLinearColor& Col = Color::Accent());// small round status dot
 	GOLFSIM_API UButton*    MakeAccentButton(UWidgetTree* Tree, const FString& Label);                 // filled fairway, ink text
 	GOLFSIM_API UButton*    MakeGhostButton(UWidgetTree* Tree, const FString& Label);                  // outline, accent border on hover

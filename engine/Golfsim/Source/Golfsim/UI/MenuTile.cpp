@@ -119,10 +119,7 @@ void UMenuTile::BuildTree()
 	{ FSlateFontInfo F = Display(14, FName(TEXT("SemiBold"))); F.LetterSpacing = 80; CtaText->SetFont(F); }
 	CtaText->SetColorAndOpacity(FSlateColor(Color::Accent()));
 	Cta->AddChildToHorizontalBox(CtaText);
-	CtaArrow = WidgetTree->ConstructWidget<UTextBlock>();
-	CtaArrow->SetText(FText::FromString(TEXT("→")));
-	CtaArrow->SetFont(Mono(14));   // stopgap: Barlow Condensed has no U+2192; JetBrains Mono does (GOL-151 icon font is the real fix)
-	CtaArrow->SetColorAndOpacity(FSlateColor(Color::Accent()));
+	CtaArrow = MakeIcon(WidgetTree, EIcon::ArrowRight, 14, Color::Accent());   // GOL-151 Lucide arrow-right
 	if (UHorizontalBoxSlot* AS = Cta->AddChildToHorizontalBox(CtaArrow)) { AS->SetPadding(FMargin(8.f, 0, 0, 0)); AS->SetVerticalAlignment(VAlign_Center); }
 }
 

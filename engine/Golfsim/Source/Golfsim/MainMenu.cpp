@@ -114,6 +114,9 @@ void UMainMenu::BuildTree()
 		Mark->SetWidthOverride(42.f); Mark->SetHeightOverride(42.f);
 		UBorder* MarkBg = WidgetTree->ConstructWidget<UBorder>();
 		MarkBg->SetBrush(RoundedBrush(Color::Accent(), 11.f));
+		MarkBg->SetHorizontalAlignment(HAlign_Center);
+		MarkBg->SetVerticalAlignment(VAlign_Center);
+		MarkBg->SetContent(MakeIcon(WidgetTree, EIcon::FlagTriangleRight, 22, Color::AccentInk()));   // GOL-151 brand mark
 		Mark->SetContent(MarkBg);
 		if (UHorizontalBoxSlot* MS = Brand->AddChildToHorizontalBox(Mark)) { MS->SetPadding(FMargin(0, 0, 14.f, 0)); MS->SetVerticalAlignment(VAlign_Center); }
 
@@ -139,21 +142,25 @@ void UMainMenu::BuildTree()
 	UHorizontalBox* Env = WidgetTree->ConstructWidget<UHorizontalBox>();
 	if (UHorizontalBoxSlot* ES = TopBar->AddChildToHorizontalBox(Env)) { ES->SetHorizontalAlignment(HAlign_Right); ES->SetVerticalAlignment(VAlign_Center); }
 
-	auto AddEnvCard = [&](const FString& Label, const FString& Value) -> UTextBlock*
+	auto AddEnvCard = [&](EIcon Glyph, const FString& Label, const FString& Value) -> UTextBlock*
 	{
 		UBorder* Card = WidgetTree->ConstructWidget<UBorder>();
 		Card->SetBrush(RoundedBrush(Color::Surface(), Radius::Md, Color::Border(), 1.f));
 		Card->SetPadding(FMargin(14.f, 9.f));
+		UHorizontalBox* Row = WidgetTree->ConstructWidget<UHorizontalBox>();
+		Card->SetContent(Row);
+		if (UHorizontalBoxSlot* IS = Row->AddChildToHorizontalBox(MakeIcon(WidgetTree, Glyph, 16, Color::TextDim())))
+		{ IS->SetVerticalAlignment(VAlign_Center); IS->SetPadding(FMargin(0, 0, 9.f, 0)); }
 		UVerticalBox* V = WidgetTree->ConstructWidget<UVerticalBox>();
-		Card->SetContent(V);
+		Row->AddChildToHorizontalBox(V);
 		V->AddChildToVerticalBox(MakeEyebrow(WidgetTree, Label));
 		UTextBlock* Val = MakeMonoNumber(WidgetTree, Value, 14, Color::Text());
 		V->AddChildToVerticalBox(Val);
 		if (UHorizontalBoxSlot* CS = Env->AddChildToHorizontalBox(Card)) { CS->SetPadding(FMargin(0, 0, 14.f, 0)); CS->SetVerticalAlignment(VAlign_Center); }
 		return Val;
 	};
-	ClockText = AddEnvCard(TEXT("Local"), TEXT("--:--"));
-	AddEnvCard(TEXT("Monterey"), TEXT("62°F · 6mph"));   // TODO(GOL-144): real weather (temp/wind not modeled yet)
+	ClockText = AddEnvCard(EIcon::Clock, TEXT("Local"), TEXT("--:--"));
+	AddEnvCard(EIcon::Cloud, TEXT("Monterey"), TEXT("62°F · 6mph"));   // TODO(GOL-144): real weather (temp/wind not modeled yet)
 
 	// player chip
 	{
@@ -243,6 +250,7 @@ void UMainMenu::BuildTree()
 	UHorizontalBox* Legend = WidgetTree->ConstructWidget<UHorizontalBox>();
 	if (UHorizontalBoxSlot* LS = Footer->AddChildToHorizontalBox(Legend)) { LS->SetSize(FSlateChildSize(ESlateSizeRule::Fill)); LS->SetVerticalAlignment(VAlign_Center); }
 	auto AddKbd = [&](const FString& Key) { if (UHorizontalBoxSlot* KS = Legend->AddChildToHorizontalBox(MakeKbd(WidgetTree, Key))) { KS->SetPadding(FMargin(0, 0, 4.f, 0)); KS->SetVerticalAlignment(VAlign_Center); } };
+	auto AddKbdIcon = [&](EIcon Glyph) { if (UHorizontalBoxSlot* KS = Legend->AddChildToHorizontalBox(MakeKbd(WidgetTree, Glyph))) { KS->SetPadding(FMargin(0, 0, 4.f, 0)); KS->SetVerticalAlignment(VAlign_Center); } };
 	auto AddLabel = [&](const FString& Txt)
 	{
 		UTextBlock* T = WidgetTree->ConstructWidget<UTextBlock>();
@@ -252,7 +260,7 @@ void UMainMenu::BuildTree()
 		if (UHorizontalBoxSlot* TS = Legend->AddChildToHorizontalBox(T)) { TS->SetPadding(FMargin(2.f, 0, 18.f, 0)); TS->SetVerticalAlignment(VAlign_Center); }
 	};
 	AddKbd(TEXT("1")); AddKbd(TEXT("2")); AddKbd(TEXT("3")); AddKbd(TEXT("4")); AddLabel(TEXT("Select"));
-	AddKbd(TEXT("Enter")); AddLabel(TEXT("Confirm"));   // stopgap: U+21B5 not in JetBrains Mono (GOL-151)
+	AddKbdIcon(EIcon::CornerDownLeft); AddLabel(TEXT("Confirm"));   // GOL-151 Lucide ↵ (corner-down-left)
 	AddKbd(TEXT("Esc")); AddLabel(TEXT("Quit"));
 
 	// Previous Sessions footer link (reuses the existing callback; greyed when count == 0).
@@ -286,11 +294,15 @@ void UMainMenu::BuildTree()
 	}
 	Exit->OnClicked.AddDynamic(this, &UMainMenu::HandleExitClicked);
 	{
+		UHorizontalBox* Row = WidgetTree->ConstructWidget<UHorizontalBox>();
+		if (UHorizontalBoxSlot* PIS = Row->AddChildToHorizontalBox(MakeIcon(WidgetTree, EIcon::Power, 14, Color::TextDim())))
+		{ PIS->SetVerticalAlignment(VAlign_Center); PIS->SetPadding(FMargin(0, 0, 7.f, 0)); }   // GOL-151 power icon
 		UTextBlock* T = WidgetTree->ConstructWidget<UTextBlock>();
 		T->SetText(FText::FromString(TEXT("EXIT")));
 		{ FSlateFontInfo F = Display(15, FName(TEXT("SemiBold"))); F.LetterSpacing = 80; T->SetFont(F); }
 		T->SetColorAndOpacity(FSlateColor(Color::TextDim()));
-		Exit->SetContent(T);
+		if (UHorizontalBoxSlot* TS = Row->AddChildToHorizontalBox(T)) { TS->SetVerticalAlignment(VAlign_Center); }
+		Exit->SetContent(Row);
 	}
 	if (UHorizontalBoxSlot* XS = Footer->AddChildToHorizontalBox(Exit)) { XS->SetHorizontalAlignment(HAlign_Right); XS->SetVerticalAlignment(VAlign_Center); }
 }

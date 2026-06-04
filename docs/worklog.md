@@ -2,6 +2,29 @@
 
 > Dated milestone summaries, newest on top. The durable outcome + the committed artifact, not the blow-by-blow — process detail lives in git history, `docs/ue5-cookbook.md`, and the scripts themselves.
 
+## 2026-06-03 — GOL-151 — Menu/HUD icon set: Lucide icon font (Windows)
+
+Replaced every placeholder UI glyph (`→` / `✓` / `↵`-as-"Enter" / `±` / empty boxes) with real
+**Lucide** line icons rendered from a font (UMG has no SVG renderer).
+
+- **No generation** — shipped `lucide-static@0.544.0`'s **prebuilt** `font/lucide.ttf` (716KB, ISC +
+  Feather-MIT) straight in, with its bundled `LICENSE` as `Content/UI/Fonts/LICENSE-Lucide.txt`. (A
+  subset via `fantasticon` was tried first but it's broken on Windows — glob/backslash bug; the
+  prebuilt font sidesteps it. Recorded in the cookbook.)
+- **Imported** via MCP Python mirroring the GOL-138 type-font recipe: `Lucide.ttf` → `UFontFace`
+  `Faces/Lucide-Regular` (LazyLoad, bytes embedded → 733KB `.uasset`) + a runtime `UFont`
+  `/Game/UI/Fonts/Lucide` whose composite typeface is wired to the face via `CompositeFont.import_text`.
+- **`GolfUITheme` API:** `Icon(size)` accessor, `enum class EIcon : int32` (15 glyphs, values = Lucide's
+  own PUA codepoints from `info.json`), `MakeIcon(Tree, EIcon, size, color)`, and a `MakeKbd(EIcon)`
+  keycap overload.
+- **Full sweep applied:** menu CTA arrow + ↵ keycap + power-Exit + golf-flag brand + clock/cloud env
+  cards (`MenuTile`/`MainMenu`); leave-dialog log-out tile + confirm-button arrow + ↵ hint
+  (`LeaveConfirmDialog`); course + option check badges; HUD conditions strip wind/thermometer/cloud/clock
+  (`RoundHud`); wizard handicap ∓ steppers + **per-option format icons** (Stroke=list-ordered,
+  Stableford=star, Match=swords, Skins=coins, Play-it-out=flag, Rotate=rotate-cw) in a left-aligned chip
+  that goes accent on select — fixes the old full-width placeholder block (`OptionCard`/`RoundSetupWizard`).
+- `/Game/UI` already always-cooked (GOL-148) → no cook-config change. Full build + **63/63 tests** green.
+
 ## 2026-06-03 — GOL-148 — Scorecard reskin + GOL-137 epic closeout (Windows)
 
 Twelfth and final child of the GOL-137 UI-elevation epic — **epic complete (12/12)**.

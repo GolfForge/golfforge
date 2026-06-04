@@ -104,6 +104,12 @@ namespace GolfUI
 	{
 		return FontOrFallback(TEXT("/Game/UI/Fonts/JetBrainsMono.JetBrainsMono"), Size, Weight);
 	}
+	FSlateFontInfo Icon(int32 Size)
+	{
+		// Lucide is a single-face font: request the default typeface (NAME_None) so it resolves whatever
+		// the imported entry is named ("Default" on a plain .ttf import), rather than guessing "Regular".
+		return FontOrFallback(TEXT("/Game/UI/Fonts/Lucide.Lucide"), Size, NAME_None);
+	}
 
 	FSlateBrush RoundedBrush(const FLinearColor& Fill, float Radius, const FLinearColor& Outline, float OutlineWidth)
 	{
@@ -166,6 +172,18 @@ namespace GolfUI
 		return B;
 	}
 
+	UTextBlock* MakeIcon(UWidgetTree* Tree, EIcon Glyph, int32 Size, const FLinearColor& Col)
+	{
+		UTextBlock* T = Tree->ConstructWidget<UTextBlock>();
+		// Codepoints are all BMP (< 0x10000), so a single TCHAR is the whole glyph on Windows UTF-16.
+		const TCHAR Ch = static_cast<TCHAR>(Glyph);
+		T->SetText(FText::FromString(FString::Chr(Ch)));
+		T->SetFont(Icon(Size));
+		T->SetColorAndOpacity(FSlateColor(Col));
+		T->SetJustification(ETextJustify::Center);
+		return T;
+	}
+
 	UBorder* MakeKbd(UWidgetTree* Tree, const FString& Key)
 	{
 		UBorder* B = Tree->ConstructWidget<UBorder>();
@@ -176,6 +194,16 @@ namespace GolfUI
 		T->SetFont(Mono(11));
 		T->SetColorAndOpacity(FSlateColor(Color::TextDim()));
 		B->SetContent(T);
+		return B;
+	}
+
+	UBorder* MakeKbd(UWidgetTree* Tree, EIcon Glyph, int32 Size)
+	{
+		// Same surface chip as the text keycap, but the content is an icon glyph (e.g. the ↵ Return key).
+		UBorder* B = Tree->ConstructWidget<UBorder>();
+		B->SetBrush(RoundedBrush(Color::Surface(), 6.f, Color::BorderStrong(), 1.f));
+		B->SetPadding(FMargin(7.f, 2.f));
+		B->SetContent(MakeIcon(Tree, Glyph, Size, Color::TextDim()));
 		return B;
 	}
 

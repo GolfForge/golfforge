@@ -174,13 +174,16 @@ void URoundHud::BuildTree()
 	// conditions strip: wind/temp (seam "--") + sky/time (real)
 	{
 		UHorizontalBox* Row = WidgetTree->ConstructWidget<UHorizontalBox>();
-		auto AddChip = [&](const FString& InitialVal, const TCHAR* Sub) -> UTextBlock*
+		auto AddChip = [&](EIcon Glyph, const FString& InitialVal, const TCHAR* Sub) -> UTextBlock*
 		{
 			UHorizontalBox* Chip = WidgetTree->ConstructWidget<UHorizontalBox>();
 			USizeBox* IcBox = WidgetTree->ConstructWidget<USizeBox>();
 			IcBox->SetWidthOverride(26.f); IcBox->SetHeightOverride(26.f);
 			UBorder* Ic = WidgetTree->ConstructWidget<UBorder>();
-			Ic->SetBrush(RoundedBrush(Color::Surface(), Radius::Sm));   // icon placeholder (GOL-151)
+			Ic->SetBrush(RoundedBrush(FLinearColor(0, 0, 0, 0), Radius::Sm));   // transparent; centers the Lucide glyph (GOL-151)
+			Ic->SetHorizontalAlignment(HAlign_Center);
+			Ic->SetVerticalAlignment(VAlign_Center);
+			Ic->SetContent(MakeIcon(WidgetTree, Glyph, 18, Color::TextDim()));
 			IcBox->SetContent(Ic);
 			if (UHorizontalBoxSlot* IS = Chip->AddChildToHorizontalBox(IcBox)) { IS->SetVerticalAlignment(VAlign_Center); IS->SetPadding(FMargin(0, 0, 8.f, 0)); }
 
@@ -200,10 +203,10 @@ void URoundHud::BuildTree()
 			if (UHorizontalBoxSlot* CS = Row->AddChildToHorizontalBox(Chip)) { CS->SetPadding(FMargin(0, 0, 16.f, 0)); }
 			return Val;
 		};
-		AddChip(TEXT("—"), TEXT("Wind"));    // seam (GOL-154)
-		AddChip(TEXT("—"), TEXT("Temp"));    // seam (GOL-154)
-		SkyValText  = AddChip(TEXT("—"), TEXT("Sky"));
-		TimeValText = AddChip(TEXT("—"), TEXT("Time"));
+		AddChip(EIcon::Wind, TEXT("—"), TEXT("Wind"));          // seam (GOL-154)
+		AddChip(EIcon::Thermometer, TEXT("—"), TEXT("Temp"));   // seam (GOL-154)
+		SkyValText  = AddChip(EIcon::Cloud, TEXT("—"), TEXT("Sky"));
+		TimeValText = AddChip(EIcon::Clock, TEXT("—"), TEXT("Time"));
 		RoundCol->AddChildToVerticalBox(Row);
 	}
 

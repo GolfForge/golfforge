@@ -42,13 +42,17 @@ void UOptionCard::BuildTree()
 	UVerticalBox* Col = WidgetTree->ConstructWidget<UVerticalBox>();
 	Pad->SetContent(Col);
 
-	// icon square (placeholder; accent when selected)
+	// icon chip: a small left-aligned square holding the option's Lucide glyph (accent when selected)
 	USizeBox* IconBox = WidgetTree->ConstructWidget<USizeBox>();
 	IconBox->SetWidthOverride(34.f); IconBox->SetHeightOverride(34.f);
 	IconSquare = WidgetTree->ConstructWidget<UBorder>();
 	IconSquare->SetBrush(RoundedBrush(Color::Surface2(), 9.f));
+	IconSquare->SetHorizontalAlignment(HAlign_Center);
+	IconSquare->SetVerticalAlignment(VAlign_Center);
+	IconGlyphText = MakeIcon(WidgetTree, IconGlyph, 18, Color::TextDim());
+	IconSquare->SetContent(IconGlyphText);
 	IconBox->SetContent(IconSquare);
-	Col->AddChildToVerticalBox(IconBox);
+	if (UVerticalBoxSlot* IBS = Col->AddChildToVerticalBox(IconBox)) { IBS->SetHorizontalAlignment(HAlign_Left); }
 
 	TitleText = WidgetTree->ConstructWidget<UTextBlock>();
 	TitleText->SetText(FText::FromString(TEXT("")));
@@ -69,14 +73,9 @@ void UOptionCard::BuildTree()
 	CheckBadge = WidgetTree->ConstructWidget<UBorder>();
 	CheckBadge->SetBrush(RoundedBrush(Color::Accent(), 999.f));
 	CheckBadge->SetVisibility(ESlateVisibility::Collapsed);
-	{
-		UTextBlock* Check = WidgetTree->ConstructWidget<UTextBlock>();
-		Check->SetText(FText::FromString(TEXT("✓")));
-		Check->SetFont(Mono(11));
-		Check->SetColorAndOpacity(FSlateColor(Color::AccentInk()));
-		Check->SetJustification(ETextJustify::Center);
-		CheckBadge->SetContent(Check);
-	}
+	CheckBadge->SetHorizontalAlignment(HAlign_Center);
+	CheckBadge->SetVerticalAlignment(VAlign_Center);
+	CheckBadge->SetContent(MakeIcon(WidgetTree, EIcon::Check, 11, Color::AccentInk()));   // GOL-151 Lucide check
 	CheckBox->SetContent(CheckBadge);
 	if (UOverlaySlot* CS = Cast<UOverlaySlot>(Root->AddChildToOverlay(CheckBox)))
 	{
@@ -85,10 +84,12 @@ void UOptionCard::BuildTree()
 	}
 }
 
-void UOptionCard::Configure(const FString& Title, const FString& Desc)
+void UOptionCard::Configure(const FString& Title, const FString& Desc, GolfUI::EIcon Icon)
 {
-	if (TitleText) { TitleText->SetText(FText::FromString(Title)); }
-	if (DescText)  { DescText->SetText(FText::FromString(Desc)); }
+	IconGlyph = Icon;
+	if (TitleText)     { TitleText->SetText(FText::FromString(Title)); }
+	if (DescText)      { DescText->SetText(FText::FromString(Desc)); }
+	if (IconGlyphText) { IconGlyphText->SetText(FText::FromString(FString::Chr(static_cast<TCHAR>(Icon)))); }
 }
 
 void UOptionCard::SetSelected(bool bSelected)
@@ -145,9 +146,14 @@ void UOptionCard::RefreshVisualState()
 			BgBorder->SetBrush(RoundedBrush(Color::Surface(), Radius::Md, Color::Border(), 1.f));
 		}
 	}
+	const bool bSel = bIsSelected && !bIsDisabled;
 	if (IconSquare)
 	{
-		IconSquare->SetBrush(RoundedBrush((bIsSelected && !bIsDisabled) ? Color::Accent() : Color::Surface2(), 9.f));
+		IconSquare->SetBrush(RoundedBrush(bSel ? Color::Accent() : Color::Surface2(), 9.f));
+	}
+	if (IconGlyphText)
+	{
+		IconGlyphText->SetColorAndOpacity(FSlateColor(bSel ? Color::AccentInk() : Color::TextDim()));
 	}
 	if (CheckBadge)
 	{

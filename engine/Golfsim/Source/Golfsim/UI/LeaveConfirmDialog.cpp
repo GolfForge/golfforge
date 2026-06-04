@@ -108,10 +108,7 @@ void ULeaveConfirmDialog::BuildTree()
 		IconTile->SetBrush(RoundedBrush(Color::AccentSoft(), 14.f, Color::AccentLine(), 1.f));
 		IconTile->SetHorizontalAlignment(HAlign_Center);
 		IconTile->SetVerticalAlignment(VAlign_Center);
-		IconGlyph = WidgetTree->ConstructWidget<UTextBlock>();
-		IconGlyph->SetText(FText::FromString(TEXT("→")));   // placeholder; Lucide "log-out" lands in GOL-151
-		IconGlyph->SetFont(Display(26, FName(TEXT("SemiBold"))));
-		IconGlyph->SetColorAndOpacity(FSlateColor(Color::Accent()));
+		IconGlyph = MakeIcon(WidgetTree, EIcon::LogOut, 26, Color::Accent());   // GOL-151 Lucide log-out (tint set per-mode in Configure)
 		IconTile->SetContent(IconGlyph);
 		IconBox->SetContent(IconTile);
 		if (UVerticalBoxSlot* IS = Col->AddChildToVerticalBox(IconBox))
@@ -169,11 +166,15 @@ void ULeaveConfirmDialog::BuildTree()
 			Leave->SetStyle(S);
 		}
 		Leave->OnClicked.AddDynamic(this, &ULeaveConfirmDialog::HandleConfirmClicked);
+		UHorizontalBox* LeaveRow = WidgetTree->ConstructWidget<UHorizontalBox>();
 		ConfirmLabel = WidgetTree->ConstructWidget<UTextBlock>();
 		ConfirmLabel->SetFont(Display(15, FName(TEXT("SemiBold"))));
 		ConfirmLabel->SetColorAndOpacity(FSlateColor(Color::DangerText()));
 		ConfirmLabel->SetJustification(ETextJustify::Center);
-		Leave->SetContent(ConfirmLabel);
+		if (UHorizontalBoxSlot* LCS = LeaveRow->AddChildToHorizontalBox(ConfirmLabel)) { LCS->SetVerticalAlignment(VAlign_Center); }
+		if (UHorizontalBoxSlot* LAS = LeaveRow->AddChildToHorizontalBox(MakeIcon(WidgetTree, EIcon::ArrowRight, 14, Color::DangerText())))
+		{ LAS->SetVerticalAlignment(VAlign_Center); LAS->SetPadding(FMargin(8.f, 0.f, 0.f, 0.f)); }   // GOL-151 arrow-right
+		Leave->SetContent(LeaveRow);
 		if (UHorizontalBoxSlot* HS = Actions->AddChildToHorizontalBox(Leave))
 		{
 			HS->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
@@ -202,9 +203,13 @@ void ULeaveConfirmDialog::BuildTree()
 		{
 			if (UHorizontalBoxSlot* S = Hint->AddChildToHorizontalBox(MakeKbd(WidgetTree, K))) { S->SetVerticalAlignment(VAlign_Center); }
 		};
+		auto AddKeyIcon = [&](EIcon G)
+		{
+			if (UHorizontalBoxSlot* S = Hint->AddChildToHorizontalBox(MakeKbd(WidgetTree, G))) { S->SetVerticalAlignment(VAlign_Center); }
+		};
 		AddKey(TEXT("Esc"));
 		AddText(TEXT("to stay  ·"));
-		AddKey(TEXT("Enter"));
+		AddKeyIcon(EIcon::CornerDownLeft);   // GOL-151 Lucide ↵
 		AddText(TEXT("to leave"));
 		if (UVerticalBoxSlot* HS = Col->AddChildToVerticalBox(Hint))
 		{
@@ -250,7 +255,7 @@ void ULeaveConfirmDialog::Configure(ELeaveMode Mode, int32 HoleNum)
 	if (TitleText)    { TitleText->SetText(FText::FromString(Title)); }
 	if (DescText)     { DescText->SetText(FText::FromString(Desc)); }
 	if (StayLabel)    { StayLabel->SetText(FText::FromString(Stay.ToUpper())); }
-	if (ConfirmLabel) { ConfirmLabel->SetText(FText::FromString(Confirm.ToUpper() + TEXT("  →"))); }
+	if (ConfirmLabel) { ConfirmLabel->SetText(FText::FromString(Confirm.ToUpper())); }   // trailing → is now a Lucide icon (GOL-151)
 }
 
 void ULeaveConfirmDialog::HandleConfirmClicked()

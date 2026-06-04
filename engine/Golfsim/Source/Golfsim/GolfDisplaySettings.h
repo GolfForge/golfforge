@@ -14,6 +14,10 @@ struct FGolfDisplaySettings
 	int32 QualityLevel = 3;       // 0=Low 1=Medium 2=High 3=Epic
 	float ScreenPercentage = 100.f;
 	int32 UpscalerIndex = 0;      // 0=TSR (built-in) 1=DLSS 2=XeSS  (FSR deferred)
+	// 3D fairway grass density (GOL-162). 0=Off (texture-only) 1=Low 2=High. The effective default is
+	// set per-platform in ReadCurrent()/ApplyGrassDetailFromSaved() (Mac=Low, Windows=High); this POD
+	// default is only the cold fallback if GConfig is unavailable.
+	int32 GrassDetailLevel = 2;
 };
 
 namespace GolfDisplay
@@ -23,6 +27,10 @@ namespace GolfDisplay
 	int32 ClampQualityLevel(int32 Level);                      // -> [0,3]
 	int32 ClampWindowModeIndex(int32 Index);                   // -> [0,2]
 	int32 ClampUpscalerIndex(int32 Index);                     // -> [0,2]
+	int32 ClampGrassDetail(int32 Level);                       // -> [0,2]  (GOL-162)
+	TArray<FString> GrassDetailNames();                        // {"Off","Low","High"} (UI single source)
+	float GrassDensityScaleFor(int32 Level);                   // level -> grass.densityScale (0/0.5/1)
+	float GrassCullScaleFor(int32 Level);                      // level -> grass.CullDistanceScale (0/0.7/1)
 	FString UpscalerName(int32 Index);                         // 0=TSR 1=DLSS 2=XeSS
 	TArray<int32> AvailableUpscalerIndices();                  // TSR always; DLSS if NVIDIA + plugin; XeSS if plugin
 	TArray<FString> UpscaleModeNames(int32 UpscalerIndex);          // per-upscaler tier names, high->low quality
@@ -34,6 +42,9 @@ namespace GolfDisplay
 	FGolfDisplaySettings ReadCurrent();                        // from UGameUserSettings + r.ScreenPercentage
 	void Apply(const FGolfDisplaySettings& S);                 // write + ApplyResolutionSettings + SaveSettings
 	TArray<FIntPoint> SupportedResolutions();                  // monitor modes, or a sane fallback list
+	// Apply just the persisted/per-platform Grass Detail to the LandscapeGrass cvars (GOL-162). Called at
+	// startup (module OnPostEngineInit) so the setting/default takes effect before any menu is opened.
+	void ApplyGrassDetailFromSaved();
 
 	// Range pin distance (GOL-29). Stored in the same GameUserSettings.ini that Apply() writes, under
 	// section [GolfForge.Range], key PinDistanceYd. Default 150 yd if unset; clamped to [0, 400] (the

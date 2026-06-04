@@ -65,6 +65,7 @@ private:
 	UPROPERTY(Transient) TObjectPtr<UComboBoxString> ResCombo;
 	UPROPERTY(Transient) TObjectPtr<USegmentedControl> WindowSeg;
 	UPROPERTY(Transient) TObjectPtr<USegmentedControl> QualitySeg;
+	UPROPERTY(Transient) TObjectPtr<USegmentedControl> GrassSeg;   // GOL-162 grass detail (Off/Low/High)
 	UPROPERTY(Transient) TObjectPtr<USegmentedControl> UpscalerSeg;
 	UPROPERTY(Transient) TObjectPtr<UComboBoxString> UpscaleModeCombo;   // render-scale tiers (dropdown; 5-7 options)
 	UPROPERTY(Transient) TObjectPtr<UTextBlock> CreditsBody;

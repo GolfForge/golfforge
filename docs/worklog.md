@@ -2,6 +2,17 @@
 
 > Dated milestone summaries, newest on top. The durable outcome + the committed artifact, not the blow-by-blow — process detail lives in git history, `docs/ue5-cookbook.md`, and the scripts themselves.
 
+## 2026-06-04 — GOL-162 3D fairway grass: Grass Detail quality toggle (Windows)
+
+Second GOL-160 vibe-pass child. Exploration found the fairway grass was **already wired + committed** (`build_course_material.py:431` calls `_build_grass_output` unconditionally; `LGT_FairwayGrass`, Fairway-only, cull 10–35 m), so this shipped the **quality toggle** the perf-conservative strategy needs — not a re-wire.
+
+- **Grass Detail setting (Off / Low / High)** on `FGolfDisplaySettings` → `grass.densityScale` + `grass.CullDistanceScale` (cvars confirmed present/writable via `find_console_variables`). Off = the painted KBG-green Fairway texture as the standalone fallback. Persists in `[GolfForge.Graphics] GrassDetail` (GConfig, pin-distance idiom). **`#if PLATFORM_MAC` default = Low** (Windows High) — conservative on Mac M4 without GOL-102.
+- **Boot-time apply:** new `FGolfsimModule` registers `OnPostEngineInit → GolfDisplay::ApplyGrassDetailFromSaved()` so the saved choice + Mac default take effect on a cold launch (custom display cvars otherwise only re-apply when the settings menu opens — same pre-existing gap DLSS has).
+- **Surfaces:** `golfsim.SetGrassDetail <0-2>` console command; "Grass Detail" segmented control in Settings → Graphics; `ClampGrassDetail`/`GrassDensityScaleFor` unit asserts (Golfsim.Settings.Clamps green headless).
+- **Decisions (user):** Fairway-only (greens skipped); cull stays ~35 m (did **not** chase the ticket's 100–200 m); no Python/material/umap changes.
+- **Nanite finding (→ cookbook):** the KBG meshes are **Nanite-enabled with OPAQUE materials** — already the efficient Nanite case (no 2× masked penalty / WPO conflict); `r.Nanite.Foliage=True` is on project-wide. Nanite Foliage is Experimental + **tree-focused**, so its big perf wins route to **GOL-167 / GOL-31** (trees), not grass.
+- **Verified:** build green (22.6 s), `Golfsim.Settings` automation passes, grass cvar names + Nanite mesh state confirmed in-editor. **Remaining (user-driven):** PIE visual + perf pass (`SetGrassDetail 0/1/2`, `stat unit` at the >30 Win / >15 Mac gate). Files: `GolfDisplaySettings.{h,cpp}`, `Golfsim.cpp`, `GolfsimConsole.cpp`, `SettingsMenu.{h,cpp}`, `Tests/SettingsTests.cpp`, `docs/ue5-cookbook.md`.
+
 ## 2026-06-04 — GOL-161 course atmosphere pass + AGolfEnvironment generalization (Windows)
 
 First child of the **GOL-160 alpha-3 vibe-pass epic**. Landed the canonical "tournament Saturday afternoon" lighting on `GolfForgeDemoBlack.umap` and generalized the range's runtime sky director into a shared, course-agnostic system.

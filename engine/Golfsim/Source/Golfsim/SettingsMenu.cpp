@@ -213,6 +213,10 @@ UScrollBox* USettingsMenu::BuildGraphicsTab()
 	QualitySeg->SetOptions({ TEXT("Low"), TEXT("Medium"), TEXT("High"), TEXT("Epic") });
 	AddRow(Tab, TEXT("Quality"), TEXT("Overall fidelity preset"), QualitySeg, false);
 
+	GrassSeg = CreateWidget<USegmentedControl>(this);
+	GrassSeg->SetOptions(GolfDisplay::GrassDetailNames());   // Off / Low / High
+	AddRow(Tab, TEXT("Grass Detail"), TEXT("3D fairway grass density (lower = better performance)"), GrassSeg, false);
+
 	UpscalerSeg = CreateWidget<USegmentedControl>(this);   // options filled by SetUpscalerOptions
 	UpscalerSeg->OnChanged = [this](int32 Sel)
 	{
@@ -409,6 +413,7 @@ void USettingsMenu::SetCurrent(const FGolfDisplaySettings& S)
 	if (WindowSeg)  { WindowSeg->SetSelectedIndex(WinIdx, false); }
 	UpdateResolutionEnabledForMode(WinIdx);
 	if (QualitySeg) { QualitySeg->SetSelectedIndex(GolfDisplay::ClampQualityLevel(S.QualityLevel), false); }
+	if (GrassSeg)   { GrassSeg->SetSelectedIndex(GolfDisplay::ClampGrassDetail(S.GrassDetailLevel), false); }
 	if (UpscalerSeg)
 	{
 		const int32 Sel = UpscalerOptionIndices.IndexOfByKey(S.UpscalerIndex);
@@ -426,6 +431,7 @@ void USettingsMenu::HandleApplyClicked()
 	}
 	S.WindowModeIndex = WindowSeg ? WindowSeg->GetSelectedIndex() : 0;
 	S.QualityLevel    = QualitySeg ? QualitySeg->GetSelectedIndex() : 3;
+	S.GrassDetailLevel = GrassSeg ? GolfDisplay::ClampGrassDetail(GrassSeg->GetSelectedIndex()) : S.GrassDetailLevel;
 	if (UpscalerSeg && UpscalerOptionIndices.IsValidIndex(UpscalerSeg->GetSelectedIndex()))
 	{
 		S.UpscalerIndex = UpscalerOptionIndices[UpscalerSeg->GetSelectedIndex()];

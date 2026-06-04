@@ -454,6 +454,21 @@ namespace
 		UE_LOG(LogTemp, Display, TEXT("golfsim.SetUpscaler: %s"), *GolfDisplay::UpscalerName(S.UpscalerIndex));
 	}
 
+	// golfsim.SetGrassDetail <0-2> -- 3D fairway grass density (GOL-162). 0=Off (texture only) 1=Low
+	// 2=High. Persists + applies via the same display-settings round-trip as quality/upscaler.
+	void SetGrassDetailCmd(const TArray<FString>& Args, UWorld* /*World*/)
+	{
+		if (Args.Num() < 1)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("Usage: golfsim.SetGrassDetail <0-2>  (0=Off 1=Low 2=High; persists)."));
+			return;
+		}
+		FGolfDisplaySettings S = GolfDisplay::ReadCurrent();
+		S.GrassDetailLevel = GolfDisplay::ClampGrassDetail(FCString::Atoi(*Args[0]));
+		GolfDisplay::Apply(S);
+		UE_LOG(LogTemp, Display, TEXT("golfsim.SetGrassDetail: %d"), S.GrassDetailLevel);
+	}
+
 	void CreditsCmd(const TArray<FString>& /*Args*/, UWorld* World)
 	{
 		if (!World) { return; }
@@ -807,6 +822,11 @@ static FAutoConsoleCommandWithWorldAndArgs GSetUpscalerCmd(
 	TEXT("golfsim.SetUpscaler"),
 	TEXT("Select the temporal upscaler: golfsim.SetUpscaler <0-2> (0=TSR 1=DLSS 2=XeSS; vendor ones need their plugin). Quality = Upscale Mode preset."),
 	FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&SetUpscalerCmd));
+
+static FAutoConsoleCommandWithWorldAndArgs GSetGrassDetailCmd(
+	TEXT("golfsim.SetGrassDetail"),
+	TEXT("3D fairway grass density: golfsim.SetGrassDetail <0-2> (0=Off 1=Low 2=High; persists)."),
+	FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&SetGrassDetailCmd));
 
 static FAutoConsoleCommandWithWorldAndArgs GCreditsCmd(
 	TEXT("golfsim.Credits"),

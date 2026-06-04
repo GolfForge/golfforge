@@ -35,6 +35,11 @@ bool FGolfsimSettingsClampTest::RunTest(const FString&)
 	TestTrue(TEXT("upscaler 0 is TSR"), GolfDisplay::UpscalerName(0) == TEXT("TSR"));
 	TestTrue(TEXT("upscaler 1 is DLSS"), GolfDisplay::UpscalerName(1) == TEXT("DLSS"));
 	TestTrue(TEXT("upscaler 2 is XeSS"), GolfDisplay::UpscalerName(2) == TEXT("XeSS"));
+	TestEqual(TEXT("grass detail clamps to 2"), GolfDisplay::ClampGrassDetail(5), 2);
+	TestEqual(TEXT("grass detail clamps to 0"), GolfDisplay::ClampGrassDetail(-1), 0);
+	TestEqual(TEXT("grass detail in-range passes"), GolfDisplay::ClampGrassDetail(1), 1);
+	TestEqual(TEXT("grass density scale off=0"), GolfDisplay::GrassDensityScaleFor(0), 0.f);
+	TestEqual(TEXT("grass density scale high=1"), GolfDisplay::GrassDensityScaleFor(2), 1.f);
 	return true;
 }
 

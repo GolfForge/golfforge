@@ -29,6 +29,29 @@ namespace GolfDisplay
 	int32 ClampWindowModeIndex(int32 Index) { return FMath::Clamp(Index, 0, 2); }
 	int32 ClampUpscalerIndex(int32 Index) { return FMath::Clamp(Index, 0, 2); }
 
+	// Grass Detail (GOL-162): 0=Off 1=Low 2=High, driving the LandscapeGrass density + cull cvars. Off=0
+	// density leaves the painted KBG-green Fairway texture as the standalone fallback.
+	int32 ClampGrassDetail(int32 Level) { return FMath::Clamp(Level, 0, 2); }
+	TArray<FString> GrassDetailNames() { return { TEXT("Off"), TEXT("Low"), TEXT("High") }; }
+	float GrassDensityScaleFor(int32 Level)
+	{
+		switch (ClampGrassDetail(Level)) { case 0: return 0.f; case 1: return 0.5f; default: return 1.f; }
+	}
+	float GrassCullScaleFor(int32 Level)
+	{
+		switch (ClampGrassDetail(Level)) { case 0: return 0.f; case 1: return 0.7f; default: return 1.f; }
+	}
+	// Default conservative on weak hardware (Mac M4) without GOL-102's full per-platform INI. Single
+	// source of truth for the per-platform default; ReadCurrent + the boot apply both use it.
+	static int32 PlatformDefaultGrassDetail()
+	{
+#if PLATFORM_MAC
+		return 1;   // Low
+#else
+		return 2;   // High
+#endif
+	}
+
 	// Vendor-plugin cvars, driven by name (not by linking the plugins) so this builds with or without
 	// them installed; an absent cvar means that upscaler isn't available. Verified against the UE 5.7
 	// NVIDIA DLSS + Intel XeSS plugins. FSR deferred (GOL-62): r.FidelityFX.FSR.Enabled +
@@ -36,6 +59,13 @@ namespace GolfDisplay
 	static const TCHAR* DLSS_CVAR = TEXT("r.NGX.DLSS.Enable");        // DLSS Super Resolution (NGX)
 	static const TCHAR* XESS_CVAR = TEXT("r.XeSS.Enabled");           // Intel XeSS-SR
 	static const TCHAR* XESS_QUALITY_CVAR = TEXT("r.XeSS.Quality");   // 0=UltraPerf .. 6=AntiAliasing
+
+	// LandscapeGrass system cvars (engine-registered floats, default 1.0). Driven by the Grass Detail
+	// setting (GOL-162). Grass Detail persists in a custom ini section (it isn't a scalability level).
+	static const TCHAR* GRASS_DENSITY_CVAR = TEXT("grass.densityScale");
+	static const TCHAR* GRASS_CULL_CVAR    = TEXT("grass.CullDistanceScale");
+	static const TCHAR* GraphicsSection = TEXT("GolfForge.Graphics");
+	static const TCHAR* GrassDetailKey  = TEXT("GrassDetail");
 
 	FString UpscalerName(int32 Index)
 	{
@@ -121,6 +151,22 @@ namespace GolfDisplay
 		}
 	}
 
+	static void SetCVarFloatIfPresent(const TCHAR* Name, float Value)
+	{
+		if (IConsoleVariable* CVar = IConsoleManager::Get().FindConsoleVariable(Name))
+		{
+			CVar->Set(Value);
+		}
+	}
+
+	// Push a Grass Detail level to the LandscapeGrass density + cull cvars (no-op if the engine cvars
+	// aren't registered yet). Shared by Apply() and the boot-time ApplyGrassDetailFromSaved().
+	static void SetGrassCVars(int32 Level)
+	{
+		SetCVarFloatIfPresent(GRASS_DENSITY_CVAR, GrassDensityScaleFor(Level));
+		SetCVarFloatIfPresent(GRASS_CULL_CVAR, GrassCullScaleFor(Level));
+	}
+
 	// XeSS uses its own quality enum (0=UltraPerf 3x .. 6=AntiAliasing 1x). It ignores r.ScreenPercentage
 	// since UE5.1, so map the render scale chosen by the Upscale Mode preset to the nearest XeSS tier.
 	static int32 XeSSQualityFromScreenPct(float Pct)
@@ -172,6 +218,10 @@ namespace GolfDisplay
 		if      (CVarOn(DLSS_CVAR)) { S.UpscalerIndex = 1; }
 		else if (CVarOn(XESS_CVAR)) { S.UpscalerIndex = 2; }
 		else                        { S.UpscalerIndex = 0; }
+		// Grass Detail rides a custom ini section (not a scalability level), defaulting per-platform.
+		int32 Grass = PlatformDefaultGrassDetail();
+		if (GConfig) { GConfig->GetInt(GraphicsSection, GrassDetailKey, Grass, GGameUserSettingsIni); }
+		S.GrassDetailLevel = ClampGrassDetail(Grass);
 		return S;
 	}
 
@@ -213,8 +263,24 @@ namespace GolfDisplay
 				break;
 			default: break;   // 0 = TSR
 		}
+		// Grass Detail: drive the LandscapeGrass cvars + persist to the custom ini section (Off=texture
+		// only). Not a UGameUserSettings field, so it round-trips through GConfig like the pin distance.
+		const int32 Grass = ClampGrassDetail(S.GrassDetailLevel);
+		SetGrassCVars(Grass);
+		if (GConfig)
+		{
+			GConfig->SetInt(GraphicsSection, GrassDetailKey, Grass, GGameUserSettingsIni);
+			GConfig->Flush(/*bRead=*/false, GGameUserSettingsIni);
+		}
 		GUS->ApplySettings(false);
 		GUS->SaveSettings();
+	}
+
+	void ApplyGrassDetailFromSaved()
+	{
+		int32 Grass = PlatformDefaultGrassDetail();
+		if (GConfig) { GConfig->GetInt(GraphicsSection, GrassDetailKey, Grass, GGameUserSettingsIni); }
+		SetGrassCVars(ClampGrassDetail(Grass));
 	}
 
 	TArray<FIntPoint> SupportedResolutions()

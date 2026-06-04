@@ -2,6 +2,27 @@
 
 > Dated milestone summaries, newest on top. The durable outcome + the committed artifact, not the blow-by-blow — process detail lives in git history, `docs/ue5-cookbook.md`, and the scripts themselves.
 
+## 2026-06-03 — v0.0.4-alpha — Windows build + release prep (Windows)
+
+First packaged build carrying the whole GOL-137 UI epic + GOL-151 icons. The headline of v0.0.4 is the
+rebuilt UI (themed menu, round-setup wizard, glass in-round HUD, scorecard, leave modal, Lucide icons).
+
+- **Win64 cook** via `RunUAT BuildCookRun` (Development, the documented flag set: `-build -cook
+  -unversionedcookedcontent -pak -prereqs -nodebuginfo -manifests -stage -package -archive`), both maps
+  cooked from `MapsToCook` (PracticeRange + GolfForgeDemoBlack). 1m16s, exit 0. Post-cook: copied
+  `courses/golfforge-demo-black/` into `<stage>/courses/` (the ini can't stage paths outside the project
+  root — see CoursePaths candidate bases). **GOL-148 staging verified:** all four UI fonts incl.
+  `Lucide.uasset`/`.uexp` cooked into `Saved/Cooked/.../Content/UI/Fonts/`.
+- **Launcher renamed** `Golfsim.exe` → `GolfForge.exe` in the stage (UE resolves content by baked project
+  name, not exe filename; the full rename is GOL-152). User smoke-tested the renamed exe end-to-end:
+  menu → range → Play Course → wizard → in-round HUD all good.
+- **Zipped** `GolfForge-windows-x64-v0.0.4-alpha.zip` (runtime `Saved/` stripped first).
+- **README + screenshots refreshed** — 4K captures from the packaged build replace the stale pre-theme
+  PNGs: `mainmenu.png` / `roundsetup.png` / `coursehud.jpg` in the README, plus `format.png` + `range.jpg`
+  candidates. Flat-UI screens stay PNG, photographic scenes JPEG q85 (new set ~2.7 MB vs old ~29 MB).
+- **Release:** Windows published today; **macOS arm64 follows** on the same GitHub Release from the Mac
+  mini (per user). Tag `v0.0.4-alpha`, attach the zip, mark pre-release.
+
 ## 2026-06-03 — GOL-151 — Menu/HUD icon set: Lucide icon font (Windows)
 
 Replaced every placeholder UI glyph (`→` / `✓` / `↵`-as-"Enter" / `±` / empty boxes) with real

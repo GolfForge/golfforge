@@ -3,7 +3,7 @@
 Open-source, cross-platform golf simulator with AI-assisted course building, walking/treadmill
 integration, and a clean BLE-based hardware story for launch monitors.
 
-> **Status:** early, pre-1.0, and moving fast. As of v0.0.3-alpha you can play a full **18-hole single-player round on a real LIDAR-cooked course with just a keyboard** — no launch monitor required. The practice range still runs, OpenFlight drives it, and OpenStreetMap + USGS feed the course pipeline. Expect rough edges.
+> **Status:** early, pre-1.0, and moving fast. **v0.0.4-alpha** brings a completely rebuilt UI — a themed main menu, a guided round-setup flow (course → format → players, with game types, handicaps and tee boxes), a glass in-round HUD with a live hole map and conditions strip, and an end-of-round scorecard. You can play a full **18-hole single-player round on a real LIDAR-cooked course with just a keyboard** — no launch monitor required. The practice range still runs, OpenFlight drives it, and OpenStreetMap + USGS feed the course pipeline. Expect rough edges.
 >
 > _The repository is still named `golfsim` while the rename to GolfForge is in progress._
 
@@ -22,20 +22,20 @@ attack:
 
 ## Try it
 
-Pre-built packages are attached to the latest [GitHub Release](https://github.com/GolfForge/golfforge/releases). v0.0.3-alpha ships with two playable surfaces:
+Pre-built packages are attached to the latest [GitHub Release](https://github.com/GolfForge/golfforge/releases). v0.0.4-alpha ships with two playable surfaces:
 
-- **Single-player round** — main menu → **Play Course** → pick course + difficulty + name → land on hole 1's tee → swing through 18 holes on a real LIDAR-cooked course. No launch monitor needed; the built-in keyboard swing meter handles it.
+- **Single-player round** — main menu → **Play Course** → a guided round-setup flow (pick the course, set the format — game type, holes, turn order — and add up to four players with names, tee boxes and handicaps) → land on hole 1's tee → swing through 18 holes on a real LIDAR-cooked course. A glass HUD tracks your score, distance to pin and conditions; a scorecard caps the round. No launch monitor needed; the built-in keyboard swing meter handles it.
 - **Practice range** — fixed-distance pin, full 14-club bag, launch-monitor support via [OpenFlight](https://github.com/jewbetcha/openflight) (Doppler radar) or manual-shot dialog for hardware-free testing.
 
-![Main menu — Range / Previous Sessions / Play Course / Exit, over the live range](docs/screenshots/mainmenu.png)
+![Main menu — Play Course / Range / Practice / Settings bento, with a live clock + conditions cluster](docs/screenshots/mainmenu.png)
 
-![Pre-round picker — name, course, difficulty, Start Round](docs/screenshots/playcoursemenu.png)
+![Round setup — pick your course, then set the format and players](docs/screenshots/roundsetup.png)
 
-![Mid-round on the course — gimme ring around the pin, bunker, live HUD, walk-up between shots](docs/screenshots/greenshot.png)
+![Mid-round on the course — glass HUD with the hole panel, conditions strip, hole map, launch-monitor readout and swing meter](docs/screenshots/coursehud.jpg)
 
 ### Windows
 
-1. Download `GolfForge-windows-x64.zip` from the latest release, extract anywhere.
+1. Download the Windows build (`GolfForge-windows-x64-*.zip`) from the latest release, extract anywhere.
 2. Run `GolfForge.exe`.
 3. **Windows SmartScreen will warn "Unrecognized app."** Click **More info** → **Run anyway.** The binary is unsigned (proper code-signing is on the roadmap); it's safe — verify the SHA-256 on the release page if you want belt-and-suspenders.
 

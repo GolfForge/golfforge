@@ -30,7 +30,10 @@ namespace
 		return Color::DangerText();                      // double bogey or worse
 	}
 
-	UTextBlock* Cell(UUserWidget* Owner, const FString& Text, const FLinearColor& Col,
+	// NOTE: renamed from `Cell` because Apple's Carbon framework
+	// (HIToolbox/Lists.h) defines `Cell` as a typedef for `Point`, which clashes
+	// on Mac builds even though the local helper is in an anonymous namespace.
+	UTextBlock* MakeCell(UUserWidget* Owner, const FString& Text, const FLinearColor& Col,
 		const FSlateFontInfo& Font, ETextJustify::Type Justify = ETextJustify::Center)
 	{
 		UTextBlock* T = Owner->WidgetTree->ConstructWidget<UTextBlock>();
@@ -51,7 +54,7 @@ namespace
 		};
 		for (const TPair<FString, FLinearColor>& C2 : Cells)
 		{
-			UTextBlock* T = Cell(Owner, C2.Key, C2.Value, Font);
+			UTextBlock* T = MakeCell(Owner, C2.Key, C2.Value, Font);
 			if (UHorizontalBoxSlot* CS = Row->AddChildToHorizontalBox(T))
 			{
 				CS->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
@@ -133,7 +136,7 @@ void UScorecardPanel::BuildTree()
 		UHorizontalBox* HeadRow = WidgetTree->ConstructWidget<UHorizontalBox>();
 		for (const TCHAR* H : { TEXT("HOLE"), TEXT("PAR"), TEXT("STROKES"), TEXT("+/-") })
 		{
-			UTextBlock* T = Cell(this, H, Color::TextFaint(), HeadFont);
+			UTextBlock* T = MakeCell(this, H, Color::TextFaint(), HeadFont);
 			if (UHorizontalBoxSlot* HSlot = HeadRow->AddChildToHorizontalBox(T))
 			{
 				HSlot->SetSize(FSlateChildSize(ESlateSizeRule::Fill));

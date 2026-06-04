@@ -228,6 +228,13 @@ void AGolfRangeHUD::EnsureInputBound()
 		PC->SetInputMode(InputMode);
 		// Themed golf-tee hardware cursor (range-only). Loads Content/Slate/golf_tee_cursor.png;
 		// hotspot (normalized) sits on the sharp tip. Override Default + Hand so it shows over the UI too.
+		//
+		// MAC GATING (see GOL-159): UE5.7's Mac NSCursor path doesn't accept this single
+		// 64x64 RGBA PNG cleanly — it renders as multiple small ghost cursors in neon
+		// violet on Apple Silicon. Until we ship a proper multi-resolution Mac cursor
+		// (or replace with a Slate software-cursor widget for cross-platform parity),
+		// Mac users get the system arrow.
+#if !PLATFORM_MAC
 		UWorld* World = GetWorld();
 		if (UGameViewportClient* GVC = World ? World->GetGameViewport() : nullptr)
 		{
@@ -236,6 +243,7 @@ void AGolfRangeHUD::EnsureInputBound()
 			GVC->SetHardwareCursor(EMouseCursor::Default, CursorPath, HotSpot);
 			GVC->SetHardwareCursor(EMouseCursor::Hand, CursorPath, HotSpot);
 		}
+#endif
 		// Always-on FPS overlay so range perf is visible at a glance in PIE and
 		// fullscreen (range-only, like the rest of this lock block; runs once).
 		// Swap to "stat unit" for the GPU/draw ms breakdown when diagnosing.

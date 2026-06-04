@@ -2,6 +2,22 @@
 
 > Dated milestone summaries, newest on top. The durable outcome + the committed artifact, not the blow-by-blow — process detail lives in git history, `docs/ue5-cookbook.md`, and the scripts themselves.
 
+## 2026-06-04 — GOL-157 v0.0.4-alpha macOS arm64 SHIPPED — first Mac build with course play (Mac)
+
+- **Release complete cross-platform.** `GolfForge-macos-arm64.zip` (cooked + dylib-fixed + course-staged + renamed + xattr-cleared) uploaded to the existing `v0.0.4-alpha` GitHub Release alongside `GolfForge-windows-x64-v0.0.4-alpha.zip`. First Mac binary that includes the full UI overhaul (themed menu, round-setup wizard, glass HUD, Lucide icons, scorecard) **and** the playable demo course. Cook time 2m 13s warm-cache on M4 base, exit 0.
+- **Two Mac-portability bugs caught + patched during the cook**, both committed alongside the binary:
+  - **ScorecardPanel.cpp `Cell` ↔ Carbon `Cell` typedef clash** (introduced by GOL-148). Apple's HIToolbox defines `typedef Point Cell;`, ambiguous with the anonymous-namespace helper. Renamed local helper to `MakeCell` (3 occurrences). Windows builds were unaffected because Carbon isn't included on Win64. **Lesson for future UI helpers:** prefix generic names (`MakeCell`, `MakeRow`, `MakePanel`) — Apple framework typedefs use single-word names like `Cell`/`Point`/`Rect`/`Style`/`View`/`Window` going back decades. Worth a cookbook note.
+  - **`GolfRangeHUD.cpp` themed golf-tee hardware cursor rendered as multiple violet ghosts on Mac NSCursor.** Classic UE5.7 Mac SetHardwareCursor failure mode with a single-resolution 64×64 RGBA PNG. Gated behind `#if !PLATFORM_MAC` for v0.0.4 — Mac users see the OS arrow (cosmetic-only regression). **GOL-159 filed** for the proper cross-platform Slate-software-cursor widget.
+- **Resolved courses staging path documented (NEW for Mac).** v0.0.1/0.0.2 Mac builds were range-only; this was the first cook with course content. `CoursePaths::ResolveCourseDataDir` candidate base #2 (`FPaths::ProjectDir()/..`) resolves to `<App>.app/Contents/UE/courses/<id>/` inside a Mac `.app` bundle — mirrors the Windows `<stage>/courses/` location. Smoke-tested: Play Course → wizard → Tee Off → Hole 1 loads with the glass HUD.
+- **GOL-158 filed** as the long-term cleanup: bake `hole.geojson` + `heightmap.json` into a `UCourseManifest` UDataAsset + refactor `GOL-40` lie classifier off the runtime PNG read, dropping the post-cook `cp -R courses/<id>/ <stage>/courses/` step entirely. Beta-time work, ~1 week of Windows-side effort.
+- **Per-machine content gotcha re-confirmed.** Mac's `~/code/golfsim/engine/Golfsim/Content/{Fab,Megaplant_Library,PC3D_Kentucky_Bluegrass_v13}/` were still in place from the GOL-113 restore (2026-06-02), so no re-Fab needed this cook. The `cp -R` from `~/code/golfsim.prerewrite/` recovery path remains the standard recipe.
+- **GOL-71 dylib fixup is now a stable recipe.** `libtbb.12.dylib` + `libtbbmalloc.2.dylib` from `$UE_ROOT/Engine/Binaries/Mac/` → `<App>.app/Contents/MacOS/`. `libmetalirconverter.dylib` referenced but not present in UE5.7 and not required at runtime. Worth folding into a committed `engine/scripts/package.sh` (already on the GOL-49 follow-up list).
+- **Files committed in this push:**
+  - `engine/Golfsim/Source/Golfsim/ScorecardPanel.cpp` (Carbon `Cell` rename to `MakeCell`)
+  - `engine/Golfsim/Source/Golfsim/GolfRangeHUD.cpp` (Mac cursor gate + GOL-159 reference)
+  - `docs/worklog.md` (this entry)
+  - `CLAUDE.md` (Latest line bump)
+
 ## 2026-06-03 — v0.0.4-alpha — Windows build + release prep (Windows)
 
 First packaged build carrying the whole GOL-137 UI epic + GOL-151 icons. The headline of v0.0.4 is the

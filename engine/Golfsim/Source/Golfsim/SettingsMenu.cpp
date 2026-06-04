@@ -213,9 +213,11 @@ UScrollBox* USettingsMenu::BuildGraphicsTab()
 	QualitySeg->SetOptions({ TEXT("Low"), TEXT("Medium"), TEXT("High"), TEXT("Epic") });
 	AddRow(Tab, TEXT("Quality"), TEXT("Overall fidelity preset"), QualitySeg, false);
 
-	GrassSeg = CreateWidget<USegmentedControl>(this);
-	GrassSeg->SetOptions(GolfDisplay::GrassDetailNames());   // Off / Low / High
-	AddRow(Tab, TEXT("Grass Detail"), TEXT("3D fairway grass density (lower = better performance)"), GrassSeg, false);
+	// Grass Detail UI hidden until 3D grass actually renders (deferred to GOL-170). The backend (cvars,
+	// console cmd, persistence, boot apply) stays live; re-enable this row when grass ships.
+	// GrassSeg = CreateWidget<USegmentedControl>(this);
+	// GrassSeg->SetOptions(GolfDisplay::GrassDetailNames());   // Off / Low / High
+	// AddRow(Tab, TEXT("Grass Detail"), TEXT("3D fairway grass density (lower = better performance)"), GrassSeg, false);
 
 	UpscalerSeg = CreateWidget<USegmentedControl>(this);   // options filled by SetUpscalerOptions
 	UpscalerSeg->OnChanged = [this](int32 Sel)
@@ -431,7 +433,8 @@ void USettingsMenu::HandleApplyClicked()
 	}
 	S.WindowModeIndex = WindowSeg ? WindowSeg->GetSelectedIndex() : 0;
 	S.QualityLevel    = QualitySeg ? QualitySeg->GetSelectedIndex() : 3;
-	S.GrassDetailLevel = GrassSeg ? GolfDisplay::ClampGrassDetail(GrassSeg->GetSelectedIndex()) : S.GrassDetailLevel;
+	// GrassSeg is null while the row is hidden (GOL-170) -> preserve the persisted value, don't clobber it.
+	S.GrassDetailLevel = GrassSeg ? GolfDisplay::ClampGrassDetail(GrassSeg->GetSelectedIndex()) : GolfDisplay::ReadCurrent().GrassDetailLevel;
 	if (UpscalerSeg && UpscalerOptionIndices.IsValidIndex(UpscalerSeg->GetSelectedIndex()))
 	{
 		S.UpscalerIndex = UpscalerOptionIndices[UpscalerSeg->GetSelectedIndex()];

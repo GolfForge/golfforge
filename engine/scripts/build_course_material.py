@@ -37,6 +37,9 @@ import unreal
 # ---------------------------------------------------------------- parameters
 MATERIAL_PATH = "/Game/Materials/M_GolfsimCourse"
 BACKUP_PATH   = "/Game/Materials/M_GolfsimCourse_PreGrassBackup"
+# Live-tuning Material Instance (GOL-163): the base holds param DEFAULTS; the landscape uses this MIC
+# so per-surface tint/roughness/stripe params are adjustable in the Details panel with no rebuild.
+MIC_PATH      = "/Game/Materials/MIC_GolfsimCourse"
 
 # Fab/Megascans surface texture triplets (gitignored, per-machine, Bridge-
 # downloaded). Each Quixel surface ships T_<code>_2K_{B,N,ORM}; ORM packing
@@ -63,21 +66,30 @@ MACRO_BLEND       = 0.45
 # tiling = LandscapeLayerCoords.mapping_scale (higher = finer / more
 # repeats); per-layer starting guesses, tune live. grass=True keys the
 # LandscapeGrassOutput (Fairway only for now).
+# GOL-163 per-surface look = live-tunable params (defaults here, adjust on MIC_GolfsimCourse):
+#   tint     = HUE-REPLACE VectorParameter <name>_Tint (desaturate->multiply; forces a target hue)
+#   mul_tint = PRESERVE+NUDGE VectorParameter <name>_Tint (plain multiply; white=identity, keeps the
+#              texture's own color -- used for the sand so the current look is the default)
+#   rough_default = ScalarParameter <name>_Rough default (multiplies ORM-G; <1 sheen, >1 dull)
+# Green/Tee currently still share Lawn_Grass with Fairway -- distinguished by tint/roughness/tiling
+# now; swap in dedicated Fab textures (P2) when downloaded.
 LAYERS = [
     dict(name="Fairway",  mode="textured", grass=True, tiling=3.0,
-         tint=(0.10, 0.26, 0.08),
+         tint=(0.10, 0.26, 0.08), rough_default=1.0,
          **_surf("Lawn_Grass_tkynejer", "tkynejer")),
-    dict(name="Green",    mode="textured", tiling=4.0,
-         tint=(0.10, 0.26, 0.08),
+    dict(name="Green",    mode="textured", tiling=4.5,
+         tint=(0.07, 0.22, 0.10), rough_default=0.75,   # darker, cooler, finer, wetter sheen
          **_surf("Lawn_Grass_tkynejer", "tkynejer")),
     dict(name="Bunker",   mode="textured", tiling=3.0,
+         mul_tint=(1.0, 1.0, 1.0), rough_default=1.0,   # keep current sand; nudge-able neutral default
          **_surf("Bright_Desert_Sand_sjzkfega", "sjzkfega")),
     dict(name="Rough",    mode="textured", tiling=2.0,
+         tint=(0.15, 0.18, 0.09), rough_default=1.15,   # duller, browner, less saturated
          **_surf("Uncut_Grass_oilpt20", "oilpt20")),
     dict(name="CartPath", mode="textured", tiling=4.0,
          **_surf("Concrete_Floor_virrebs", "virrebs")),
     dict(name="Tee",      mode="textured", tiling=3.0,
-         tint=(0.10, 0.26, 0.08),
+         tint=(0.13, 0.23, 0.08), rough_default=1.1,    # worn, slightly yellower than fairway
          **_surf("Lawn_Grass_tkynejer", "tkynejer")),
     dict(name="Trees",    mode="textured", tiling=2.5,
          **_surf("Clover_Patches_on_Grass_sgmkajak", "sgmkajak")),
@@ -260,20 +272,29 @@ def _macro_albedo(mat, layer, x, y):
     # plain multiply can only darken (can't hue-shift), which is why tint
     # tweaks were imperceptible. `tint` here is the KBG turf-green target so
     # the base inherently meshes with the KBG 3D grass at the cull boundary.
+    # Per-surface recolor as a live-tunable VectorParameter <name>_Tint (MIC-adjustable, no rebuild):
+    #   tint     -> HUE-REPLACE: desaturate->multiply (forces the target hue; for the grass surfaces).
+    #   mul_tint -> PRESERVE+NUDGE: plain multiply (keeps the texture's own color; white=identity).
     tint = layer.get("tint")
-    if not tint:
+    mul_tint = layer.get("mul_tint")
+    col = tint or mul_tint
+    if not col:
         return src, pin
-    des = _mel().create_material_expression(
-        mat, unreal.MaterialExpressionDesaturation, x + 380, y)
-    _mel().connect_material_expressions(src, pin, des, "")  # -> luminance
+    vp = _mel().create_material_expression(
+        mat, unreal.MaterialExpressionVectorParameter, x + 400, y + 220)
+    vp.set_editor_property("parameter_name", layer["name"] + "_Tint")
+    vp.set_editor_property(
+        "default_value", unreal.LinearColor(col[0], col[1], col[2], 1.0))
     mul = _mel().create_material_expression(
         mat, unreal.MaterialExpressionMultiply, x + 560, y)
-    tc = _mel().create_material_expression(
-        mat, unreal.MaterialExpressionConstant3Vector, x + 400, y + 220)
-    tc.set_editor_property(
-        "constant", unreal.LinearColor(tint[0], tint[1], tint[2], 1.0))
-    _mel().connect_material_expressions(des, "", mul, "A")
-    _mel().connect_material_expressions(tc, "", mul, "B")
+    if tint:
+        des = _mel().create_material_expression(
+            mat, unreal.MaterialExpressionDesaturation, x + 380, y)
+        _mel().connect_material_expressions(src, pin, des, "")   # -> luminance, then re-hue
+        _mel().connect_material_expressions(des, "", mul, "A")
+    else:
+        _mel().connect_material_expressions(src, pin, mul, "A")  # preserve texture color
+    _mel().connect_material_expressions(vp, "", mul, "B")
     return mul, ""
 
 
@@ -292,7 +313,21 @@ def _layer_src(mat, layer, channel, x, y):
         ts = _tex(mat, layer["rough"],
                   unreal.MaterialSamplerType.SAMPLERTYPE_MASKS,
                   x, y, layer["tiling"])
-        return (ts, layer.get("rough_ch", "R")) if ts else (None, None)
+        if ts is None:
+            return (None, None)
+        ch = layer.get("rough_ch", "R")
+        # Per-surface roughness as a live-tunable ScalarParameter <name>_Rough (MIC-adjustable):
+        # multiply the ORM-G roughness (default 1.0). <1 = wetter/sheen (greens), >1 = duller (tee/rough).
+        rp = _mel().create_material_expression(
+            mat, unreal.MaterialExpressionScalarParameter, x, y + 200)
+        rp.set_editor_property("parameter_name", layer["name"] + "_Rough")
+        rp.set_editor_property(
+            "default_value", float(layer.get("rough_default", 1.0)))
+        rmul = _mel().create_material_expression(
+            mat, unreal.MaterialExpressionMultiply, x + 200, y)
+        _mel().connect_material_expressions(ts, ch, rmul, "A")
+        _mel().connect_material_expressions(rp, "", rmul, "B")
+        return (rmul, "")
     # flat
     if channel == "base":
         c = _mel().create_material_expression(
@@ -408,7 +443,30 @@ def _reassign_landscape(mat):
             a.set_editor_property("landscape_material", mat)
             n += 1
     _log("re-assigned %s to %d Landscape actor(s) (Paint UI 'Add From "
-         "Material(s)' if target layers dropped)" % (MATERIAL_PATH, n))
+         "Material(s)' if target layers dropped)" % (mat.get_name(), n))
+
+
+def _build_mic(base_mat):
+    """Create MIC_GolfsimCourse instancing the base material + return it for the landscape (GOL-163).
+    The base holds the per-surface param DEFAULTS (from LAYERS); the MIC starts all-inherited and is
+    the live-tuning surface (tweak <name>_Tint / <name>_Rough in its Details panel -- no rebuild)."""
+    eal = unreal.EditorAssetLibrary
+    if eal.does_asset_exist(MIC_PATH):
+        eal.delete_asset(MIC_PATH)
+    name = MIC_PATH.rsplit("/", 1)[1]
+    pkg = MIC_PATH.rsplit("/", 1)[0]
+    try:
+        mic = _at().create_asset(name, pkg, unreal.MaterialInstanceConstant,
+                                 unreal.MaterialInstanceConstantFactoryNew())
+        _mel().set_material_instance_parent(mic, base_mat)
+        eal.save_asset(MIC_PATH)
+        _log("built MIC %s (parent=M_GolfsimCourse; tune surfaces here, no rebuild)"
+             % MIC_PATH)
+        return mic
+    except Exception as exc:
+        _log("MIC build ERR %s - landscape will use the base material instead"
+             % str(exc)[:90])
+        return None
 
 
 def main():
@@ -428,17 +486,22 @@ def main():
              "half-wired material. Backup %s is intact; restore it if the "
              "live material was already deleted." % BACKUP_PATH)
         return
-    _build_grass_output(mat)
+    # GOL-163/GOL-170: the course ships grass-free; 3D grass is its own epic. Re-running this canonical
+    # builder must NOT re-attach the dormant grass node. Set BUILD_GRASS=True (globals) when GOL-170 wires it.
+    if globals().get("BUILD_GRASS", False):
+        _build_grass_output(mat)
+    else:
+        _log("BUILD_GRASS=False: course material ships grass-free (3D grass = GOL-170)")
     _mel().recompile_material(mat)   # returns None by design; no exception=ok
     unreal.EditorAssetLibrary.save_asset(MATERIAL_PATH)
-    _reassign_landscape(mat)
+    mic = _build_mic(mat)
+    _reassign_landscape(mic if mic is not None else mat)
     flat = [l["name"] for l in LAYERS if l["mode"] == "flat"]
     tex = [l["name"] for l in LAYERS if l["mode"] == "textured"]
-    _log("SAVED %s | textured=%r flat=%r | backup=%s"
-         % (MATERIAL_PATH, tex, flat, BACKUP_PATH))
-    _log("NEXT: USER confirm landscape still uses M_GolfsimCourse (same "
-         "path re-binds; Paint UI 'Add From Material(s)' if target layers "
-         "drop), trigger Build Grass Maps, then grass report() gate.")
+    _log("SAVED %s (+ %s) | textured=%r flat=%r | backup=%s"
+         % (MATERIAL_PATH, MIC_PATH, tex, flat, BACKUP_PATH))
+    _log("NEXT: USER confirm the Landscape uses MIC_GolfsimCourse; tune each surface's "
+         "<name>_Tint / <name>_Rough on the MIC (live, no rebuild), then back-port finals to LAYERS.")
     _log("=== MODE A DONE ===")
 
 

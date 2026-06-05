@@ -77,11 +77,11 @@ LAYERS = [
     dict(name="Fairway",  mode="textured", grass=True, tiling=3.0,
          tint=(0.10, 0.26, 0.08), rough_default=1.0,
          stripes=dict(width_m=1.8, angle_deg=0.0, contrast=0.15),   # mower rows down the fairway
-         **_surf("Lawn_Grass_tkynejer", "tkynejer")),
+         **_surf("Cut_Grass_sfenffsa", "sfenffsa")),               # GOL-163 P2: mown fairway turf
     dict(name="Green",    mode="textured", tiling=4.5,
          tint=(0.07, 0.22, 0.10), rough_default=0.75,   # darker, cooler, finer, wetter sheen
          stripes=dict(width_m=0.9, angle_deg=90.0, contrast=0.10),  # finer, cross-cut
-         **_surf("Lawn_Grass_tkynejer", "tkynejer")),
+         **_surf("Cut_Grass_sfenffsa", "sfenffsa")),               # GOL-163 P2: short putting turf (finer tiling)
     dict(name="Bunker",   mode="textured", tiling=3.0,
          mul_tint=(1.0, 1.0, 1.0), rough_default=1.0,   # keep current sand; nudge-able neutral default
          **_surf("Bright_Desert_Sand_sjzkfega", "sjzkfega")),
@@ -94,7 +94,7 @@ LAYERS = [
          tint=(0.13, 0.23, 0.08), rough_default=1.1,    # worn, slightly yellower than fairway
          **_surf("Lawn_Grass_tkynejer", "tkynejer")),
     dict(name="Trees",    mode="textured", tiling=2.5,
-         **_surf("Clover_Patches_on_Grass_sgmkajak", "sgmkajak")),
+         **_surf("Mossy_Forest_Floor_vfylbge", "vfylbge")),       # GOL-163 P2: forest-floor under trees
 ]
 BASE_COLOR_FALLBACK = (0.05, 0.20, 0.05)   # chain terminator (current behavior)
 ROUGH_FALLBACK      = 0.70

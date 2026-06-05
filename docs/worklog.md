@@ -2,6 +2,17 @@
 
 > Dated milestone summaries, newest on top. The durable outcome + the committed artifact, not the blow-by-blow — process detail lives in git history, `docs/ue5-cookbook.md`, and the scripts themselves.
 
+## 2026-06-05 — GOL-163 surface material upgrade: distinct, param-tunable surfaces + mowing stripes (Windows)
+
+Third GOL-160 vibe-pass child — the user's priority beta facelift. Reworked `M_GolfsimCourse` so each painted surface reads distinct + intentional, all live-tunable.
+
+- **Parameterized look + Material Instance (P1, `cbebe92`).** Per-surface tints (VectorParameters `<name>_Tint`, hue-replace for grass / preserve-nudge `mul_tint` for sand) + roughness (ScalarParameters `<name>_Rough`) on the base material, driving a new **`MIC_GolfsimCourse`** (MaterialInstanceConstant) assigned to the landscape — so every surface tunes **live in the Details panel, no rebuild** (the 2-3 min nuke+recreate was killing iteration). Per the user's "make a linked one we can reuse" insight.
+- **Mowing stripes (P3, `c078532`).** `_stripe_mask`: a world-aligned brightness band on the albedo (fairway down-range, green cross-cut); width/angle/contrast are MIC ScalarParameters (contrast=0 = off). UE Sine/Cosine `Period=1` → inputs in turns.
+- **Distinct Fab textures (P2, `5a2cbb2`).** Fairway + Green → `Cut_Grass_sfenffsa` (mown turf; green finer/darker/wetter), Trees → `Mossy_Forest_Floor_vfylbge`; Tee stays Lawn_Grass (now distinct). New Fab downloads land at `/Game/Fab/Megascans/Surfaces/<folder>/Medium/<code>_tier_2/...` (the `_surf()` layout). `Uncut_Grass_oeeb70` on the bench for a rough-variety swap.
+- **Grass-free guard.** `BUILD_GRASS=False` course default so re-running the canonical script doesn't re-attach the GOL-170-deferred grass node.
+- **Surfaced + tracked: course layer-data gaps.** Materials render correctly only where the landscape layers resolve — hole 8 + a few look great, most don't. Did the **GOL-108 widened-splat re-import** (landscape was stale; `Landscape > Manage > Import`, layers only, heightmap untouched; `a83c0f1`) which fixes edge-clipped holes. But many holes STILL show rough where the splat appears to have fairway → possible **splat↔landscape mapping/orientation bug, not just sparse OSM**. **GOL-171** (data audit, machine/mac) + **GOL-172** (pipeline sanity-overlay: OSM features over satellite/aerial) filed; deferred to end of epic with any engine fixes.
+- **Remaining GOL-163 polish (optional):** P4 per-region anti-tile noise. Cookbook updated with the params+MIC pattern, the stripe recipe, and the Fab-path + stale-reimport gotchas.
+
 ## 2026-06-04 — GOL-162 3D fairway grass: Grass Detail quality toggle (Windows)
 
 Second GOL-160 vibe-pass child. Exploration found the fairway grass was **already wired + committed** (`build_course_material.py:431` calls `_build_grass_output` unconditionally; `LGT_FairwayGrass`, Fairway-only, cull 10–35 m), so this shipped the **quality toggle** the perf-conservative strategy needs — not a re-wire.

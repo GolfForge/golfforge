@@ -31,6 +31,8 @@
 #include "Framework/Application/SlateApplication.h"
 #include "Engine/Canvas.h"          // UCanvas (SizeX/SizeY) for the DrawHUD resolution readout
 #include "Engine/GameViewportClient.h"
+#include "Sound/AmbientSound.h"     // GOL-166: gate placed ambient SFX to gameplay
+#include "Components/AudioComponent.h"
 #include "GameFramework/PlayerController.h"
 #include "GameFramework/Pawn.h"
 #include "GenericPlatform/ICursor.h"
@@ -145,12 +147,64 @@ void AGolfRangeHUD::EndPlay(const EEndPlayReason::Type EndPlayReason)
 	Super::EndPlay(EndPlayReason);
 }
 
+void AGolfRangeHUD::UpdateAmbientPlayback()
+{
+	// GOL-166: the placed AAmbientSound beds/bird zones auto-activate on level
+	// load, but the main menu / course-select / settings all sit on top of a
+	// live level -- so without gating you'd hear ambience under the menu. Gate
+	// it to actual gameplay: audible iff no menu/modal is up (!InputGated()).
+	// Cached once (the ambient actors live in the persistent level); rebuilt per
+	// HUD BeginPlay, i.e. per level. Both maps use this HUD.
+	UWorld* World = GetWorld();
+	if (!World)
+	{
+		return;
+	}
+	if (!bAmbientCached)
+	{
+		bAmbientCached = true;
+		bAmbientAudible = false;
+		for (TActorIterator<AAmbientSound> It(World); It; ++It)
+		{
+			if (UAudioComponent* AC = It->GetAudioComponent())
+			{
+				AC->bAutoActivate = false;
+				AC->Stop();   // silent until gameplay starts (kills any auto-activate)
+				AmbientComponents.Add(AC);
+			}
+		}
+	}
+
+	const bool bDesired = !InputGated();
+	if (bDesired == bAmbientAudible)
+	{
+		return;
+	}
+	bAmbientAudible = bDesired;
+	for (const TObjectPtr<UAudioComponent>& AC : AmbientComponents)
+	{
+		if (!AC)
+		{
+			continue;
+		}
+		if (bDesired)
+		{
+			AC->FadeIn(1.0f);          // ramp up over 1s when entering gameplay
+		}
+		else
+		{
+			AC->FadeOut(1.0f, 0.0f);   // ramp down + stop when a menu/modal opens
+		}
+	}
+}
+
 void AGolfRangeHUD::Tick(float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
 
 	UpdateFollowCam(DeltaSeconds);
 	UpdateInRoundHud();   // GOL-144: drive the glass round panel + hole map; toggle vs the legacy panel
+	UpdateAmbientPlayback();   // GOL-166: birds play only in-game, never under the menu / course select
 
 	// GOL-29: keep retrying the pin placement until the actor exists. EnsureInputBound calls
 	// ApplyPinDistance once at panel mount, but on the very first ticks the pawn may not be

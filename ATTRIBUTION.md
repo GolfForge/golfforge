@@ -41,6 +41,26 @@ Access methods used by the pipeline:
   cite the relevant dataset DOI when reusing data fetched through it. https://opentopography.org
 - **AWS Entwine / USGS 3DEP** point-cloud tiles (alternate `pdal` backend) — https://usgs.entwine.io/
 
+## Audio — ambient SFX (GOL-166)
+
+The ambient sound layer (birdsong + the optional wind/distant-traffic beds) imported into
+`engine/Golfsim/Content/Audio/Ambient/` (sources kept in `_src/`) is sourced from **BigSoundBank**
+(Joseph SARDIN), released under a **public-domain-equivalent license (CC0)** — free for commercial
+and personal use, no attribution required, redistribution allowed. License:
+https://bigsoundbank.com/licenses.html. CC0 was chosen specifically so the clips can live in this
+AGPL repo and ship in builds without attribution friction (unlike Fab/Marketplace audio, whose EULA
+forbids redistributing the raw assets).
+
+Courtesy credit (not legally required) for the clips in use:
+
+| Asset | Source clip | URL |
+|---|---|---|
+| `SW_AmbientBird_Forest` | Forest (s0100) | https://bigsoundbank.com/forest-s0100.html |
+| `SW_AmbientBird_Countryside` | Countryside (s0097) | https://bigsoundbank.com/countryside-s0097.html |
+| `SW_AmbientBird_ForestEdge` | Forest: On the Edge (s0905) | https://bigsoundbank.com/forest-on-the-edge-s0905.html |
+| `SW_AmbientWind_Trees` | Wind in the Trees (s0904) | https://bigsoundbank.com/forest-wind-in-the-trees-s0904.html |
+| `SW_AmbientMurmur_Distant` | Parisian Ring Road #2 (s3027) | https://bigsoundbank.com/parisian-ring-road-2-s3027.html |
+
 ## Carrying attribution in distributed builds
 
 A packaged GolfForge build that ships course data must surface the OpenStreetMap attribution and

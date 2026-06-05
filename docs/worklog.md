@@ -2,6 +2,35 @@
 
 > Dated milestone summaries, newest on top. The durable outcome + the committed artifact, not the blow-by-blow — process detail lives in git history, `docs/ue5-cookbook.md`, and the scripts themselves.
 
+## 2026-06-05 — GOL-166 ambient SFX layer: gameplay-gated birdsong (Windows)
+
+Ninth GOL-160 vibe-pass child. Both maps were dead silent; now they have an outdoor ambience.
+CC0 audio (BigSoundBank, public-domain) + a placement script + a small HUD gate. Audio sources in
+`engine/Golfsim/Content/Audio/Ambient/_src/`, imported to `/Game/Audio/Ambient`, credited in
+`ATTRIBUTION.md`.
+
+- **New `engine/scripts/place_ambient_sfx.py`** (mirrors `place_range_props.py`): idempotent, map-
+  aware. Imports the CC0 `.ogg`s to looping `USoundWave`s (USoundWave `looping` is hidden from
+  `dir()` but settable via `get/set_editor_property` -- no SoundCue needed, and SoundCue node graphs
+  aren't constructible from Python in 5.7), routes them through an `SC_Ambient` SoundClass, and
+  authors an `SA_AmbientBird` SoundAttenuation. Places `AAmbientSound` actors: spatialized bird zones
+  anchored to **sampled PCG tree instances** (angular spread on the course, down-lane on the range --
+  so birds come from real tree lines, not a blind ring) + optional global wind/murmur beds. Tag/label
+  `Ambient_*` + layer `AmbientSFX`; operator saves the umaps.
+- **Bird attenuation tuned by ear:** LINEAR sphere, 100% within 15 m, **50% at 70 m**, silent ~125 m
+  (`SA_AmbientBird`), bird volume 0.90. Gentle enough that mid-forest spots between emitters stay alive.
+- **Beds toggled OFF for now** (`AMBIENT_BEDS=False`): shipping birds-only. The murmur was swapped
+  village->distant ring-road traffic after the village clip's baked-in birdsong, played through the
+  *global* bed, read as "birds everywhere" -- a good lesson that bed clips must be content-clean since
+  beds are un-spatialized. Wind + distant-murmur assets remain in-repo behind the toggle.
+- **Gameplay gate (C++, `AGolfRangeHUD::UpdateAmbientPlayback`, both maps use this HUD):** placed
+  `AAmbientSound`s auto-activate on load, but the menu/course-select/settings all sit over a live
+  level. The HUD forces `bAutoActivate=false` + `Stop()` on first tick, then `FadeIn/FadeOut(1s)`
+  gated on `!InputGated()` (already true for main menu / round-setup / settings / scorecard / cheat /
+  leave-confirm). Result: silent under any menu, birds fade in only in actual gameplay. Verified in PIE.
+- **Deferred:** wind-volume <-> wind coupling needs the GOL-154 weather driver (the MPC is static, no
+  subsystem); follow-up sound polish filed under a new "Polish / nice-to-have" epic.
+
 ## 2026-06-05 — GOL-167 mixed-forest tree scatter: 2 species x 4 variants (Windows)
 
 Eighth GOL-160 vibe-pass child. The PCG tree scatter was a Silver-Birch mono-culture; it now reads as a mixed forest. All in `engine/scripts/build_pcg_treescatter.py` (the two orchestrators are unchanged); both `/Game/PCG/PCG_TreeScatter` (course, 0.02 ppsm) and `/Game/PCG/PCG_TreeScatter_Range` (range, 0.35 ppsm) rebuilt from the one parameterized script.

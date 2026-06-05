@@ -49,6 +49,12 @@ private:
 	// number is readable instead of jittering every frame. Toggle: golf.ShowFPS.
 	float SmoothedFps = 0.0f;
 
+	// GOL-166: gate placed ambient SFX to gameplay (silent under menu/modals).
+	void UpdateAmbientPlayback();
+	bool bAmbientCached = false;
+	bool bAmbientAudible = false;
+	UPROPERTY(Transient) TArray<TObjectPtr<class UAudioComponent>> AmbientComponents;
+
 	void EnsureInputBound();
 	void SelectClub(int32 Index);
 	// GOL-123: ungated club switch used by SelectPutterIfAvailable + SelectClub. The public

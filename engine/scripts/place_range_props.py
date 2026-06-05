@@ -49,7 +49,7 @@ LEVEL_HINT = "PracticeRange"
 
 # Distances down the corridor (yd). Range corridor is 400 yd (LANE_LEN_YD), so
 # 250 is comfortably inside the tree wall.
-MARKER_YARDS = (50, 100, 150, 200, 250)
+MARKER_YARDS = (50, 100, 150, 200, 250, 300, 350)
 
 # Range geometry. Keep in sync with build_range_splatmap.py + GolfRangeHUD.cpp.
 CM_PER_YD      = 91.44       # exact (matches AGolfRangeHUD::ApplyPinDistance)

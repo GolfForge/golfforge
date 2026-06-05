@@ -2,6 +2,14 @@
 
 > Dated milestone summaries, newest on top. The durable outcome + the committed artifact, not the blow-by-blow — process detail lives in git history, `docs/ue5-cookbook.md`, and the scripts themselves.
 
+## 2026-06-05 — GOL-168 range yardage-marker stakes (first pass, Windows)
+
+Sixth GOL-160 vibe-pass child, scoped narrow: the range's first distance reference beyond the movable target pin. Procedural/code-only (no Fab), reproducible + committable now.
+
+- **New `engine/scripts/place_range_props.py`** — idempotent editor-Python spawning a painted-stake yardage marker (white cylinder post + red cap cube + yellow `TextRenderActor` number) at 50/100/150/200/250 yd, both fairway edges. Placement reuses the `AGolfRangeHUD::ApplyPinDistance` convention exactly: `X = TeeX + yd*91.44` cm (TeeX from the range PlayerStart, here −18000), `Y = ±2286` cm (fairway edge, off the centerline so stakes never sit in the ball path or under the target pin), ground-snapped Z. Numbers `yaw 180` to face back toward the tee. Verified in editor: 30 actors (10 markers × 3), X/Y/Z exact, re-run kills 30 + re-places 30 (no dupes). Decorative `NoCollision`. Two tiny constant-color materials `M_RangeMarkerPost`/`M_RangeMarkerCap` find-or-created (the `build_water_actors._ensure_water_material` pattern). Grouped in a `RangeProps` layer; `RANGE_PROPS_MODE="clear"` to remove.
+- **Persistent actors** (NOT editor-only, unlike the GOL-85 hole-marker dev pillars) — they must survive the cook. Script does NOT save; operator saves `PracticeRange.umap`.
+- **Deferred, GOL-168 stays open:** Fab Nanite range backdrop (GOL-30), tee-box benches/ball washers, and the whole per-hole course-props long tail (yardage markers, hole signs, clubhouse silhouette) — all need Fab meshes the user will supply later.
+
 ## 2026-06-05 — GOL-165 fluttering GolfForge-branded pin flag + shared wind source (Windows)
 
 Fifth GOL-160 vibe-pass child. The pin flag was a static 2-tri engine Plane; now it ripples like cloth via a World-Position-Offset material and carries the GolfForge brand. Commit `68ababb`.

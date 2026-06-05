@@ -76,9 +76,11 @@ MACRO_BLEND       = 0.45
 LAYERS = [
     dict(name="Fairway",  mode="textured", grass=True, tiling=3.0,
          tint=(0.10, 0.26, 0.08), rough_default=1.0,
+         stripes=dict(width_m=1.8, angle_deg=0.0, contrast=0.15),   # mower rows down the fairway
          **_surf("Lawn_Grass_tkynejer", "tkynejer")),
     dict(name="Green",    mode="textured", tiling=4.5,
          tint=(0.07, 0.22, 0.10), rough_default=0.75,   # darker, cooler, finer, wetter sheen
+         stripes=dict(width_m=0.9, angle_deg=90.0, contrast=0.10),  # finer, cross-cut
          **_surf("Lawn_Grass_tkynejer", "tkynejer")),
     dict(name="Bunker",   mode="textured", tiling=3.0,
          mul_tint=(1.0, 1.0, 1.0), rough_default=1.0,   # keep current sand; nudge-able neutral default
@@ -243,6 +245,70 @@ def _tex(mat, path, sampler, x, y, tiling):
     return ts
 
 
+def _stripe_mask(mat, layer, x, y):
+    """Mowing stripes (GOL-163): a WORLD-aligned brightness band -> scalar multiplier ~[1-c, 1+c]
+    to multiply into the albedo. World-position-driven so rows stay straight regardless of texture
+    tiling/terrain. Width(m)/angle(deg)/contrast are live-tunable ScalarParameters on the MIC;
+    contrast=0 disables the stripes. UE Sine/Cosine use a Period (default 1.0) -> input is in TURNS,
+    so feed degrees/360 and coord/width directly (no manual 2*pi)."""
+    name = layer["name"]
+    cfg = layer["stripes"]
+    me = _mel().create_material_expression
+    cn = _mel().connect_material_expressions
+
+    def _const(cx, cy, val):
+        c = me(mat, unreal.MaterialExpressionConstant, cx, cy)
+        c.set_editor_property("r", float(val))
+        return c
+
+    def _scalar(cx, cy, pname, default):
+        p = me(mat, unreal.MaterialExpressionScalarParameter, cx, cy)
+        p.set_editor_property("parameter_name", name + pname)
+        p.set_editor_property("default_value", float(default))
+        return p
+
+    def _mask(cx, cy, comp):
+        m = me(mat, unreal.MaterialExpressionComponentMask, cx, cy)
+        for c in ("r", "g", "b", "a"):
+            m.set_editor_property(c, c == comp)
+        cn(wp, "", m, "")
+        return m
+
+    def _mul(cx, cy, a, ap, b, bp):
+        m = me(mat, unreal.MaterialExpressionMultiply, cx, cy)
+        cn(a, ap, m, "A"); cn(b, bp, m, "B")
+        return m
+
+    wp = me(mat, unreal.MaterialExpressionWorldPosition, x, y)
+    wx = _mask(x + 180, y - 60, "r")
+    wy = _mask(x + 180, y + 60, "g")
+
+    # angle(deg) -> turns -> cos/sin (Period=1 => cos(2pi*turns))
+    ang = _scalar(x, y + 180, "_StripeAngle", cfg.get("angle_deg", 0.0))
+    turns = _mul(x + 180, y + 180, ang, "", _const(x, y + 250, 1.0 / 360.0), "")
+    cosn = me(mat, unreal.MaterialExpressionCosine, x + 340, y + 140); cn(turns, "", cosn, "")
+    sinn = me(mat, unreal.MaterialExpressionSine, x + 340, y + 220); cn(turns, "", sinn, "")
+
+    # coord = wx*cos + wy*sin  (world distance perpendicular to the rows)
+    coord = me(mat, unreal.MaterialExpressionAdd, x + 680, y)
+    cn(_mul(x + 520, y - 40, wx, "", cosn, ""), "", coord, "A")
+    cn(_mul(x + 520, y + 60, wy, "", sinn, ""), "", coord, "B")
+
+    # phase = coord / (width_m * 100 cm)  -> Sine(Period=1) = the band, -1..1
+    wid = _scalar(x + 520, y + 180, "_StripeWidth", cfg.get("width_m", 1.5))
+    wcm = _mul(x + 680, y + 180, wid, "", _const(x + 520, y + 250, 100.0), "")
+    div = me(mat, unreal.MaterialExpressionDivide, x + 840, y + 40)
+    cn(coord, "", div, "A"); cn(wcm, "", div, "B")
+    band = me(mat, unreal.MaterialExpressionSine, x + 1000, y + 40); cn(div, "", band, "")
+
+    # brightness = 1 + band * contrast
+    con = _scalar(x + 1000, y + 180, "_StripeContrast", cfg.get("contrast", 0.08))
+    bright = me(mat, unreal.MaterialExpressionAdd, x + 1320, y + 60)
+    cn(_const(x + 1160, y + 140, 1.0), "", bright, "A")
+    cn(_mul(x + 1160, y + 40, band, "", con, ""), "", bright, "B")
+    return bright, ""
+
+
 def _macro_albedo(mat, layer, x, y):
     """Detail albedo lerp'd with a far-larger-scale sample of itself to
     break the tiling repeat on flyovers. Returns (lerp_expr, '')."""
@@ -279,23 +345,33 @@ def _macro_albedo(mat, layer, x, y):
     mul_tint = layer.get("mul_tint")
     col = tint or mul_tint
     if not col:
-        return src, pin
-    vp = _mel().create_material_expression(
-        mat, unreal.MaterialExpressionVectorParameter, x + 400, y + 220)
-    vp.set_editor_property("parameter_name", layer["name"] + "_Tint")
-    vp.set_editor_property(
-        "default_value", unreal.LinearColor(col[0], col[1], col[2], 1.0))
-    mul = _mel().create_material_expression(
-        mat, unreal.MaterialExpressionMultiply, x + 560, y)
-    if tint:
-        des = _mel().create_material_expression(
-            mat, unreal.MaterialExpressionDesaturation, x + 380, y)
-        _mel().connect_material_expressions(src, pin, des, "")   # -> luminance, then re-hue
-        _mel().connect_material_expressions(des, "", mul, "A")
+        out, out_pin = src, pin
     else:
-        _mel().connect_material_expressions(src, pin, mul, "A")  # preserve texture color
-    _mel().connect_material_expressions(vp, "", mul, "B")
-    return mul, ""
+        vp = _mel().create_material_expression(
+            mat, unreal.MaterialExpressionVectorParameter, x + 400, y + 220)
+        vp.set_editor_property("parameter_name", layer["name"] + "_Tint")
+        vp.set_editor_property(
+            "default_value", unreal.LinearColor(col[0], col[1], col[2], 1.0))
+        mul = _mel().create_material_expression(
+            mat, unreal.MaterialExpressionMultiply, x + 560, y)
+        if tint:
+            des = _mel().create_material_expression(
+                mat, unreal.MaterialExpressionDesaturation, x + 380, y)
+            _mel().connect_material_expressions(src, pin, des, "")   # -> luminance, then re-hue
+            _mel().connect_material_expressions(des, "", mul, "A")
+        else:
+            _mel().connect_material_expressions(src, pin, mul, "A")  # preserve texture color
+        _mel().connect_material_expressions(vp, "", mul, "B")
+        out, out_pin = mul, ""
+    # GOL-163 mowing stripes: multiply a world-aligned brightness band into the albedo (contrast=0 off).
+    if layer.get("stripes"):
+        sm, _sp = _stripe_mask(mat, layer, x + 200, y + 560)
+        smul = _mel().create_material_expression(
+            mat, unreal.MaterialExpressionMultiply, x + 760, y)
+        _mel().connect_material_expressions(out, out_pin, smul, "A")
+        _mel().connect_material_expressions(sm, "", smul, "B")
+        return smul, ""
+    return out, out_pin
 
 
 def _layer_src(mat, layer, channel, x, y):

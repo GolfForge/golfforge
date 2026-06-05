@@ -2,6 +2,17 @@
 
 > Dated milestone summaries, newest on top. The durable outcome + the committed artifact, not the blow-by-blow — process detail lives in git history, `docs/ue5-cookbook.md`, and the scripts themselves.
 
+## 2026-06-05 — GOL-165 fluttering GolfForge-branded pin flag + shared wind source (Windows)
+
+Fifth GOL-160 vibe-pass child. The pin flag was a static 2-tri engine Plane; now it ripples like cloth via a World-Position-Offset material and carries the GolfForge brand. Commit `68ababb`.
+
+- **Shared wind source `MPC_GolfWind`** (MaterialParameterCollection): `WindDirection` (vector, world XY) + `WindStrength` (scalar). The flag reads it now; GOL-154 weather can drive all wind (flag, future trees, grass) from this one source later — no C++ needed for v1.
+- **`M_FlagWind`** (two-sided, opaque): WPO flutter `wave = sin(Time*Freq - U*WaveDensity)`, `mag = wave * U * WindStrength * PeakAmp`, offset along world `WindDirection`. Pole edge (U=0) anchored, free edge ripples ~5 cm. BaseColor = new branded **`T_GolfForgeFlag`** texture (golden tee + "GolfForge" wordmark on flag-red, composed off-engine from the golf-tee cursor art + the repo's Barlow Bold via System.Drawing). UVs corrected for the grid orientation (vertical flip) and a **`TwoSidedSign`** branch (`tex.u = 0.5 + sign*(0.5-u)`) so the wordmark reads right-side-up + un-mirrored from **both** faces. Built idempotently by `engine/scripts/build_flag_wind_material.py`.
+- **`AGolfPinActor` flag mesh → `UProceduralMeshComponent`** 16×8 grid (the 2-tri Plane couldn't deform); pole-anchored edge at local Y=0, +Y free edge, UVs author U=along-flag for the WPO. `ProceduralMeshComponent` added to `Golfsim.Build.cs`. Disc + gimme-ring stay on the Plane.
+- **Tuning:** baked gentle defaults (`WindStrength 0.5`, `PeakAmp 10`, `Freq 1.0`, `WaveDensity 2.0`). The actor's `MakeColorMID` "Color" set is a harmless no-op on `M_FlagWind` (color is in the texture); it still tints the BasicShapeMaterial fallback.
+- **Known session artifact:** the `static FObjectFinder` for `M_FlagWind` resolves once at editor startup, so a session that *created* the material mid-run keeps falling back to the single-sided BasicShapeMaterial — on the range (player looks +X at the flag's back face) that reads as an invisible flag in PIE. Cold start (or the committed asset on any fresh launch) resolves it → branded two-sided flutter. Not a code bug; documented in the cookbook.
+- **Trees deferred.** Same-ticket follow-up investigated: Megaplant `SK_Silver_Birch` is a PCG-`SkinnedMeshSpawner` instance; its PVE master `MA_Foliage_Trees` has `Displacement Power=1` (WPO system present) but the skinned instances don't evaluate it and it doesn't respond to a `WindDirectionalSource`. Tree sway needs a different approach (reparent the tree MIs to an MPC-driven master, or a vertex-anim/foliage path) → refiled to a later epic.
+
 ## 2026-06-05 — GOL-163 surface material upgrade: distinct, param-tunable surfaces + mowing stripes (Windows)
 
 Third GOL-160 vibe-pass child — the user's priority beta facelift. Reworked `M_GolfsimCourse` so each painted surface reads distinct + intentional, all live-tunable.

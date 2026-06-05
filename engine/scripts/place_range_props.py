@@ -70,13 +70,13 @@ STAKE_HEIGHT_CM = 140.0
 STAKE_DIAM_CM   = 8.0
 CAP_SIZE_CM     = 16.0
 TEXT_ABOVE_CAP_CM = 30.0
-TEXT_WORLD_SIZE = 220.0      # readable from the tee; bump if too small in PIE
+TEXT_WORLD_SIZE = 120.0      # readable from the tee; bump if too small in PIE
 TEXT_YAW        = 180.0      # face glyphs back toward the tee (-X)
 
 # Colors (linear 0..1 for materials; 0..255 for TextRender color).
 POST_COLOR  = (0.92, 0.92, 0.92)   # white
 CAP_COLOR   = (0.85, 0.05, 0.05)   # painted red top
-TEXT_COLOR  = (255, 220, 0)        # bright yellow, pops vs sky + grass
+TEXT_COLOR  = (255, 255, 255)      # white
 
 CYLINDER_MESH_PATH = "/Engine/BasicShapes/Cylinder"
 CUBE_MESH_PATH     = "/Engine/BasicShapes/Cube"

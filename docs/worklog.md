@@ -2,6 +2,15 @@
 
 > Dated milestone summaries, newest on top. The durable outcome + the committed artifact, not the blow-by-blow — process detail lives in git history, `docs/ue5-cookbook.md`, and the scripts themselves.
 
+## 2026-06-05 — GOL-164 water material polish (Windows)
+
+Seventh GOL-160 vibe-pass child. Upgraded `M_GolfsimWater` from flat blue tint to a real Long-Island-pond surface; the course's 10 water bodies now read as water. Procedural/code-only, no Fab.
+
+- **New `engine/scripts/build_water_material.py`** (mirrors `build_flag_wind_material.py`): generates a seamless tiling ripple normal `T_WaterNormal` procedurally off-engine (stdlib sum-of-sine-waves height -> finite-difference normal -> RGB PNG, integer wave periods so it tiles; imported via `AssetImportTask` as TC_NORMALMAP, sRGB off), authors the upgraded translucent two-sided `M_GolfsimWater`, creates `MIC_GolfsimWater`, and re-assigns the MIC to the live `Water_*` actors.
+- **Ripple = per-pixel animated normals, NOT WPO.** The water mesh is a flat low-poly triangulated polygon (no verts for WPO) and WPO would fight the ball-water collision. Two `T_WaterNormal` layers at different tiling/speed, each panned along the shared **`MPC_GolfWind`** `WindDirection` (same wind the flag drifts with), blended + lerped toward flat by `RippleStrength`, normalized -> Normal. Zero geometry change -> collision stays honest (resolves the ticket's <5cm-WPO pitfall outright).
+- **Reflections** are tuning, not new tech: Lumen Reflections already on (GOL-161 movable lights), so low `Roughness` (0.06) + a `Fresnel` curve makes it mirror sky+trees at grazing angles, transparent looking down. **Shore foam:** a `DepthFade` mask lightens (toward `ShoreTint`) + thickens opacity near shorelines (reads as shallows). **Tint:** deep pond green-blue `WaterTint`, not turquoise.
+- **Live-tunable** like GOL-163: `WaterTint`/`ShoreTint`/`RippleStrength`/`RippleSpeed{A,B}`/`RippleTiling{A,B}`/`WaterOpacity`/`Roughness`/`ShoreWidth` are MIC params (Details panel, no rebuild). Verified: material compiles clean, all params resolve, 10 actors re-skinned to the MIC. **Caustics deferred** to GOL-175 (Light-Function path). Persistent actor change -> operator saves `GolfForgeDemoBlack.umap`.
+
 ## 2026-06-05 — GOL-168 range yardage-marker stakes (first pass, Windows)
 
 Sixth GOL-160 vibe-pass child, scoped narrow: the range's first distance reference beyond the movable target pin. Procedural/code-only (no Fab), reproducible + committable now.

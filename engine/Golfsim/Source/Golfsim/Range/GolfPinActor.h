@@ -10,6 +10,7 @@
 #include "GolfPinActor.generated.h"
 
 class UStaticMeshComponent;
+class UProceduralMeshComponent;
 class UMaterialInstanceDynamic;
 
 UCLASS()
@@ -34,6 +35,8 @@ public:
 private:
 	UPROPERTY(VisibleAnywhere, Category = "Golfsim") TObjectPtr<UStaticMeshComponent> DiscMesh;
 	UPROPERTY(VisibleAnywhere, Category = "Golfsim") TObjectPtr<UStaticMeshComponent> PoleMesh;
-	UPROPERTY(VisibleAnywhere, Category = "Golfsim") TObjectPtr<UStaticMeshComponent> FlagMesh;
+	// GOL-165: a subdivided procedural grid (not the 2-tri engine Plane) so the M_FlagWind material's
+	// World Position Offset can ripple it like cloth.
+	UPROPERTY(VisibleAnywhere, Category = "Golfsim") TObjectPtr<UProceduralMeshComponent> FlagMesh;
 	UPROPERTY(VisibleAnywhere, Category = "Golfsim") TObjectPtr<UStaticMeshComponent> GimmeRingMesh;   // GOL-123
 };

@@ -5,6 +5,8 @@
 #include "Engine/StaticMesh.h"
 #include "Materials/Material.h"
 #include "Materials/MaterialInstanceDynamic.h"
+#include "Materials/MaterialInterface.h"
+#include "ProceduralMeshComponent.h"
 #include "UObject/ConstructorHelpers.h"
 
 namespace
@@ -35,6 +37,48 @@ namespace
 		}
 		return MID;
 	}
+
+	// Build a subdivided flag banner in the component's local YZ plane (X=0): pole-attached edge at
+	// local Y=0, free edge at Y=WidthY; height centered on Z. UVs: U=along-flag (0 at pole -> 1 free),
+	// V=height. Enough verts for M_FlagWind's WPO to ripple it like cloth. No collision.
+	void BuildFlagGrid(UProceduralMeshComponent* PMC, float WidthY, float HeightZ)
+	{
+		if (!PMC) { return; }
+		constexpr int32 NX = 16;   // segments along the flag (U / wave travel direction)
+		constexpr int32 NY = 8;    // segments up the height
+		TArray<FVector> Verts;
+		TArray<int32> Tris;
+		TArray<FVector> Normals;
+		TArray<FVector2D> UVs;
+		TArray<FProcMeshTangent> Tangents;
+		const TArray<FLinearColor> NoColors;
+		for (int32 j = 0; j <= NY; ++j)
+		{
+			for (int32 i = 0; i <= NX; ++i)
+			{
+				const float U = static_cast<float>(i) / NX;
+				const float V = static_cast<float>(j) / NY;
+				Verts.Add(FVector(0.f, U * WidthY, (V - 0.5f) * HeightZ));
+				UVs.Add(FVector2D(U, V));
+				Normals.Add(FVector(1.f, 0.f, 0.f));
+				Tangents.Add(FProcMeshTangent(0.f, 1.f, 0.f));
+			}
+		}
+		const int32 Stride = NX + 1;
+		for (int32 j = 0; j < NY; ++j)
+		{
+			for (int32 i = 0; i < NX; ++i)
+			{
+				const int32 A = j * Stride + i;
+				const int32 B = A + 1;
+				const int32 C = A + Stride;
+				const int32 D = C + 1;
+				Tris.Add(A); Tris.Add(C); Tris.Add(B);
+				Tris.Add(B); Tris.Add(C); Tris.Add(D);
+			}
+		}
+		PMC->CreateMeshSection_LinearColor(0, Verts, Tris, Normals, UVs, NoColors, Tangents, /*bCreateCollision=*/false);
+	}
 }
 
 AGolfPinActor::AGolfPinActor()
@@ -57,7 +101,7 @@ AGolfPinActor::AGolfPinActor()
 	PoleMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	PoleMesh->SetMobility(EComponentMobility::Movable);
 
-	FlagMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("FlagMesh"));
+	FlagMesh = CreateDefaultSubobject<UProceduralMeshComponent>(TEXT("FlagMesh"));
 	FlagMesh->SetupAttachment(Root);
 	FlagMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	FlagMesh->SetMobility(EComponentMobility::Movable);
@@ -78,12 +122,14 @@ AGolfPinActor::AGolfPinActor()
 	// vector parameter. Authored by engine/scripts/build_golf_green_material.py; missing the first
 	// time anyone clones the repo, so the loader degrades to BasicShapeMaterial (square tint).
 	static ConstructorHelpers::FObjectFinder<UMaterialInterface> GolfGreenMat(TEXT("/Game/Materials/M_GolfGreen.M_GolfGreen"));
+	// M_FlagWind: two-sided WPO flutter material, branded GolfForge flag texture (GOL-165). Built by
+	// engine/scripts/build_flag_wind_material.py; missing on a fresh clone -> falls back to red BasicMat.
+	static ConstructorHelpers::FObjectFinder<UMaterialInterface> FlagWindMat(TEXT("/Game/Materials/M_FlagWind.M_FlagWind"));
 
 	if (PlaneMesh.Succeeded())
 	{
 		DiscMesh->SetStaticMesh(PlaneMesh.Object);   // flat ground decal -- no thickness, no side wall
-		FlagMesh->SetStaticMesh(PlaneMesh.Object);
-		GimmeRingMesh->SetStaticMesh(PlaneMesh.Object);
+		GimmeRingMesh->SetStaticMesh(PlaneMesh.Object);   // FlagMesh is a procedural grid, built below
 	}
 	if (CylinderMesh.Succeeded())
 	{
@@ -100,11 +146,11 @@ AGolfPinActor::AGolfPinActor()
 	PoleMesh->SetRelativeScale3D(FVector(PoleRadiusScale, PoleRadiusScale, PoleZScale));
 	PoleMesh->SetRelativeLocation(FVector(0.f, 0.f, PoleHeightUU * 0.5f));
 
-	// Flag: rectangle near the top of the pole, sticking out along +Y. Plane is 100x100 cm, normal +Z;
-	// roll 90 deg so it stands up like a banner facing -Y.
-	FlagMesh->SetRelativeScale3D(FVector(FlagWidthUU / PlaneSizeUU, FlagHeightUU / PlaneSizeUU, 1.f));
-	FlagMesh->SetRelativeLocation(FVector(0.f, FlagWidthUU * 0.5f, PoleHeightUU - FlagHeightUU * 0.5f));
-	FlagMesh->SetRelativeRotation(FRotator(/*Pitch=*/0.f, /*Yaw=*/0.f, /*Roll=*/90.f));
+	// Flag: a subdivided banner in the YZ plane (X=0), pole-attached edge at local Y=0 extending +Y to
+	// the free edge; M_FlagWind's WPO ripples it. Component at the pole top so the flag's top edge is
+	// flush with the pole top (grid Z is centered, so origin sits half a flag-height below the top).
+	FlagMesh->SetRelativeLocation(FVector(0.f, 0.f, PoleHeightUU - FlagHeightUU * 0.5f));
+	BuildFlagGrid(FlagMesh, FlagWidthUU, FlagHeightUU);
 
 	// Green: prefer the authored M_GolfGreen (round, matte), fall back to a tinted BasicShapeMaterial
 	// (square) so a fresh clone still builds + spawns a usable, if visibly placeholder, target.
@@ -120,10 +166,16 @@ AGolfPinActor::AGolfPinActor()
 		{
 			PoleMesh->SetMaterial(0, WhiteMID);
 		}
-		if (UMaterialInstanceDynamic* RedMID = MakeColorMID(BasicMat.Object, this, FLinearColor(0.85f, 0.10f, 0.10f)))
-		{
-			FlagMesh->SetMaterial(0, RedMID);
-		}
+	}
+
+	// Flag: prefer the authored M_FlagWind (WPO flutter, branded GolfForge texture baked in -- the
+	// "Color" set below is a harmless no-op on it). Fall back to a tinted BasicShapeMaterial (static
+	// red, where "Color" does apply) so a fresh clone still spawns a usable, if frozen, flag.
+	UMaterialInterface* FlagSrc = FlagWindMat.Succeeded() ? FlagWindMat.Object
+	                            : (BasicMat.Succeeded() ? BasicMat.Object : nullptr);
+	if (UMaterialInstanceDynamic* FlagMID = MakeColorMID(FlagSrc, this, FLinearColor(0.85f, 0.10f, 0.10f)))
+	{
+		FlagMesh->SetMaterial(0, FlagMID);
 	}
 
 	// Gimme ring: same M_GolfGreen masked disc, white tint so it reads as a halo against the

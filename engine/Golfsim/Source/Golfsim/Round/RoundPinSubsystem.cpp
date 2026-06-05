@@ -1,12 +1,14 @@
 #include "Round/RoundPinSubsystem.h"
 
+#include "Engine/Engine.h"
 #include "Engine/World.h"
 #include "Engine/GameInstance.h"
 #include "EngineUtils.h"   // TActorIterator
 #include "Events/EventTypes.h"
 #include "Input/KeyboardSwingComponent.h"   // FSwingDifficultyProfile::For (GOL-123 gimme ring)
 #include "Range/GolfPinActor.h"
-#include "Round/RoundSubsystem.h"           // active difficulty lookup
+#include "Round/RoundState.h"               // FHoleSpec / FRoundState (the hole schedule)
+#include "Round/RoundSubsystem.h"           // schedule + active difficulty lookup
 
 void URoundPinSubsystem::OnWorldBeginPlay(UWorld& InWorld)
 {
@@ -40,70 +42,109 @@ void URoundPinSubsystem::Deinitialize()
 	}
 	Subscriptions.Reset();
 	EventBusWeak.Reset();
-	ManagedPin.Reset();
+	HolePins.Reset();
+	ActiveHoleRef = INDEX_NONE;
 	Super::Deinitialize();
 }
 
 void URoundPinSubsystem::OnRoundStart(const FGolfEvent& /*Event*/)
 {
-	// Wipe the range HUD's pin (if any) so we don't have two pins competing for attention. The
-	// hole.start handler (which always immediately follows -- see URoundSubsystem::ApplyStep)
-	// will place our managed pin at hole 1's green.
+	// Wipe the range HUD's pin (if any) so it doesn't compete, then plant a pin at every hole on the
+	// course so all greens read as flagged -- not just the one in play (GOL-165 follow-up). The
+	// hole.start handler that always immediately follows (see URoundSubsystem::ApplyStep) lights up
+	// hole 1's gimme ring.
 	DestroyAllPins();
+	SpawnAllHolePins();
+}
+
+void URoundPinSubsystem::SpawnAllHolePins()
+{
+	UWorld* World = GetWorld();
+	if (!World) { return; }
+	const URoundSubsystem* Round = URoundSubsystem::Get(this);
+	if (!Round) { return; }   // OnHoleStart still find-or-spawns the active pin as a fallback
+
+	FActorSpawnParameters Sp;
+	Sp.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+	int32 Spawned = 0;
+	for (const GolfsimRound::FHoleSpec& H : Round->GetState().Schedule)
+	{
+		// The schedule's PinWorldLoc is the raw lon/lat projection (Z=0); snap each to the landscape
+		// ourselves -- only the active hole's pin gets a pre-snapped location via the hole.start event.
+		const FVector PinLoc = SnapPinToGround(World, H.PinWorldLoc);
+		AGolfPinActor* Pin = World->SpawnActor<AGolfPinActor>(AGolfPinActor::StaticClass(),
+			PinLoc, FRotator::ZeroRotator, Sp);
+		if (!Pin) { continue; }
+		Pin->SetGimmeRadiusFt(0.0);   // decorative until it becomes the active hole
+		HolePins.Add(H.Ref, Pin);
+		++Spawned;
+	}
+	UE_LOG(LogTemp, Display, TEXT("RoundPinSubsystem: placed %d hole pins"), Spawned);
 }
 
 void URoundPinSubsystem::OnHoleStart(const FGolfEvent& Event)
 {
 	if (Event.Kind != EEventKind::HoleStart) { return; }
 	const FHoleStartEvent& HS = static_cast<const FHoleStartEvent&>(Event);
+	// PinWorldLoc was already ground-snapped by URoundSubsystem::SnapToGround before publish.
+	SetActiveHole(HS.HoleRef, HS.PinWorldLoc);
+}
+
+void URoundPinSubsystem::SetActiveHole(int32 HoleRef, const FVector& SnappedPinLoc)
+{
 	UWorld* World = GetWorld();
 	if (!World) { return; }
 
-	// PinWorldLoc was already ground-snapped by URoundSubsystem::SnapToGround before publish; no
-	// extra trace needed here.
-	AGolfPinActor* Pin = ManagedPin.Get();
+	// Collapse the ring on the hole we're leaving.
+	if (ActiveHoleRef != HoleRef)
+	{
+		if (TWeakObjectPtr<AGolfPinActor>* Prev = HolePins.Find(ActiveHoleRef))
+		{
+			if (AGolfPinActor* PrevPin = Prev->Get()) { PrevPin->SetGimmeRadiusFt(0.0); }
+		}
+	}
+	ActiveHoleRef = HoleRef;
+
+	// Find-or-spawn the active hole's pin. SpawnAllHolePins normally already made it; this covers the
+	// case where the schedule wasn't readable at round.start, or a range-to-round single-hole handoff.
+	TWeakObjectPtr<AGolfPinActor>& Slot = HolePins.FindOrAdd(HoleRef);
+	AGolfPinActor* Pin = Slot.Get();
 	if (!Pin)
 	{
 		FActorSpawnParameters Sp;
 		Sp.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
 		Pin = World->SpawnActor<AGolfPinActor>(AGolfPinActor::StaticClass(),
-			HS.PinWorldLoc, FRotator::ZeroRotator, Sp);
-		ManagedPin = Pin;
-		UE_LOG(LogTemp, Display, TEXT("RoundPinSubsystem: spawned pin for hole %d at (%.0f, %.0f, %.0f)"),
-			HS.HoleRef, HS.PinWorldLoc.X, HS.PinWorldLoc.Y, HS.PinWorldLoc.Z);
+			SnappedPinLoc, FRotator::ZeroRotator, Sp);
+		Slot = Pin;
 	}
-	else
-	{
-		Pin->SetActorLocationAndRotation(HS.PinWorldLoc, FRotator::ZeroRotator);
-		UE_LOG(LogTemp, Display, TEXT("RoundPinSubsystem: moved pin to hole %d at (%.0f, %.0f, %.0f)"),
-			HS.HoleRef, HS.PinWorldLoc.X, HS.PinWorldLoc.Y, HS.PinWorldLoc.Z);
-	}
+	if (!Pin) { return; }
 
-	// GOL-123: size the gimme ring to the active difficulty's radius. Hidden when no round is
-	// active (range pin) since SetGimmeRadiusFt(0) collapses it.
-	if (Pin)
+	// The event's PinWorldLoc is the authoritative snap -- keep the active pin exactly there (it should
+	// already match SpawnAllHolePins' own trace) and size its gimme ring to the round difficulty.
+	Pin->SetActorLocationAndRotation(SnappedPinLoc, FRotator::ZeroRotator);
+	Pin->SetGimmeRadiusFt(ActiveGimmeRadiusFt());
+
+	UE_LOG(LogTemp, Display, TEXT("RoundPinSubsystem: active hole %d at (%.0f, %.0f, %.0f)"),
+		HoleRef, SnappedPinLoc.X, SnappedPinLoc.Y, SnappedPinLoc.Z);
+}
+
+double URoundPinSubsystem::ActiveGimmeRadiusFt() const
+{
+	// GOL-123: ring radius tracks the active difficulty. 0 when no round is active (collapses the ring).
+	if (const URoundSubsystem* Round = URoundSubsystem::Get(this))
 	{
-		double GimmeFt = 0.0;
-		if (const URoundSubsystem* Round = URoundSubsystem::Get(this))
+		if (Round->IsActive())
 		{
-			if (Round->IsActive())
-			{
-				const auto Profile = GolfsimKeyboardSwing::FSwingDifficultyProfile::For(Round->GetState().Difficulty);
-				GimmeFt = Profile.GimmeRadiusFt;
-			}
+			return GolfsimKeyboardSwing::FSwingDifficultyProfile::For(Round->GetState().Difficulty).GimmeRadiusFt;
 		}
-		Pin->SetGimmeRadiusFt(GimmeFt);
 	}
+	return 0.0;
 }
 
 void URoundPinSubsystem::OnRoundComplete(const FGolfEvent& /*Event*/)
 {
-	if (AGolfPinActor* Pin = ManagedPin.Get())
-	{
-		Pin->Destroy();
-	}
-	ManagedPin.Reset();
-	UE_LOG(LogTemp, Display, TEXT("RoundPinSubsystem: round complete -- pin destroyed; range HUD will respawn its own."));
+	DestroyAllPins();
+	UE_LOG(LogTemp, Display, TEXT("RoundPinSubsystem: round complete -- all hole pins destroyed; range HUD will respawn its own."));
 }
 
 void URoundPinSubsystem::DestroyAllPins()
@@ -114,5 +155,20 @@ void URoundPinSubsystem::DestroyAllPins()
 	{
 		if (AActor* A = *It) { A->Destroy(); }
 	}
-	ManagedPin.Reset();
+	HolePins.Reset();
+	ActiveHoleRef = INDEX_NONE;
+}
+
+FVector URoundPinSubsystem::SnapPinToGround(UWorld* World, const FVector& WorldXyz)
+{
+	if (!World) { return WorldXyz; }
+	const FVector Start(WorldXyz.X, WorldXyz.Y,  200000.0);   // 2 km up; matches URoundSubsystem
+	const FVector End  (WorldXyz.X, WorldXyz.Y, -200000.0);
+	FCollisionQueryParams P(SCENE_QUERY_STAT(GolfsimRoundPinGroundTrace), /*bTraceComplex=*/true);
+	FHitResult Hit;
+	if (World->LineTraceSingleByChannel(Hit, Start, End, ECC_WorldStatic, P))
+	{
+		return FVector(WorldXyz.X, WorldXyz.Y, Hit.ImpactPoint.Z);
+	}
+	return WorldXyz;   // off-landscape -- leave the raw Z
 }

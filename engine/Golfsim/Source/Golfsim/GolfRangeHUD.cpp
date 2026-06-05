@@ -34,6 +34,14 @@
 #include "GameFramework/PlayerController.h"
 #include "GameFramework/Pawn.h"
 #include "GenericPlatform/ICursor.h"
+#include "HAL/IConsoleManager.h"    // GOL-167: golf.ShowFPS toggle for the HUD FPS readout
+
+// GOL-167: on-HUD FPS counter for playtesting (sits by the resolution readout).
+// Toggle live in the console: `golf.ShowFPS 0` / `golf.ShowFPS 1`.
+static TAutoConsoleVariable<int32> CVarGolfShowFps(
+	TEXT("golf.ShowFPS"), 1,
+	TEXT("Show the on-HUD FPS counter (top-left). 1=on (default), 0=off."),
+	ECVF_Default);
 
 namespace
 {
@@ -2035,6 +2043,28 @@ void AGolfRangeHUD::DrawHUD()
 		const FString Res = FString::Printf(TEXT("Res: %d x %d"),
 			(int32)Canvas->SizeX, (int32)Canvas->SizeY);
 		DrawText(Res, FLinearColor(1.0f, 0.92f, 0.35f), 20.0f, 20.0f);
+
+		// GOL-167: on-HUD FPS counter (top-left, under the resolution) so perf is
+		// glanceable while playtesting heavy scenes (e.g. the mixed-forest scatter).
+		// EMA-smoothed off the frame delta so the number is steady; color-coded
+		// green/amber/red against the 30 FPS floor. Toggle with `golf.ShowFPS`.
+		if (CVarGolfShowFps.GetValueOnGameThread() != 0)
+		{
+			const float Dt = GetWorld() ? GetWorld()->GetDeltaSeconds() : 0.0f;
+			if (Dt > 0.0f)
+			{
+				const float Inst = 1.0f / Dt;
+				SmoothedFps = (SmoothedFps <= 0.0f) ? Inst : FMath::Lerp(SmoothedFps, Inst, 0.1f);
+			}
+			const int32 Fps = FMath::RoundToInt(SmoothedFps);
+			const float Ms  = (SmoothedFps > 0.0f) ? 1000.0f / SmoothedFps : 0.0f;
+			const FLinearColor FpsColor =
+				(SmoothedFps >= 55.0f) ? FLinearColor(0.35f, 1.0f, 0.35f) :      // green: smooth
+				(SmoothedFps >= 30.0f) ? FLinearColor(1.0f, 0.85f, 0.30f) :      // amber: above floor
+				                         FLinearColor(1.0f, 0.35f, 0.30f);       // red: below 30 gate
+			DrawText(FString::Printf(TEXT("FPS: %d  (%.1f ms)"), Fps, Ms),
+				FpsColor, 20.0f, 40.0f);
+		}
 
 		// GOL-67: persistent bottom-left discoverability hint so first-time users find Tab.
 		// Hidden while a modal is up to keep the panel/menu the only focus surface.

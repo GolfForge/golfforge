@@ -45,6 +45,10 @@ public:
 	virtual void DrawHUD() override;
 
 private:
+	// GOL-167: smoothed FPS for the top-left perf readout (DrawHUD). EMA so the
+	// number is readable instead of jittering every frame. Toggle: golf.ShowFPS.
+	float SmoothedFps = 0.0f;
+
 	void EnsureInputBound();
 	void SelectClub(int32 Index);
 	// GOL-123: ungated club switch used by SelectPutterIfAvailable + SelectClub. The public

@@ -368,17 +368,26 @@ namespace
 			UE_LOG(LogTemp, Warning, TEXT("golfsim.LMSimulate: no active driver (try golfsim.LMSelect openflight)"));
 			return;
 		}
+		// Canned payloads are driver-shaped: each driver's InjectTestMessage parses its own wire form.
+		const bool bGSPro = Driver->GetDriverId() == TEXT("gsproconnect");
 		FString Payload;
 		if (Args.Num() == 0)
 		{
-			// OpenFlight's real shot shape (the {shot,stats} wrapper; spin tilt -> draw).
-			Payload = TEXT("{\"shot\":{\"ball_speed_mph\":167.0,\"launch_angle_vertical\":10.9,")
-				TEXT("\"launch_angle_horizontal\":-1.8,\"spin_rpm\":2686,\"spin_axis_deg\":-4.0,")
-				TEXT("\"club\":\"driver\",\"smash_factor\":1.48}}");
+			Payload = bGSPro
+				// GSPro Open Connect V1 shot message (BallData + ShotDataOptions; SpinAxis -4 -> slight draw).
+				? TEXT("{\"DeviceID\":\"golfforge-test\",\"Units\":\"Yards\",\"ShotNumber\":1,\"APIversion\":\"1\",")
+				  TEXT("\"BallData\":{\"Speed\":167.0,\"SpinAxis\":-4.0,\"TotalSpin\":2686,\"HLA\":-1.8,\"VLA\":10.9},")
+				  TEXT("\"ShotDataOptions\":{\"ContainsBallData\":true,\"IsHeartBeat\":false}}")
+				// OpenFlight's real shot shape (the {shot,stats} wrapper; spin tilt -> draw).
+				: TEXT("{\"shot\":{\"ball_speed_mph\":167.0,\"launch_angle_vertical\":10.9,")
+				  TEXT("\"launch_angle_horizontal\":-1.8,\"spin_rpm\":2686,\"spin_axis_deg\":-4.0,")
+				  TEXT("\"club\":\"driver\",\"smash_factor\":1.48}}");
 		}
 		else if (Args[0].Equals(TEXT("nospin"), ESearchCase::IgnoreCase))
 		{
-			Payload = TEXT("{\"shot\":{\"ball_speed_mph\":120.0,\"launch_angle_vertical\":24.0,\"club\":\"pw\"}}");   // no spin -> heuristic -> est
+			Payload = bGSPro
+				? TEXT("{\"BallData\":{\"Speed\":120.0,\"VLA\":24.0},\"ShotDataOptions\":{\"ContainsBallData\":true,\"IsHeartBeat\":false}}")
+				: TEXT("{\"shot\":{\"ball_speed_mph\":120.0,\"launch_angle_vertical\":24.0,\"club\":\"pw\"}}");   // no spin -> heuristic -> est
 		}
 		else
 		{

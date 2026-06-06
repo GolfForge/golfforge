@@ -2,6 +2,31 @@
 
 > Dated milestone summaries, newest on top. The durable outcome + the committed artifact, not the blow-by-blow — process detail lives in git history, `docs/ue5-cookbook.md`, and the scripts themselves.
 
+## 2026-06-06 — GOL-178 GSPro Open Connect V1 server driver (Windows)
+
+New `UGSProConnectDriver : ULaunchMonitorDriver` (`Drivers/GSProConnectDriver.{h,cpp}`) makes GolfForge
+*the GSPro server*: a raw TCP listener on `127.0.0.1:921` (newline-delimited JSON, no auth) that the
+community LM connectors dial. One driver inherits six launch monitors (Rapsodo MLM2PRO, FlightScope
+Mevo+, SkyTrak, Garmin R10, Square Omni, Foresight GC2) with no per-LM code and no hardware for
+bring-up — and no websockets, so it sidesteps GOL-36. Positioning: "use your existing connector with
+GolfForge — no GSPro subscription required."
+
+- **Driver:** mirrors `UOpenFlightDriver`. Pure static `ParseShot` (BallData `Speed` mph→m/s via the
+  shared `0.44704`; `VLA`→launch, `HLA`→azimuth; spin via `TotalSpin`+`SpinAxis` decomposition (same as
+  OpenFlight), else measured `BackSpin`/`SideSpin`, else launch-angle heuristic + `bSpinEstimated`).
+  Heartbeats / `ContainsBallData:false` are acked but not published.
+- **Threading:** a dedicated `FRunnable` (`FGSProConnectListener`) owns the blocking accept+recv loop;
+  parsed shots + status cross to the game thread over SPSC `TQueue`s drained by an `FTSTicker` (publish
+  must be game-thread — synchronous EventBus dispatch). `{Code:200}` ack per message; `{Code:201}` player
+  push (Handed=RH + club code) on connect / `SetSelectedClub`. One client, last-wins.
+- **Wiring:** registered in `LaunchMonitorManager::Initialize` (opt-in; openflight stays default active),
+  `[LaunchMonitor.GSProConnect] Port=921` in `DefaultGame.ini`, `Sockets`+`Networking` in `Build.cs`,
+  GSPro-shaped canned payload in `golfsim.LMSimulate`. Docs: `Drivers/README.md` + `docs/event-protocol.md`.
+- **Verified:** clean headless build (UE 5.7); all 7 `Golfsim.GSProConnect.*` parser tests pass. Live
+  TCP round-trip + real-connector validation (squaregolf-connector mock mode) run in parallel — listener
+  + wire contract handed off; full 6-connector matrix is GOL-181. (UHT gotcha: a forward-declared
+  `TUniquePtr` member breaks the generated ctor — used a raw owned ptr + out-of-line dtor.)
+
 ## 2026-06-05 — GOL-166 ambient SFX layer: gameplay-gated birdsong (Windows)
 
 Ninth GOL-160 vibe-pass child. Both maps were dead silent; now they have an outdoor ambience.

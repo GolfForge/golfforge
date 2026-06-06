@@ -2,6 +2,7 @@
 
 #include "Drivers/LaunchMonitorDriver.h"
 #include "Drivers/OpenFlightDriver.h"
+#include "Drivers/GSProConnectDriver.h"
 #include "Events/EventBusSubsystem.h"
 
 #include "Engine/Engine.h"          // GEngine->GetWorldFromContextObject
@@ -15,6 +16,9 @@ void ULaunchMonitorManager::Initialize(FSubsystemCollectionBase& Collection)
 
 	// Register the known connectors. Square Omni (GOL-12) etc. add a RegisterDriver line here.
 	RegisterDriver(NewObject<UOpenFlightDriver>(this));
+	// GSPro Open Connect server (GOL-178): one TCP listener inherits the whole connector ecosystem
+	// (MLM2PRO, Mevo+, SkyTrak, R10, Square Omni, GC2). Opt-in -- select via golfsim.LMSelect.
+	RegisterDriver(NewObject<UGSProConnectDriver>(this));
 
 	FString ConfiguredActive = TEXT("openflight");
 	GConfig->GetString(TEXT("LaunchMonitor"), TEXT("ActiveDriver"), ConfiguredActive, GGameIni);

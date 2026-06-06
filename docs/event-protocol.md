@@ -131,6 +131,19 @@ The canonical shot event. All units SI.
 
 **Optional monitor-resolved fields.** Some launch monitors (e.g. Square Omni, Garmin Approach R50, ProTee VX) also report their *own* computed flight metrics — but not a sampled path. A driver MAY attach these as optional fields: `carry_m`, `apex_m`, `descent_deg`, `hang_s`. When present, the sim's "trace" mode reconstructs an arc that matches those numbers (so the in-game ball lands where the device says) instead of simulating from the launch conditions. Absent these, the sim simulates the flight itself. Exact per-device field mapping is firmed up at the v0.3 launch-monitor milestone.
 
+**GSPro Open Connect V1 mapping (GOL-178).** The `gsproconnect` driver is a TCP *server* (GSPro's role) that the community LM connectors dial; their `BallData` maps to `shot.taken` as follows (all parse at the boundary; only speed converts):
+
+| GSPro `BallData` field | units | → `shot.taken` payload | notes |
+|---|---|---|---|
+| `Speed`              | mph | `ball_speed_mps` (× 0.44704) | **required** (mph always; GSPro `Units` governs distance, not speed) |
+| `VLA`                | deg | `launch_angle_deg` (as-is) | vertical launch angle |
+| `HLA`                | deg | `azimuth_deg` (as-is) | + = right |
+| `TotalSpin`+`SpinAxis` | rpm,deg | `backspin_rpm`/`sidespin_rpm` | decomposed: back = total·cos(axis), side = total·sin(axis); + axis = fade/right |
+| `BackSpin`(+`SideSpin`) | rpm | `backspin_rpm`/`sidespin_rpm` | used directly when `TotalSpin` absent; + side = fade/right |
+| (spin absent)        | — | `backspin_rpm` est. | `clamp(VLA·350, 1500, 9000)`, side 0, `bSpinEstimated` set |
+
+`ShotDataOptions.IsHeartBeat` / `ContainsBallData:false` messages are acked (`{Code:200}`) but not published. The server pushes `{Code:201,Player:{Handed,Club}}` on connect and on club change. Same sign conventions as above (Trackman). See `Drivers/README.md` for the wire/transport detail.
+
 #### `shot.cancel`
 
 Player aborts a shot before contact.

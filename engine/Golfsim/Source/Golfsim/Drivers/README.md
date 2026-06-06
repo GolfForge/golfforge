@@ -116,12 +116,15 @@ driver work from us**:
 
 | Launch monitor | Community connector | Lang |
 |---|---|---|
-| Rapsodo MLM2PRO | `springbok/MLM2PRO-GSPro-Connector` (+ `OpenGolfSim` fork) | Python |
-| FlightScope Mevo+ | `springbok/MLM2PRO-GSPro-Connector` (same) | Python |
-| SkyTrak | `OpenSkyPlus2/OpenSkyPlus2` | C# |
-| Garmin Approach R10 | `travislang/gspro-garmin-connect-v2` | — |
-| Square Omni / Square Golf | `brentyates/squaregolf-connector` (MIT) | Go |
-| Foresight GC2 | `matthew-johnston/gspro-gc2-connector` | mixed |
+| Rapsodo MLM2PRO | [springbok/MLM2PRO-GSPro-Connector](https://github.com/springbok/MLM2PRO-GSPro-Connector) (+ OpenGolfSim fork) | Python |
+| FlightScope Mevo+ | [springbok/MLM2PRO-GSPro-Connector](https://github.com/springbok/MLM2PRO-GSPro-Connector) (same) | Python |
+| SkyTrak | [OpenSkyPlus2/OpenSkyPlus2](https://github.com/OpenSkyPlus2/OpenSkyPlus2) | C# |
+| Garmin Approach R10 | [travislang/gspro-garmin-connect-v2](https://github.com/travislang/gspro-garmin-connect-v2) | — |
+| Square Omni / Square Golf | [brentyates/squaregolf-connector](https://github.com/brentyates/squaregolf-connector) (MIT) — **validated ✅** | Go |
+| Foresight GC2 | [matthew-johnston/gspro-gc2-connector](https://github.com/matthew-johnston/gspro-gc2-connector) | mixed |
+
+Thanks to these maintainers — GolfForge interoperates with their connectors over the open protocol
+(separate processes, not vendored). See the repo-root `README.md` Acknowledgements.
 
 Auth-gated devices whose vendor connectors do a server-side handshake (Garmin R50, Bushnell Launch Pro,
 Foresight GCQuad/GC3, possibly Uneekor) are **out of scope** here — they go under the GOL-180 native

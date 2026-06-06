@@ -144,6 +144,26 @@ keep its dual license. See [`CONTRIBUTING.md`](CONTRIBUTING.md) and the
 [Code of Conduct](CODE_OF_CONDUCT.md). Please report security issues privately per
 [`SECURITY.md`](SECURITY.md).
 
+## Acknowledgements
+
+GolfForge builds on excellent open-source work:
+
+- **Launch-monitor connectors.** GolfForge speaks the **GSPro Open Connect** protocol as a server, so the
+  community's connector ecosystem works with it directly — no GSPro subscription required. Special thanks
+  to **[@brentyates](https://github.com/brentyates)** and the
+  [squaregolf-connector](https://github.com/brentyates/squaregolf-connector) (MIT), the first connector
+  validated end-to-end against GolfForge, and to the broader projects we interoperate with:
+  [springbok/MLM2PRO-GSPro-Connector](https://github.com/springbok/MLM2PRO-GSPro-Connector) (Rapsodo
+  MLM2PRO, FlightScope Mevo+), [OpenSkyPlus2](https://github.com/OpenSkyPlus2/OpenSkyPlus2) (SkyTrak),
+  [travislang/gspro-garmin-connect-v2](https://github.com/travislang/gspro-garmin-connect-v2) (Garmin
+  Approach R10), and [matthew-johnston/gspro-gc2-connector](https://github.com/matthew-johnston/gspro-gc2-connector)
+  (Foresight GC2). GolfForge talks to these as separate processes over the open protocol — their source
+  is not vendored.
+- **[OpenFlight](https://github.com/jewbetcha/openflight)** — the open-source DIY Doppler-radar launch
+  monitor and GolfForge's first launch-monitor driver.
+- **[Unreal Claude MCP](https://github.com/NAJEMWEHBE/UnrealClaudeMCP)** (MIT) — the UE5 ↔ MCP
+  editor-automation bridge that has been central to our AI-assisted development and testing workflow.
+
 ## License
 
 GolfForge is dual-licensed:

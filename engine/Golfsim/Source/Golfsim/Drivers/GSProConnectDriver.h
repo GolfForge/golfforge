@@ -36,8 +36,14 @@ public:
 	// (where FGSProConnectListener is complete), not inline / in the UHT-generated constructor.
 	virtual ~UGSProConnectDriver() override;
 
-	virtual FString GetDriverId() const override { return TEXT("gsproconnect"); }
-	virtual FText GetDisplayName() const override { return NSLOCTEXT("Golfsim", "GSProConnectDriver", "GSPro Connect"); }
+	/** Set this instance's dropdown identity. All GSPro-connector entries (gsproconnect, squaregolf,
+	 *  mlm2pro, ...) share this one driver -- they speak the same GSPro Open Connect protocol -- but
+	 *  register as separate selectable entries so a specific connector can be troubleshot in isolation.
+	 *  Only the active entry binds the port, so registering several is safe. */
+	void SetIdentity(const FString& InId, const FText& InDisplayName) { DriverId = InId; DisplayName = InDisplayName; }
+
+	virtual FString GetDriverId() const override { return DriverId; }
+	virtual FText GetDisplayName() const override { return DisplayName; }
 
 	virtual void Connect() override;       // bind + listen on 921, spawn the listener thread
 	virtual void Disconnect() override;    // stop the thread, close sockets
@@ -57,6 +63,10 @@ private:
 
 	// Drain the listener's shot + status queues on the game thread; publish + fire status there.
 	bool DrainQueues(float DeltaTime);
+
+	// Dropdown identity (settable per registered instance; defaults to the generic GSPro Connect entry).
+	FString DriverId = TEXT("gsproconnect");
+	FText DisplayName = NSLOCTEXT("Golfsim", "GSProConnectDriver", "GSPro Connect");
 
 	// Owned listener thread (raw ptr, not TUniquePtr: a forward-declared TUniquePtr member forces the
 	// UHT-generated constructor to instantiate the deleter on the incomplete type). new'd in Connect,

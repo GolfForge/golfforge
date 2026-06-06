@@ -12,20 +12,34 @@ bring-up — and no websockets, so it sidesteps GOL-36. Positioning: "use your e
 GolfForge — no GSPro subscription required."
 
 - **Driver:** mirrors `UOpenFlightDriver`. Pure static `ParseShot` (BallData `Speed` mph→m/s via the
-  shared `0.44704`; `VLA`→launch, `HLA`→azimuth; spin via `TotalSpin`+`SpinAxis` decomposition (same as
-  OpenFlight), else measured `BackSpin`/`SideSpin`, else launch-angle heuristic + `bSpinEstimated`).
-  Heartbeats / `ContainsBallData:false` are acked but not published.
+  shared `0.44704`; `VLA`→launch, `HLA`→azimuth; spin prefers the connector's **measured** `BackSpin`/
+  `SideSpin` (consumed as-is — they need not be self-consistent with `TotalSpin`), falls back to
+  `TotalSpin`+`SpinAxis` decomposition, then a launch-angle heuristic). Gates strictly on the
+  `ShotDataOptions.Contains*` flags — every message carries both `BallData` and `ClubData` (one is
+  zero-filler), so key presence means nothing.
 - **Threading:** a dedicated `FRunnable` (`FGSProConnectListener`) owns the blocking accept+recv loop;
   parsed shots + status cross to the game thread over SPSC `TQueue`s drained by an `FTSTicker` (publish
-  must be game-thread — synchronous EventBus dispatch). `{Code:200}` ack per message; `{Code:201}` player
-  push (Handed=RH + club code) on connect / `SetSelectedClub`. One client, last-wins.
-- **Wiring:** registered in `LaunchMonitorManager::Initialize` (opt-in; openflight stays default active),
-  `[LaunchMonitor.GSProConnect] Port=921` in `DefaultGame.ini`, `Sockets`+`Networking` in `Build.cs`,
-  GSPro-shaped canned payload in `golfsim.LMSimulate`. Docs: `Drivers/README.md` + `docs/event-protocol.md`.
-- **Verified:** clean headless build (UE 5.7); all 7 `Golfsim.GSProConnect.*` parser tests pass. Live
-  TCP round-trip + real-connector validation (squaregolf-connector mock mode) run in parallel — listener
-  + wire contract handed off; full 6-connector matrix is GOL-181. (UHT gotcha: a forward-declared
-  `TUniquePtr` member breaks the generated ctor — used a raw owned ptr + out-of-line dtor.)
+  must be game-thread — synchronous EventBus dispatch). One client, last-wins.
+- **Arm/fire/re-arm protocol** (learned live against the connector): the player-info push MUST be
+  `{"Code":201,"Message":"GSPro Player Information",...}` verbatim (connectors switch on that string to
+  arm; a custom string is ignored). The connector fires one shot per arm — per-shot order is ready
+  heartbeat → ball-data → **club-data (end of shot)** → ~2-3s reset. So the connect-time 201 arms shot
+  #1, and on **club-data** we wait a **~3s settle** then send **one** re-arm 201. Re-arming after
+  ball-data / immediately freezes the connector's detection loop.
+- **Wiring:** registered in `LaunchMonitorManager::Initialize` via a `SetIdentity(id,label)` seam, as
+  **two dropdown entries** today — `gsproconnect` ("GSPro Connect") + `squaregolf` ("Square Golf") —
+  sharing one driver so each connector can be troubleshot individually (adding mlm2pro/skytrak/… is one
+  line; only the active entry binds 921). Opt-in (openflight stays default active).
+  `[LaunchMonitor.GSProConnect] Port=921`, `Sockets`+`Networking` in `Build.cs`. Docs: `Drivers/README.md`
+  + `docs/event-protocol.md`.
+- **Verified:** clean UE 5.7 build; all 8 `Golfsim.GSProConnect.*` parser tests pass. **Live-validated
+  end-to-end** against `brentyates/squaregolf-connector` (simulate mode) under both the `gsproconnect`
+  and `squaregolf` entries — connector connects, shots flow (parse→bus→solver→ball+panel), and
+  continuous shooting works (arm→fire→club-data→3s→re-arm). The connector's simulate mode emits
+  placeholder metrics (tiny launch/spin → worm-burners); that's mock data, not a mapping fault.
+  (UHT gotcha: a forward-declared `TUniquePtr` member breaks the generated ctor — used a raw owned ptr +
+  out-of-line dtor.) Follow-ups: ball-ready UI (GOL-186), club/face-impact metrics + UI (GOL-187); full
+  6-connector matrix is GOL-181.
 
 ## 2026-06-05 — GOL-166 ambient SFX layer: gameplay-gated birdsong (Windows)
 

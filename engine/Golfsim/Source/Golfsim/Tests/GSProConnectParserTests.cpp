@@ -78,6 +78,32 @@ bool FGolfsimGSProBackSideSpinTest::RunTest(const FString& /*Parameters*/)
 	return true;
 }
 
+// --- All of TotalSpin+Back+Side present: measured Back/Side win (not the axis decomposition) --------
+// The real squaregolf connector sends all three, and they need not be self-consistent
+// (TotalSpin != hypot(Back,Side)); the device's measured components are authoritative.
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FGolfsimGSProMeasuredSpinWinsTest, "Golfsim.GSProConnect.MeasuredSpinWins",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FGolfsimGSProMeasuredSpinWinsTest::RunTest(const FString& /*Parameters*/)
+{
+	// TotalSpin 179 + SpinAxis -5.5 would decompose to back=178, side=-17 (left). The measured
+	// components say back=109, side=+17 (right). The parser must use the measured ones.
+	const FString Json = TEXT("{\"BallData\":{\"Speed\":59.0,\"SpinAxis\":-5.5,\"TotalSpin\":179,")
+		TEXT("\"BackSpin\":109,\"SideSpin\":17,\"HLA\":0.1,\"VLA\":1.2},")
+		TEXT("\"ShotDataOptions\":{\"ContainsBallData\":true,\"ContainsClubData\":false,\"IsHeartBeat\":false}}");
+
+	FShotTakenEvent Out;
+	bool bSpinEstimated = true;
+	const bool bOk = UGSProConnectDriver::ParseShot(Json, Out, bSpinEstimated);
+
+	TestTrue(TEXT("parse succeeded"), bOk);
+	TestFalse(TEXT("measured, not estimated"), bSpinEstimated);
+	TestTrue(TEXT("backspin = measured BackSpin (not total*cos)"), FMath::IsNearlyEqual(Out.BackspinRpm, 109.0, 0.5));
+	TestTrue(TEXT("sidespin = measured SideSpin, + = right (not decomposed -17)"), FMath::IsNearlyEqual(Out.SidespinRpm, 17.0, 0.5));
+	return true;
+}
+
 // --- Missing spin -> launch-angle heuristic + flagged estimated -------------------------------------
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FGolfsimGSProMissingSpinTest, "Golfsim.GSProConnect.MissingSpinEstimated",

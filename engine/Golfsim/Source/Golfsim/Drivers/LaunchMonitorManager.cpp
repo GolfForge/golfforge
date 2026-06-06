@@ -16,9 +16,22 @@ void ULaunchMonitorManager::Initialize(FSubsystemCollectionBase& Collection)
 
 	// Register the known connectors. Square Omni (GOL-12) etc. add a RegisterDriver line here.
 	RegisterDriver(NewObject<UOpenFlightDriver>(this));
-	// GSPro Open Connect server (GOL-178): one TCP listener inherits the whole connector ecosystem
-	// (MLM2PRO, Mevo+, SkyTrak, R10, Square Omni, GC2). Opt-in -- select via golfsim.LMSelect.
-	RegisterDriver(NewObject<UGSProConnectDriver>(this));
+
+	// GSPro Open Connect server (GOL-178): one TCP listener (921) inherits the whole connector
+	// ecosystem (MLM2PRO, Mevo+, SkyTrak, R10, Square Omni/Square Golf, GC2). We register it as
+	// separate dropdown entries per connector -- all share UGSProConnectDriver (same protocol) but
+	// appear individually so a specific connector can be troubleshot in isolation; only the active
+	// entry binds the port. Adding another (mlm2pro, skytrak, ...) is one line here. Opt-in -- the
+	// default active driver stays openflight; select via golfsim.LMSelect / the settings UI.
+	{
+		UGSProConnectDriver* GSPro = NewObject<UGSProConnectDriver>(this);
+		GSPro->SetIdentity(TEXT("gsproconnect"), NSLOCTEXT("Golfsim", "GSProConnectDriver", "GSPro Connect"));
+		RegisterDriver(GSPro);
+
+		UGSProConnectDriver* SquareGolf = NewObject<UGSProConnectDriver>(this);
+		SquareGolf->SetIdentity(TEXT("squaregolf"), NSLOCTEXT("Golfsim", "SquareGolfDriver", "Square Golf"));
+		RegisterDriver(SquareGolf);
+	}
 
 	FString ConfiguredActive = TEXT("openflight");
 	GConfig->GetString(TEXT("LaunchMonitor"), TEXT("ActiveDriver"), ConfiguredActive, GGameIni);

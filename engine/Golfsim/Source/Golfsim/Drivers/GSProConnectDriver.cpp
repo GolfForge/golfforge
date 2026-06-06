@@ -7,6 +7,7 @@
 #include "SocketSubsystem.h"              // ISocketSubsystem, FInternetAddr, PLATFORM_SOCKETSUBSYSTEM
 #include "HAL/Runnable.h"
 #include "HAL/RunnableThread.h"
+#include "HAL/PlatformTime.h"            // FPlatformTime::Seconds (re-arm scheduling)
 #include "Misc/ScopeLock.h"
 #include "Containers/Queue.h"
 #include "Dom/JsonObject.h"
@@ -120,7 +121,15 @@ public:
 				AcceptNewClient();
 			}
 
-			// 2. Service the current client, if any.
+			// 2. Fire a scheduled re-arm once its settle has elapsed (armed on club-data / end-of-shot).
+			if (RearmDueTime > 0.0 && FPlatformTime::Seconds() >= RearmDueTime)
+			{
+				RearmDueTime = 0.0;
+				UE_LOG(LogTemp, Display, TEXT("golfsim GSProConnect: sending re-arm (Code:201) -- ready for next shot"));
+				SendPlayer();
+			}
+
+			// 3. Service the current client, if any.
 			FSocket* C = nullptr;
 			{
 				FScopeLock Lock(&ClientCS);
@@ -241,9 +250,15 @@ private:
 
 	void HandleLine(const FString& Line)
 	{
+		// Raw connector frame, for protocol/field-mapping troubleshooting (enable `log LogTemp Verbose`).
+		UE_LOG(LogTemp, Verbose, TEXT("golfsim GSProConnect: raw <- %s"), *Line);
+
 		// Ack every message the connector sends -- it treats {Code:200} as "the server got it".
 		SendRaw(TEXT("{\"Code\":200}\n"));
 
+		// Ball-data = the shot itself: parse + publish. Re-arm is NOT sent here -- the connector is
+		// still mid-cycle (a club-data message + an internal reset follow), and an immediate {Code:201}
+		// lands mid-cycle and cancels its detection loop.
 		FShotTakenEvent Shot;
 		bool bSpinEstimated = false;
 		if (UGSProConnectDriver::ParseShot(Line, Shot, bSpinEstimated))
@@ -254,7 +269,37 @@ private:
 				bSpinEstimated ? TEXT(" (est)") : TEXT(""));
 			ShotQueue.Enqueue(Shot);
 		}
-		// Heartbeats / non-shot messages parse to false: acked above, nothing published.
+
+		// Club-data marks END OF SHOT (per-shot order: ready heartbeat -> ball-data -> club-data). The
+		// connector fires exactly one shot per arm, then resets to idle (~2-3s). To get the next shot we
+		// re-arm with a {Code:201}, but only AFTER a short settle so the reset completes (an immediate
+		// re-arm is swallowed). Schedule it; the Run loop fires it when RearmDueTime elapses. The
+		// connect-time 201 arms the first shot.
+		if (MessageHasClubData(Line))
+		{
+			RearmDueTime = FPlatformTime::Seconds() + RearmSettleSeconds;
+			UE_LOG(LogTemp, Display,
+				TEXT("golfsim GSProConnect: club-data (end of shot) -> re-arm in %.1fs"), RearmSettleSeconds);
+		}
+	}
+
+	// True if the message's ShotDataOptions.ContainsClubData is set (the connector's end-of-shot marker).
+	static bool MessageHasClubData(const FString& Json)
+	{
+		TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(Json);
+		TSharedPtr<FJsonObject> Root;
+		if (!FJsonSerializer::Deserialize(Reader, Root) || !Root.IsValid())
+		{
+			return false;
+		}
+		const TSharedPtr<FJsonObject>* Opts = nullptr;
+		if (!Root->TryGetObjectField(TEXT("ShotDataOptions"), Opts) || !Opts || !Opts->IsValid())
+		{
+			return false;
+		}
+		bool bClub = false;
+		(*Opts)->TryGetBoolField(TEXT("ContainsClubData"), bClub);
+		return bClub;
 	}
 
 	void SendPlayer()
@@ -262,9 +307,13 @@ private:
 		FString Line;
 		{
 			FScopeLock Lock(&ClientCS);
+			// Message MUST be the verbatim GSPro string "GSPro Player Information": connectors switch on
+			// this exact text to recognize the player-info/"ready" signal that arms ball detection. A
+			// custom string (e.g. "GolfForge Player") falls through as "Unknown GSPro message type" and
+			// never arms. (Confirmed against squaregolf-connector connection.go.)
 			Line = ClubCode.IsEmpty()
-				? FString::Printf(TEXT("{\"Code\":201,\"Message\":\"GolfForge Player\",\"Player\":{\"Handed\":\"%s\"}}\n"), *Handed)
-				: FString::Printf(TEXT("{\"Code\":201,\"Message\":\"GolfForge Player\",\"Player\":{\"Handed\":\"%s\",\"Club\":\"%s\"}}\n"), *Handed, *ClubCode);
+				? FString::Printf(TEXT("{\"Code\":201,\"Message\":\"GSPro Player Information\",\"Player\":{\"Handed\":\"%s\"}}\n"), *Handed)
+				: FString::Printf(TEXT("{\"Code\":201,\"Message\":\"GSPro Player Information\",\"Player\":{\"Handed\":\"%s\",\"Club\":\"%s\"}}\n"), *Handed, *ClubCode);
 		}
 		SendRaw(Line);
 	}
@@ -292,6 +341,11 @@ private:
 	FString ClubCode;
 
 	FString RecvBuffer;                 // socket-thread only
+	double RearmDueTime = 0.0;          // socket-thread only; FPlatformTime::Seconds() due time, 0 = none
+	// Settle after club-data before re-arming. The connector's post-shot reset (idle + ~2s) isn't
+	// instant and gives no "reset done" signal; re-arming during it freezes its detection loop. ~3s
+	// clears the reset. Magic number, inherent to re-arming the connector from outside its teardown.
+	static constexpr double RearmSettleSeconds = 3.0;
 	std::atomic<bool> bStop{ false };
 
 	TQueue<FShotTakenEvent, EQueueMode::Spsc> ShotQueue;        // socket thread -> game thread
@@ -480,19 +534,27 @@ bool UGSProConnectDriver::ParseShotObject(const TSharedPtr<FJsonObject>& Root, F
 	Ball->TryGetNumberField(TEXT("HLA"), HLA);   // horizontal launch angle, + = right
 	Out.AzimuthDeg = HLA;
 
-	// Spin: prefer TotalSpin+SpinAxis (decompose, like OpenFlight), then measured BackSpin[/SideSpin],
-	// else estimate from launch angle. SpinAxis/SideSpin sign: + = fade/right (our SidespinRpm convention).
-	double TotalSpin = 0.0;
-	const bool bHasTotal = Ball->TryGetNumberField(TEXT("TotalSpin"), TotalSpin) && TotalSpin > 0.0;
+	// Spin: prefer the connector's MEASURED BackSpin/SideSpin (already sign-flipped to our +=fade/right
+	// convention -- consume as-is). Only decompose TotalSpin+SpinAxis when explicit components are
+	// absent (e.g. a connector that sends only total+axis); else estimate from launch angle. Note: when
+	// a device reports all of them they need not be self-consistent (TotalSpin != hypot(Back,Side)), so
+	// the measured components are authoritative, not the decomposition.
 	double BackSpin = 0.0;
 	const bool bHasBack = Ball->TryGetNumberField(TEXT("BackSpin"), BackSpin);
 	double SideSpin = 0.0;
 	const bool bHasSide = Ball->TryGetNumberField(TEXT("SideSpin"), SideSpin);
+	double TotalSpin = 0.0;
+	const bool bHasTotal = Ball->TryGetNumberField(TEXT("TotalSpin"), TotalSpin) && TotalSpin > 0.0;
 
-	if (bHasTotal)
+	if (bHasBack && bHasSide)
+	{
+		Out.BackspinRpm = BackSpin;
+		Out.SidespinRpm = SideSpin;   // + = fade/right
+	}
+	else if (bHasTotal)
 	{
 		double Axis = 0.0;
-		Ball->TryGetNumberField(TEXT("SpinAxis"), Axis);
+		Ball->TryGetNumberField(TEXT("SpinAxis"), Axis);   // + = fade/right tilt
 		const double AxisRad = FMath::DegreesToRadians(Axis);
 		Out.BackspinRpm = TotalSpin * FMath::Cos(AxisRad);
 		Out.SidespinRpm = TotalSpin * FMath::Sin(AxisRad);
@@ -500,7 +562,7 @@ bool UGSProConnectDriver::ParseShotObject(const TSharedPtr<FJsonObject>& Root, F
 	else if (bHasBack)
 	{
 		Out.BackspinRpm = BackSpin;
-		Out.SidespinRpm = bHasSide ? SideSpin : 0.0;
+		Out.SidespinRpm = 0.0;
 	}
 	else
 	{

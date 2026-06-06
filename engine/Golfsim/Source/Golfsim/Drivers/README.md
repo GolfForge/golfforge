@@ -130,16 +130,30 @@ Foresight GCQuad/GC3, possibly Uneekor) are **out of scope** here — they go un
 **Transport: raw TCP, `127.0.0.1:921`, newline-delimited JSON, no auth** (verbatim spec: "the socket
 connection is open and does not require authentication"). No websockets, so it sidesteps GOL-36 entirely.
 
+- **Dropdown entries:** one `UGSProConnectDriver` class backs several selectable entries via
+  `SetIdentity(id, label)` — registered as `gsproconnect` ("GSPro Connect", generic) and `squaregolf`
+  ("Square Golf") today; adding `mlm2pro` / `skytrak` / … is one line in `LaunchMonitorManager::Initialize`.
+  They all speak the same protocol but appear separately so a specific connector can be troubleshot in
+  isolation. Only the **active** entry binds the port, so registering several is safe.
 - **Listener:** `Connect()` binds a listening `FSocket` on the configured port and spawns a dedicated
   `FRunnable` (`FGSProConnectListener`) for the blocking accept + recv loop. Parsed shots + status changes
   cross to the game thread over SPSC `TQueue`s, drained by an `FTSTicker` — publishing MUST be on the game
   thread (synchronous EventBus dispatch touches the world). One client at a time, **last-wins** (a new
   connection closes the old). Config: `[LaunchMonitor.GSProConnect] Port` (default 921).
-- **Responses:** every received line is acked `{"Code":200}` (the connector treats that as "received").
-  On client connect and on `SetSelectedClub`, the server pushes `{"Code":201,"Player":{"Handed":"RH",
-  "Club":"<code>"}}` (club name → GSPro code via `DisplayClubToGSPro`; handedness defaults RH).
+- **Responses:** every received line is acked `{"Code":200}`. The player-info / "ready" push is
+  `{"Code":201,"Message":"GSPro Player Information","Player":{"Handed":"RH","Club":"<code>"}}` — the
+  `Message` MUST be the verbatim string `GSPro Player Information`; connectors switch on it to recognize
+  the arm signal (a custom string is logged "Unknown GSPro message type" and never arms). Club name →
+  GSPro code via `DisplayClubToGSPro`; handedness defaults RH.
+- **Arm/fire/re-arm protocol (verified vs `squaregolf-connector`):** the connector fires **one shot per
+  arm**, then resets to idle (~2-3s, no "reset done" signal). Per-shot order: `LaunchMonitorIsReady:true`
+  heartbeat (ready) → **ball-data** (`ContainsBallData:true`, the shot) → **club-data**
+  (`ContainsClubData:true`, *end of shot*) → internal reset. So: the connect-time `{Code:201}` arms shot
+  #1; on **club-data** we wait a **~3s settle** then send **exactly one** re-arm `{Code:201}`. Re-arming
+  on ball-data / immediately / on a timer lands mid-reset and **freezes** the connector's detection loop.
 - **Status:** `Online` once a client is connected, else `Off` (bound, no client) — the driver→manager
-  seam carries a connected bool; the 4-state `Pairing` would need widening `OnStatusChanged` (follow-up).
+  seam carries a connected bool; surfacing the `LaunchMonitorIsReady` heartbeat as a player-facing
+  "ready to fire" state (and the 4-state `Pairing`) is GOL-186.
 
 ### Shot schema (GSPro Open Connect V1 message)
 
@@ -151,16 +165,25 @@ connection is open and does not require authentication"). No websockets, so it s
 | `BallData.Speed`     | float | mph | `BallSpeedMps` (× 0.44704) | **required** (mph always; `Units` governs distance only) |
 | `BallData.VLA`       | float | deg | `LaunchAngleDeg` (as-is) | vertical launch angle |
 | `BallData.HLA`       | float | deg | `AzimuthDeg` (as-is, + = right) | horizontal launch angle |
-| `BallData.TotalSpin` + `SpinAxis` | float | rpm,deg | back/side (decomposed) | `+` axis = fade/right |
-| `BallData.BackSpin` (+ `SideSpin`) | float | rpm | `BackspinRpm`/`SidespinRpm` direct | used when `TotalSpin` absent |
-| `ShotDataOptions.ContainsBallData` | bool | — | gate | `false` → acked, not a shot |
+| `BallData.BackSpin` + `SideSpin` | float | rpm | `BackspinRpm`/`SidespinRpm` (as-is) | **preferred** — measured, connector pre-signs (+ = fade/right) |
+| `BallData.TotalSpin` + `SpinAxis` | float | rpm,deg | back/side (decomposed) | fallback when components absent; `+` axis = fade/right |
+| `ShotDataOptions.ContainsBallData` | bool | — | gate | only read `BallData` when `true` |
+| `ShotDataOptions.ContainsClubData` | bool | — | end-of-shot | triggers the re-arm (see protocol above) |
 | `ShotDataOptions.IsHeartBeat`      | bool | — | gate | `true` → acked, not a shot |
 
-Spin decomposition mirrors OpenFlight: `BackspinRpm = TotalSpin·cos(axis)`, `SidespinRpm =
-TotalSpin·sin(axis)`. **Missing spin** → backspin estimated `clamp(VLA × 350, 1500, 9000)`, `SidespinRpm
-= 0`, `bSpinEstimated` set. Only ball speed converts; angles + rpm stay as-is (mirrors `FShotInput`).
+**Gate on the `Contains*` flags, never on key presence.** Each message always carries **both**
+`BallData` and `ClubData` keys — one real, the other an all-zero filler (a Go `omitempty`/zero-struct
+quirk). Ball-data and club-data of one shot share a `ShotNumber` (increments on ball-data, starts at 1).
+Spin: the connector reports measured `BackSpin`/`SideSpin` **and** `TotalSpin`/`SpinAxis`, and they need
+not be self-consistent (`TotalSpin != hypot(Back,Side)`), so the **measured components are authoritative**
+— decompose `TotalSpin·cos/sin(axis)` only when they're absent. **No spin at all** → backspin estimated
+`clamp(VLA × 350, 1500, 9000)`, side 0, `bSpinEstimated` set. Only ball speed converts; angles + rpm
+stay as-is. Note: a connector's *simulate* mode may emit placeholder metrics (tiny launch/spin) that fly
+as worm-burners — that's mock data, not a mapping fault; real-device shots fly normally.
 
-**Validate with no hardware:** `golfsim.LMSelect gsproconnect` → `golfsim.LMConnect` (binds 921) →
-`golfsim.LMSimulate` runs a GSPro-shaped canned shot through the parser with no socket. For the real
-wire path, point any TCP client at `127.0.0.1:921` and send one GSPro Open Connect JSON object per line;
-expect `{"Code":200}` back. The community connectors validate against this same listener (GOL-181).
+**Validate with no hardware:** `golfsim.LMSelect gsproconnect` (or `squaregolf`) → `golfsim.LMConnect`
+(binds 921) → `golfsim.LMSimulate` runs a GSPro-shaped canned shot through the parser with no socket. For
+the real wire path, point a connector (or any TCP client) at `127.0.0.1:921`; expect `{"Code":200}` per
+message. **Validated live** end-to-end against `brentyates/squaregolf-connector` (simulate mode), incl.
+continuous arm→fire→re-arm. The remaining community connectors validate against this same listener
+(GOL-181); `log LogTemp Verbose` dumps every raw frame for troubleshooting.

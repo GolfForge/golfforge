@@ -25,7 +25,7 @@ public:
 	// 200+ yd; the 6-yd v1 was too small. Future ticket: proper green material/asset + UI to size.
 	static constexpr double DefaultDiameterMeters = 15.0 * 0.9144;
 
-	// Resize the green (m); flagpole + flag are unaffected.
+	// Resize the green (m); the collar ring tracks it, flagpole + flag + hole cup are unaffected.
 	void SetGreenDiameterMeters(double DiameterM);
 
 	// GOL-123: scale the gimme-ring overlay to a radius in FEET (matches FSwingDifficultyProfile).
@@ -34,6 +34,11 @@ public:
 
 private:
 	UPROPERTY(VisibleAnywhere, Category = "Golfsim") TObjectPtr<UStaticMeshComponent> DiscMesh;
+	// Collar/fringe: a darker, duller textured disc UNDER the green, slightly larger, so a ring of it
+	// shows around the green's edge (reads as the fringe cut). Tracks the green size.
+	UPROPERTY(VisibleAnywhere, Category = "Golfsim") TObjectPtr<UStaticMeshComponent> CollarMesh;
+	// Hole cup: a small dark disc at the pole base so the flag sits in a hole, not on flat turf.
+	UPROPERTY(VisibleAnywhere, Category = "Golfsim") TObjectPtr<UStaticMeshComponent> HoleCupMesh;
 	UPROPERTY(VisibleAnywhere, Category = "Golfsim") TObjectPtr<UStaticMeshComponent> PoleMesh;
 	// GOL-165: a subdivided procedural grid (not the 2-tri engine Plane) so the M_FlagWind material's
 	// World Position Offset can ripple it like cloth.

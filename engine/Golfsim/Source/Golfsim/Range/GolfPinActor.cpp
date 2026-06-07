@@ -27,6 +27,22 @@ namespace
 	constexpr float GimmeRingLiftUU = 4.f;
 	constexpr float CmPerFt = 30.48f;
 
+	// Collar/fringe ring: a darker textured disc UNDER the green, wider by CollarWidthUU all round,
+	// so only that band shows past the green's edge. Sits just below the green so the green covers
+	// its centre. Hole cup: a small dark disc just ABOVE the green at the pole base (exaggerated from
+	// the real 10.8 cm hole so it still reads from a few yards back).
+	constexpr float CollarWidthUU = 60.f;       // fringe band width (cm)
+	constexpr float CollarLiftUU = 1.f;         // just under the green plane (GreenLiftUU = 2)
+	constexpr float HoleCupDiameterUU = 30.f;   // cup disc diameter (cm)
+	constexpr float HoleCupLiftUU = 3.f;        // just above the green plane
+
+	// Collar disc XY scale for a given green diameter: green + a CollarWidthUU band on every side.
+	float CollarScaleFor(double GreenDiameterM)
+	{
+		const double CollarDiameterCm = GreenDiameterM * 100.0 + 2.0 * CollarWidthUU;
+		return static_cast<float>(CollarDiameterCm / PlaneSizeUU);
+	}
+
 	UMaterialInstanceDynamic* MakeColorMID(UMaterialInterface* Source, UObject* Outer, const FLinearColor& Color)
 	{
 		if (!Source) { return nullptr; }
@@ -91,10 +107,20 @@ AGolfPinActor::AGolfPinActor()
 	RootComponent = Root;
 	Root->SetMobility(EComponentMobility::Movable);
 
+	CollarMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("CollarMesh"));
+	CollarMesh->SetupAttachment(Root);
+	CollarMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	CollarMesh->SetMobility(EComponentMobility::Movable);
+
 	DiscMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("DiscMesh"));
 	DiscMesh->SetupAttachment(Root);
 	DiscMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	DiscMesh->SetMobility(EComponentMobility::Movable);
+
+	HoleCupMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("HoleCupMesh"));
+	HoleCupMesh->SetupAttachment(Root);
+	HoleCupMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	HoleCupMesh->SetMobility(EComponentMobility::Movable);
 
 	PoleMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("PoleMesh"));
 	PoleMesh->SetupAttachment(Root);
@@ -125,10 +151,15 @@ AGolfPinActor::AGolfPinActor()
 	// M_FlagWind: two-sided WPO flutter material, branded GolfForge flag texture (GOL-165). Built by
 	// engine/scripts/build_flag_wind_material.py; missing on a fresh clone -> falls back to red BasicMat.
 	static ConstructorHelpers::FObjectFinder<UMaterialInterface> FlagWindMat(TEXT("/Game/Materials/M_FlagWind.M_FlagWind"));
+	// M_FlagPole: white/black banded flagstick. Built by engine/scripts/build_flagpole_material.py;
+	// missing on a fresh clone -> falls back to the plain white BasicShapeMaterial pole.
+	static ConstructorHelpers::FObjectFinder<UMaterialInterface> FlagPoleMat(TEXT("/Game/Materials/M_FlagPole.M_FlagPole"));
 
 	if (PlaneMesh.Succeeded())
 	{
 		DiscMesh->SetStaticMesh(PlaneMesh.Object);   // flat ground decal -- no thickness, no side wall
+		CollarMesh->SetStaticMesh(PlaneMesh.Object);
+		HoleCupMesh->SetStaticMesh(PlaneMesh.Object);
 		GimmeRingMesh->SetStaticMesh(PlaneMesh.Object);   // FlagMesh is a procedural grid, built below
 	}
 	if (CylinderMesh.Succeeded())
@@ -141,6 +172,16 @@ AGolfPinActor::AGolfPinActor()
 	DiscMesh->SetRelativeScale3D(FVector(DiscXYScale, DiscXYScale, 1.f));
 	DiscMesh->SetRelativeLocation(FVector(0.f, 0.f, GreenLiftUU));
 
+	// Collar: wider disc just BELOW the green; only the CollarWidthUU band past the green's edge shows.
+	const float CollarXYScale = CollarScaleFor(DefaultDiameterMeters);
+	CollarMesh->SetRelativeScale3D(FVector(CollarXYScale, CollarXYScale, 1.f));
+	CollarMesh->SetRelativeLocation(FVector(0.f, 0.f, CollarLiftUU));
+
+	// Hole cup: small dark disc just ABOVE the green at the pole base (centre).
+	const float CupXYScale = HoleCupDiameterUU / PlaneSizeUU;
+	HoleCupMesh->SetRelativeScale3D(FVector(CupXYScale, CupXYScale, 1.f));
+	HoleCupMesh->SetRelativeLocation(FVector(0.f, 0.f, HoleCupLiftUU));
+
 	// Pole: 3 cm thick, 2.4 m tall. Cylinder pivot is mid-height, so base at Z=0 means center = +half.
 	const float PoleZScale = PoleHeightUU / 100.f;
 	PoleMesh->SetRelativeScale3D(FVector(PoleRadiusScale, PoleRadiusScale, PoleZScale));
@@ -152,15 +193,39 @@ AGolfPinActor::AGolfPinActor()
 	FlagMesh->SetRelativeLocation(FVector(0.f, 0.f, PoleHeightUU - FlagHeightUU * 0.5f));
 	BuildFlagGrid(FlagMesh, FlagWidthUU, FlagHeightUU);
 
-	// Green: prefer the authored M_GolfGreen (round, matte), fall back to a tinted BasicShapeMaterial
-	// (square) so a fresh clone still builds + spawns a usable, if visibly placeholder, target.
+	// Green: use the authored M_GolfGreen directly so its default Color IS the green color -- tune it
+	// in build_golf_green_material.py (no C++ rebuild). On a fresh clone without it, fall back to a
+	// tinted BasicShapeMaterial MID. GreenSrc (below) is the MID parent for the collar + cup.
 	UMaterialInterface* GreenSrc = GolfGreenMat.Succeeded() ? GolfGreenMat.Object
 	                              : (BasicMat.Succeeded() ? BasicMat.Object : nullptr);
-	if (UMaterialInstanceDynamic* GreenMID = MakeColorMID(GreenSrc, this, FLinearColor(0.10f, 0.55f, 0.18f)))
+	if (GolfGreenMat.Succeeded())
+	{
+		DiscMesh->SetMaterial(0, GolfGreenMat.Object);
+	}
+	else if (UMaterialInstanceDynamic* GreenMID = MakeColorMID(GreenSrc, this, FLinearColor(0.045f, 0.28f, 0.10f)))
 	{
 		DiscMesh->SetMaterial(0, GreenMID);
 	}
-	if (BasicMat.Succeeded())
+	// Collar: same masked-disc material, darker than the green + duller + finer grain so the fringe
+	// band reads as a different, longer cut. (Roughness/GrainTiling are no-ops on the BasicMat fallback.)
+	if (UMaterialInstanceDynamic* CollarMID = MakeColorMID(GreenSrc, this, FLinearColor(0.03f, 0.18f, 0.07f)))
+	{
+		CollarMID->SetScalarParameterValue(TEXT("Roughness"), 0.95f);
+		CollarMID->SetScalarParameterValue(TEXT("GrainTiling"), 36.f);
+		CollarMesh->SetMaterial(0, CollarMID);
+	}
+	// Hole cup: same masked disc, near-black, so the flag reads as standing in a hole.
+	if (UMaterialInstanceDynamic* CupMID = MakeColorMID(GreenSrc, this, FLinearColor(0.02f, 0.02f, 0.02f)))
+	{
+		HoleCupMesh->SetMaterial(0, CupMID);
+	}
+	// Flagstick: prefer the authored white/black banded M_FlagPole; fall back to a plain white
+	// BasicShapeMaterial pole on a fresh clone (before build_flagpole_material.py has run).
+	if (FlagPoleMat.Succeeded())
+	{
+		PoleMesh->SetMaterial(0, FlagPoleMat.Object);
+	}
+	else if (BasicMat.Succeeded())
 	{
 		if (UMaterialInstanceDynamic* WhiteMID = MakeColorMID(BasicMat.Object, this, FLinearColor(0.95f, 0.95f, 0.95f)))
 		{
@@ -190,9 +255,17 @@ AGolfPinActor::AGolfPinActor()
 
 void AGolfPinActor::SetGreenDiameterMeters(double DiameterM)
 {
-	if (!DiscMesh) { return; }
-	const float XY = static_cast<float>(FMath::Max(DiameterM, 0.5) * 100.0 / PlaneSizeUU);
-	DiscMesh->SetRelativeScale3D(FVector(XY, XY, 1.f));
+	const double Clamped = FMath::Max(DiameterM, 0.5);
+	if (DiscMesh)
+	{
+		const float XY = static_cast<float>(Clamped * 100.0 / PlaneSizeUU);
+		DiscMesh->SetRelativeScale3D(FVector(XY, XY, 1.f));
+	}
+	if (CollarMesh)
+	{
+		const float CXY = CollarScaleFor(Clamped);
+		CollarMesh->SetRelativeScale3D(FVector(CXY, CXY, 1.f));
+	}
 }
 
 void AGolfPinActor::SetGimmeRadiusFt(double RadiusFt)

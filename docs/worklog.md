@@ -2,6 +2,27 @@
 
 > Dated milestone summaries, newest on top. The durable outcome + the committed artifact, not the blow-by-blow — process detail lives in git history, `docs/ue5-cookbook.md`, and the scripts themselves.
 
+## 2026-06-06 — Range tree scatter: chilled for perf (GOL-167 follow-on, Windows)
+
+The range's GOL-167 mixed forest was authored at the course's density/height (0.35 ppsm, full size),
+which on the range's thin perimeter strips right next to the tee read as "walls of trees" and tanked
+GPU. Discovered live that the range map was actually still rendering the *old single-species birch*
+graph (its PCGVolume `graph_instance` had never been repointed to the rebuilt mixed graph) -- repointed
++ regenerated, then tuned down.
+
+- **New `engine/scripts/build_range_treescatter.py`** -- a committed, reproducible RANGE profile that
+  delegates to `build_pcg_treescatter.py` with range overrides. **Course-safe by construction:** it only
+  ever authors the range sibling graph (`/Game/PCG/PCG_TreeScatter_Range`); the course graph
+  (`/Game/PCG/PCG_TreeScatter`) is never opened, and the shared builder is unmodified (overrides passed
+  via `globals()`). Self-locates the builder via `unreal.Paths.project_dir()` (portable, no abs path).
+- **Three dials:** `DENSITY_PPSM` 0.075 (was 0.35), `_SIZE` 0.50 (uniform whole-asset scale vs course --
+  scaling z alone looked squished), `_MIN_FRAC` 0.0 (low end of the scale band; 0 = full course variance,
+  higher lifts the floor). Final range = ~1,400 trees, half-size, full random scale spread + the graph's
+  existing random yaw + ±lean. (Yaw is hard to perceive on radially-symmetric birch/pine canopies; the
+  visible variety is scale + lean.)
+- Range graph `PCG_TreeScatter_Range.uasset` rebuilt + `PracticeRange.umap` saved (volume repointed to the
+  mixed graph, GenerateOnLoad). Course look untouched. Retune = edit the three dials + re-run.
+
 ## 2026-06-06 — GOL-178 GSPro Open Connect V1 server driver (Windows)
 
 New `UGSProConnectDriver : ULaunchMonitorDriver` (`Drivers/GSProConnectDriver.{h,cpp}`) makes GolfForge

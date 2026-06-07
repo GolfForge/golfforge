@@ -250,7 +250,11 @@ def _stripe_mask(mat, layer, x, y):
     to multiply into the albedo. World-position-driven so rows stay straight regardless of texture
     tiling/terrain. Width(m)/angle(deg)/contrast are live-tunable ScalarParameters on the MIC;
     contrast=0 disables the stripes. UE Sine/Cosine use a Period (default 1.0) -> input is in TURNS,
-    so feed degrees/360 and coord/width directly (no manual 2*pi)."""
+    so feed degrees/360 and coord/width directly (no manual 2*pi).
+
+    cfg['crisscross']=True multiplies in a SECOND band at angle+90deg, giving the lattice /
+    checkerboard look of a fairway mown in both directions (the two brightness factors multiply, so
+    the cells where both rows are bright pop the most). Single band otherwise (default)."""
     name = layer["name"]
     cfg = layer["stripes"]
     me = _mel().create_material_expression
@@ -283,30 +287,48 @@ def _stripe_mask(mat, layer, x, y):
     wx = _mask(x + 180, y - 60, "r")
     wy = _mask(x + 180, y + 60, "g")
 
-    # angle(deg) -> turns -> cos/sin (Period=1 => cos(2pi*turns))
+    # shared knobs: angle(deg), width(m->cm), contrast -- all live-tunable params.
     ang = _scalar(x, y + 180, "_StripeAngle", cfg.get("angle_deg", 0.0))
-    turns = _mul(x + 180, y + 180, ang, "", _const(x, y + 250, 1.0 / 360.0), "")
-    cosn = me(mat, unreal.MaterialExpressionCosine, x + 340, y + 140); cn(turns, "", cosn, "")
-    sinn = me(mat, unreal.MaterialExpressionSine, x + 340, y + 220); cn(turns, "", sinn, "")
-
-    # coord = wx*cos + wy*sin  (world distance perpendicular to the rows)
-    coord = me(mat, unreal.MaterialExpressionAdd, x + 680, y)
-    cn(_mul(x + 520, y - 40, wx, "", cosn, ""), "", coord, "A")
-    cn(_mul(x + 520, y + 60, wy, "", sinn, ""), "", coord, "B")
-
-    # phase = coord / (width_m * 100 cm)  -> Sine(Period=1) = the band, -1..1
     wid = _scalar(x + 520, y + 180, "_StripeWidth", cfg.get("width_m", 1.5))
     wcm = _mul(x + 680, y + 180, wid, "", _const(x + 520, y + 250, 100.0), "")
-    div = me(mat, unreal.MaterialExpressionDivide, x + 840, y + 40)
-    cn(coord, "", div, "A"); cn(wcm, "", div, "B")
-    band = me(mat, unreal.MaterialExpressionSine, x + 1000, y + 40); cn(div, "", band, "")
-
-    # brightness = 1 + band * contrast
     con = _scalar(x + 1000, y + 180, "_StripeContrast", cfg.get("contrast", 0.08))
-    bright = me(mat, unreal.MaterialExpressionAdd, x + 1320, y + 60)
-    cn(_const(x + 1160, y + 140, 1.0), "", bright, "A")
-    cn(_mul(x + 1160, y + 40, band, "", con, ""), "", bright, "B")
-    return bright, ""
+
+    def _band(yoff, offset_deg):
+        """One mower direction -> brightness factor 1 + sin(coord/width)*contrast.
+        offset_deg rotates this band off the shared StripeAngle (90 = perpendicular)."""
+        # (angle + offset)(deg) -> turns -> cos/sin (Period=1 => cos(2pi*turns))
+        if offset_deg:
+            asrc = me(mat, unreal.MaterialExpressionAdd, x, y + yoff)
+            cn(ang, "", asrc, "A")
+            cn(_const(x - 160, y + yoff + 60, float(offset_deg)), "", asrc, "B")
+        else:
+            asrc = ang
+        turns = _mul(x + 180, y + yoff, asrc, "",
+                     _const(x, y + yoff + 90, 1.0 / 360.0), "")
+        cosn = me(mat, unreal.MaterialExpressionCosine, x + 340, y + yoff - 40)
+        cn(turns, "", cosn, "")
+        sinn = me(mat, unreal.MaterialExpressionSine, x + 340, y + yoff + 40)
+        cn(turns, "", sinn, "")
+        # coord = wx*cos + wy*sin  (world distance perpendicular to the rows)
+        coord = me(mat, unreal.MaterialExpressionAdd, x + 680, y + yoff)
+        cn(_mul(x + 520, y + yoff - 40, wx, "", cosn, ""), "", coord, "A")
+        cn(_mul(x + 520, y + yoff + 60, wy, "", sinn, ""), "", coord, "B")
+        # phase = coord / (width_m * 100 cm) -> Sine(Period=1) = the band, -1..1
+        div = me(mat, unreal.MaterialExpressionDivide, x + 840, y + yoff)
+        cn(coord, "", div, "A"); cn(wcm, "", div, "B")
+        band = me(mat, unreal.MaterialExpressionSine, x + 1000, y + yoff)
+        cn(div, "", band, "")
+        # brightness = 1 + band * contrast
+        bright = me(mat, unreal.MaterialExpressionAdd, x + 1320, y + yoff)
+        cn(_const(x + 1160, y + yoff + 80, 1.0), "", bright, "A")
+        cn(_mul(x + 1160, y + yoff - 40, band, "", con, ""), "", bright, "B")
+        return bright
+
+    b1 = _band(40, 0.0)
+    if cfg.get("crisscross"):
+        b2 = _band(440, 90.0)
+        return _mul(x + 1520, y, b1, "", b2, ""), ""
+    return b1, ""
 
 
 def _macro_albedo(mat, layer, x, y):

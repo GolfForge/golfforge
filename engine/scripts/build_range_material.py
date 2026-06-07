@@ -35,6 +35,9 @@ import unreal
 # ---------------------------------------------------------------- parameters
 MATERIAL_PATH = "/Game/Materials/M_PracticeRange"
 BACKUP_PATH   = "/Game/Materials/M_PracticeRange_PreBackup"
+# Live-tuning Material Instance (GOL-163): the base holds param DEFAULTS; the landscape uses this MIC
+# so per-surface tint/roughness/stripe params are adjustable in the Details panel with no rebuild.
+MIC_PATH      = "/Game/Materials/MIC_PracticeRange"
 
 # Fab/Megascans surface texture triplets (gitignored, per-machine, Bridge-
 # downloaded). Each Quixel surface ships T_<code>_2K_{B,N,ORM}; ORM packing
@@ -63,7 +66,9 @@ MACRO_BLEND       = 0.45
 # grass=True keys the LandscapeGrassOutput (Fairway -> LGT_FairwayGrass).
 LAYERS = [
     dict(name="Fairway",  mode="textured", grass=True, tiling=3.0,
-         tint=(0.10, 0.26, 0.08),
+         tint=(0.10, 0.26, 0.08), rough_default=1.0,
+         stripes=dict(width_m=2.0, angle_deg=0.0, contrast=0.12,
+                      crisscross=True),   # criss-cross mown range lane
          **_surf("Lawn_Grass_tkynejer", "tkynejer")),
     dict(name="Rough",    mode="textured", tiling=2.0,
          **_surf("Uncut_Grass_oilpt20", "oilpt20")),
@@ -208,6 +213,92 @@ def _tex(mat, path, sampler, x, y, tiling):
     return ts
 
 
+def _stripe_mask(mat, layer, x, y):
+    """Mowing stripes (GOL-163): a WORLD-aligned brightness band -> scalar multiplier ~[1-c, 1+c]
+    to multiply into the albedo. World-position-driven so rows stay straight regardless of texture
+    tiling/terrain. Width(m)/angle(deg)/contrast are live-tunable ScalarParameters on the MIC;
+    contrast=0 disables the stripes. UE Sine/Cosine use a Period (default 1.0) -> input is in TURNS,
+    so feed degrees/360 and coord/width directly (no manual 2*pi).
+
+    cfg['crisscross']=True multiplies in a SECOND band at angle+90deg, giving the lattice /
+    checkerboard look of a fairway mown in both directions (the two brightness factors multiply, so
+    the cells where both rows are bright pop the most). Single band otherwise (default)."""
+    name = layer["name"]
+    cfg = layer["stripes"]
+    me = _mel().create_material_expression
+    cn = _mel().connect_material_expressions
+
+    def _const(cx, cy, val):
+        c = me(mat, unreal.MaterialExpressionConstant, cx, cy)
+        c.set_editor_property("r", float(val))
+        return c
+
+    def _scalar(cx, cy, pname, default):
+        p = me(mat, unreal.MaterialExpressionScalarParameter, cx, cy)
+        p.set_editor_property("parameter_name", name + pname)
+        p.set_editor_property("default_value", float(default))
+        return p
+
+    def _mask(cx, cy, comp):
+        m = me(mat, unreal.MaterialExpressionComponentMask, cx, cy)
+        for c in ("r", "g", "b", "a"):
+            m.set_editor_property(c, c == comp)
+        cn(wp, "", m, "")
+        return m
+
+    def _mul(cx, cy, a, ap, b, bp):
+        m = me(mat, unreal.MaterialExpressionMultiply, cx, cy)
+        cn(a, ap, m, "A"); cn(b, bp, m, "B")
+        return m
+
+    wp = me(mat, unreal.MaterialExpressionWorldPosition, x, y)
+    wx = _mask(x + 180, y - 60, "r")
+    wy = _mask(x + 180, y + 60, "g")
+
+    # shared knobs: angle(deg), width(m->cm), contrast -- all live-tunable params.
+    ang = _scalar(x, y + 180, "_StripeAngle", cfg.get("angle_deg", 0.0))
+    wid = _scalar(x + 520, y + 180, "_StripeWidth", cfg.get("width_m", 1.5))
+    wcm = _mul(x + 680, y + 180, wid, "", _const(x + 520, y + 250, 100.0), "")
+    con = _scalar(x + 1000, y + 180, "_StripeContrast", cfg.get("contrast", 0.08))
+
+    def _band(yoff, offset_deg):
+        """One mower direction -> brightness factor 1 + sin(coord/width)*contrast.
+        offset_deg rotates this band off the shared StripeAngle (90 = perpendicular)."""
+        # (angle + offset)(deg) -> turns -> cos/sin (Period=1 => cos(2pi*turns))
+        if offset_deg:
+            asrc = me(mat, unreal.MaterialExpressionAdd, x, y + yoff)
+            cn(ang, "", asrc, "A")
+            cn(_const(x - 160, y + yoff + 60, float(offset_deg)), "", asrc, "B")
+        else:
+            asrc = ang
+        turns = _mul(x + 180, y + yoff, asrc, "",
+                     _const(x, y + yoff + 90, 1.0 / 360.0), "")
+        cosn = me(mat, unreal.MaterialExpressionCosine, x + 340, y + yoff - 40)
+        cn(turns, "", cosn, "")
+        sinn = me(mat, unreal.MaterialExpressionSine, x + 340, y + yoff + 40)
+        cn(turns, "", sinn, "")
+        # coord = wx*cos + wy*sin  (world distance perpendicular to the rows)
+        coord = me(mat, unreal.MaterialExpressionAdd, x + 680, y + yoff)
+        cn(_mul(x + 520, y + yoff - 40, wx, "", cosn, ""), "", coord, "A")
+        cn(_mul(x + 520, y + yoff + 60, wy, "", sinn, ""), "", coord, "B")
+        # phase = coord / (width_m * 100 cm) -> Sine(Period=1) = the band, -1..1
+        div = me(mat, unreal.MaterialExpressionDivide, x + 840, y + yoff)
+        cn(coord, "", div, "A"); cn(wcm, "", div, "B")
+        band = me(mat, unreal.MaterialExpressionSine, x + 1000, y + yoff)
+        cn(div, "", band, "")
+        # brightness = 1 + band * contrast
+        bright = me(mat, unreal.MaterialExpressionAdd, x + 1320, y + yoff)
+        cn(_const(x + 1160, y + yoff + 80, 1.0), "", bright, "A")
+        cn(_mul(x + 1160, y + yoff - 40, band, "", con, ""), "", bright, "B")
+        return bright
+
+    b1 = _band(40, 0.0)
+    if cfg.get("crisscross"):
+        b2 = _band(440, 90.0)
+        return _mul(x + 1520, y, b1, "", b2, ""), ""
+    return b1, ""
+
+
 def _macro_albedo(mat, layer, x, y):
     """Detail albedo lerp'd with a far-larger-scale sample of itself to
     break the tiling repeat on flyovers. Returns (lerp_expr, '')."""
@@ -234,23 +325,43 @@ def _macro_albedo(mat, layer, x, y):
     # Optional per-layer recolor: DESATURATE the albedo to luminance, then
     # MULTIPLY by `tint` (a target color). This makes the tiled base adopt
     # the tint's HUE while keeping the texture's light/dark detail - a
-    # plain multiply can only darken (can't hue-shift). `tint` here is the
-    # KBG turf-green target so the base meshes with the KBG 3D grass.
+    # plain multiply can only darken (can't hue-shift), which is why tint
+    # tweaks were imperceptible. `tint` here is the KBG turf-green target so
+    # the base inherently meshes with the KBG 3D grass at the cull boundary.
+    # Per-surface recolor as a live-tunable VectorParameter <name>_Tint (MIC-adjustable, no rebuild):
+    #   tint     -> HUE-REPLACE: desaturate->multiply (forces the target hue; for the grass surfaces).
+    #   mul_tint -> PRESERVE+NUDGE: plain multiply (keeps the texture's own color; white=identity).
     tint = layer.get("tint")
-    if not tint:
-        return src, pin
-    des = _mel().create_material_expression(
-        mat, unreal.MaterialExpressionDesaturation, x + 380, y)
-    _mel().connect_material_expressions(src, pin, des, "")  # -> luminance
-    mul = _mel().create_material_expression(
-        mat, unreal.MaterialExpressionMultiply, x + 560, y)
-    tc = _mel().create_material_expression(
-        mat, unreal.MaterialExpressionConstant3Vector, x + 400, y + 220)
-    tc.set_editor_property(
-        "constant", unreal.LinearColor(tint[0], tint[1], tint[2], 1.0))
-    _mel().connect_material_expressions(des, "", mul, "A")
-    _mel().connect_material_expressions(tc, "", mul, "B")
-    return mul, ""
+    mul_tint = layer.get("mul_tint")
+    col = tint or mul_tint
+    if not col:
+        out, out_pin = src, pin
+    else:
+        vp = _mel().create_material_expression(
+            mat, unreal.MaterialExpressionVectorParameter, x + 400, y + 220)
+        vp.set_editor_property("parameter_name", layer["name"] + "_Tint")
+        vp.set_editor_property(
+            "default_value", unreal.LinearColor(col[0], col[1], col[2], 1.0))
+        mul = _mel().create_material_expression(
+            mat, unreal.MaterialExpressionMultiply, x + 560, y)
+        if tint:
+            des = _mel().create_material_expression(
+                mat, unreal.MaterialExpressionDesaturation, x + 380, y)
+            _mel().connect_material_expressions(src, pin, des, "")   # -> luminance, then re-hue
+            _mel().connect_material_expressions(des, "", mul, "A")
+        else:
+            _mel().connect_material_expressions(src, pin, mul, "A")  # preserve texture color
+        _mel().connect_material_expressions(vp, "", mul, "B")
+        out, out_pin = mul, ""
+    # GOL-163 mowing stripes: multiply a world-aligned brightness band into the albedo (contrast=0 off).
+    if layer.get("stripes"):
+        sm, _sp = _stripe_mask(mat, layer, x + 200, y + 560)
+        smul = _mel().create_material_expression(
+            mat, unreal.MaterialExpressionMultiply, x + 760, y)
+        _mel().connect_material_expressions(out, out_pin, smul, "A")
+        _mel().connect_material_expressions(sm, "", smul, "B")
+        return smul, ""
+    return out, out_pin
 
 
 def _layer_src(mat, layer, channel, x, y):
@@ -268,7 +379,21 @@ def _layer_src(mat, layer, channel, x, y):
         ts = _tex(mat, layer["rough"],
                   unreal.MaterialSamplerType.SAMPLERTYPE_MASKS,
                   x, y, layer["tiling"])
-        return (ts, layer.get("rough_ch", "R")) if ts else (None, None)
+        if ts is None:
+            return (None, None)
+        ch = layer.get("rough_ch", "R")
+        # Per-surface roughness as a live-tunable ScalarParameter <name>_Rough (MIC-adjustable):
+        # multiply the ORM-G roughness (default 1.0). <1 = wetter/sheen (greens), >1 = duller (tee/rough).
+        rp = _mel().create_material_expression(
+            mat, unreal.MaterialExpressionScalarParameter, x, y + 200)
+        rp.set_editor_property("parameter_name", layer["name"] + "_Rough")
+        rp.set_editor_property(
+            "default_value", float(layer.get("rough_default", 1.0)))
+        rmul = _mel().create_material_expression(
+            mat, unreal.MaterialExpressionMultiply, x + 200, y)
+        _mel().connect_material_expressions(ts, ch, rmul, "A")
+        _mel().connect_material_expressions(rp, "", rmul, "B")
+        return (rmul, "")
     # flat
     if channel == "base":
         c = _mel().create_material_expression(
@@ -384,7 +509,31 @@ def _reassign_landscape(mat):
             a.set_editor_property("landscape_material", mat)
             n += 1
     _log("re-assigned %s to %d Landscape actor(s) (Paint UI 'Add From "
-         "Material(s)' if target layers dropped)" % (MATERIAL_PATH, n))
+         "Material(s)' if target layers dropped)" % (mat.get_name(), n))
+
+
+def _build_mic(base_mat):
+    """Create MIC_PracticeRange instancing the base material + return it for the landscape (GOL-163).
+    The base holds the per-surface param DEFAULTS (from LAYERS); the MIC starts all-inherited and is
+    the live-tuning surface (tweak <name>_Tint / <name>_Rough / Fairway_Stripe* in its Details panel
+    -- no rebuild)."""
+    eal = unreal.EditorAssetLibrary
+    if eal.does_asset_exist(MIC_PATH):
+        eal.delete_asset(MIC_PATH)
+    name = MIC_PATH.rsplit("/", 1)[1]
+    pkg = MIC_PATH.rsplit("/", 1)[0]
+    try:
+        mic = _at().create_asset(name, pkg, unreal.MaterialInstanceConstant,
+                                 unreal.MaterialInstanceConstantFactoryNew())
+        _mel().set_material_instance_parent(mic, base_mat)
+        eal.save_asset(MIC_PATH)
+        _log("built MIC %s (parent=M_PracticeRange; tune surfaces here, no rebuild)"
+             % MIC_PATH)
+        return mic
+    except Exception as exc:
+        _log("MIC build ERR %s - landscape will use the base material instead"
+             % str(exc)[:90])
+        return None
 
 
 def main():
@@ -411,13 +560,15 @@ def main():
              "grass; set BUILD_GRASS=True to restore it)")
     _mel().recompile_material(mat)   # returns None by design; no exception=ok
     unreal.EditorAssetLibrary.save_asset(MATERIAL_PATH)
-    _reassign_landscape(mat)
+    mic = _build_mic(mat)
+    _reassign_landscape(mic if mic is not None else mat)
     tex = [l["name"] for l in LAYERS if l["mode"] == "textured"]
-    _log("SAVED %s | textured=%r | backup=%s"
-         % (MATERIAL_PATH, tex, BACKUP_PATH))
-    _log("NEXT: USER assign M_PracticeRange to the range landscape (same path "
-         "re-binds), Paint UI 'Add From Material(s)', then Manage > Import the "
-         "courses/practice-range/splat_*.png into the Layers array.")
+    _log("SAVED %s (+ %s) | textured=%r | backup=%s"
+         % (MATERIAL_PATH, MIC_PATH, tex, BACKUP_PATH))
+    _log("NEXT: USER confirm the range Landscape uses MIC_PracticeRange; tune each surface's "
+         "<name>_Tint / <name>_Rough / Fairway_Stripe* on the MIC (live, no rebuild), then "
+         "back-port finals to LAYERS. Paint UI 'Add From Material(s)' + re-import the "
+         "courses/practice-range/splat_*.png only if target layers dropped.")
     _log("=== MODE A DONE ===")
 
 

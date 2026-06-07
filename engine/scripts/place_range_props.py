@@ -1,14 +1,18 @@
 # place_range_props.py
 #
-# GOL-168 (first pass): painted-stake yardage markers down the Practice Range
-# corridor at 50 / 100 / 150 / 200 / 250 yd. The range had no distance reference
-# beyond the movable target pin; these fixed stakes give it the "this is a
+# GOL-168 / GOL-28: distance references down the Practice Range corridor. Two
+# kinds: (1) painted-stake yardage markers at the FAIRWAY EDGE (both sides) at
+# 50/100/150/200/250/300/350 yd, and (2) big on-turf numbers lying on the
+# CENTERLINE at 100/150/200/250 yd (real driving-range style). The range had no
+# distance reference beyond the movable target pin; these give it the "this is a
 # driving range" read for screenshots.
 #
-# Each marker is a thin white post + a colored cap + a 3D yardage number facing
-# back toward the tee. Markers sit at the FAIRWAY EDGE (both sides), never on the
-# centerline, so they stay clear of ball flight and the centered target pin (the
-# ticket's "keep props out of the playable corridor" pitfall).
+# Each edge marker is a thin white post + a colored cap + a 3D yardage number
+# facing back toward the tee. The edge stakes sit just inside the fairway edge,
+# never on the centerline, so they stay clear of the target pin and the ball
+# path (the ticket's "keep props out of the playable corridor" pitfall). The
+# on-turf numbers DO sit on the centerline, but they are flat TextRenderActors
+# with NO collision -- the ball flies over them, exactly like painted numbers.
 #
 # Placement reuses the exact range yards->world convention from
 # AGolfRangeHUD::ApplyPinDistance (GolfRangeHUD.cpp): world +X downrange from the
@@ -73,6 +77,17 @@ TEXT_ABOVE_CAP_CM = 30.0
 TEXT_WORLD_SIZE = 120.0      # readable from the tee; bump if too small in PIE
 TEXT_YAW        = 180.0      # face glyphs back toward the tee (-X)
 
+# On-turf centerline numbers (like a real driving range): big numbers lying on
+# the short grass down the middle of the lane, complementing the edge stakes.
+# Placed at Y=0 (the ball path) but they are flat-on-ground TextRenderActors with
+# NO collision -- the ball flies over them, exactly as painted range numbers do.
+GROUND_NUM_YARDS  = (100, 150, 200, 250)   # landing-zone distances, centerline
+GROUND_NUM_SIZE   = 600.0    # world_size; big so it reads from the tee (tune in PIE)
+GROUND_NUM_PITCH  = 75.0     # with yaw=180: lays the number near-flat, readable
+                             # face tilted up toward the tee (90 = fully flat on
+                             # the turf; lower = more upright). Tune in PIE.
+GROUND_NUM_Z_CM   = 2.0      # tiny lift off the turf to avoid z-fighting
+
 # Colors (linear 0..1 for materials; 0..255 for TextRender color).
 POST_COLOR  = (0.92, 0.92, 0.92)   # white
 CAP_COLOR   = (0.85, 0.05, 0.05)   # painted red top
@@ -87,7 +102,9 @@ CAP_MAT_PATH  = "/Game/Materials/M_RangeMarkerCap"
 LABEL_PREFIX_POST  = "RangeYardMarker_"   # -> RangeYardMarker_<yd>_<side>
 LABEL_PREFIX_CAP   = "RangeYardCap_"      # -> RangeYardCap_<yd>_<side>
 LABEL_PREFIX_LABEL = "RangeYardLabel_"    # -> RangeYardLabel_<yd>_<side>
-LABEL_PREFIXES = (LABEL_PREFIX_POST, LABEL_PREFIX_CAP, LABEL_PREFIX_LABEL)
+LABEL_PREFIX_GROUND = "RangeGroundNum_"   # -> RangeGroundNum_<yd>
+LABEL_PREFIXES = (LABEL_PREFIX_POST, LABEL_PREFIX_CAP, LABEL_PREFIX_LABEL,
+                  LABEL_PREFIX_GROUND)
 
 LAYER_NAME = "RangeProps"
 
@@ -244,6 +261,33 @@ def _spawn_label(x, y, z, label, text):
     return actor
 
 
+def _spawn_ground_number(x, z, text):
+    """A big number lying near-flat on the centerline turf (driving-range style).
+    Pitched by GROUND_NUM_PITCH so it tilts toward the tee for a readable grazing
+    angle; yaw TEXT_YAW so glyphs face back to the tee. Unlit default TextRender
+    material -> full-bright in every Time preset. No collision (TextRender has
+    none) so it never deflects a shot down the centerline."""
+    eas = _eas()
+    # unreal.Rotator positional order is (roll, pitch, yaw) -- use keywords to be
+    # unambiguous: yaw faces glyphs back to the tee, pitch lays them down on turf.
+    actor = eas.spawn_actor_from_class(
+        unreal.TextRenderActor, unreal.Vector(x, 0.0, z + GROUND_NUM_Z_CM),
+        unreal.Rotator(roll=0.0, pitch=GROUND_NUM_PITCH, yaw=TEXT_YAW))
+    actor.set_actor_label(LABEL_PREFIX_GROUND + text)
+    trc = actor.text_render
+    trc.set_text(text)
+    trc.set_horizontal_alignment(unreal.HorizTextAligment.EHTA_CENTER)
+    trc.set_vertical_alignment(unreal.VerticalTextAligment.EVRTA_TEXT_CENTER)
+    trc.set_editor_property("world_size", GROUND_NUM_SIZE)
+    try:
+        trc.set_text_render_color(
+            unreal.Color(TEXT_COLOR[0], TEXT_COLOR[1], TEXT_COLOR[2], 255))
+    except Exception:
+        pass
+    _assign_layer(actor)
+    return actor
+
+
 # ---------------------------------------------------------------- modes
 def _build():
     world = _editor_world()
@@ -288,13 +332,22 @@ def _build():
                          LABEL_PREFIX_LABEL + tag, str(yd))
             spawned += 1
 
+    ground_nums = 0
+    for yd in GROUND_NUM_YARDS:
+        x = tee_x + yd * CM_PER_YD
+        gz = _ground_z(x, 0.0)
+        _spawn_ground_number(x, gz, str(yd))
+        ground_nums += 1
+
     try:
         _layers().editor_refresh_layer_browser()
     except Exception:
         pass
 
-    _log("placed %d marker(s) at %s yd x %d side(s) (tee X=%.0f cm)"
-         % (spawned, ",".join(str(y) for y in MARKER_YARDS), len(SIDES), tee_x))
+    _log("placed %d marker(s) at %s yd x %d side(s) + %d on-turf number(s) at "
+         "%s yd (tee X=%.0f cm)"
+         % (spawned, ",".join(str(y) for y in MARKER_YARDS), len(SIDES),
+            ground_nums, ",".join(str(y) for y in GROUND_NUM_YARDS), tee_x))
     _log("PERSISTENT actors: SAVE PracticeRange.umap or they are lost. Toggle "
          "in Window > Layers: '%s'." % LAYER_NAME)
     _log("=== BUILD DONE ===")

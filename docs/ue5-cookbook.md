@@ -4,6 +4,24 @@ The engine-side knowledge base: hard-won pitfalls, working recipes, and the curr
 
 ---
 
+## Criss-cross mow stripes + keep the range/course material forks in sync (GOL-28/GOL-168)
+
+`build_range_material.py` is a deliberate **fork** of `build_course_material.py` (the two diverge on layers/textures/grass but the *build engine* is meant to stay "trivially diffable"). The fork had drifted — it never received the GOL-163 upgrades (live-tunable MIC, per-surface `_Tint`/`_Rough` params, mow stripes). When touching either, port the engine functions verbatim so a `diff` of the two stays small.
+
+Mow stripes (`_stripe_mask`): a **world-position**-driven brightness band multiplied into the albedo, NOT texture-UV-driven (rows must stay straight regardless of tiling/terrain). `coord = WorldPos.x*cos(a) + WorldPos.y*sin(a)`, `band = Sine(coord / (width_m*100))`, `bright = 1 + band*contrast`. UE `Sine`/`Cosine` take **turns** (Period=1), so feed `degrees/360` directly — no `2*pi`. Width/angle/contrast are `<Layer>_Stripe*` ScalarParameters (live-tunable on the MIC; `contrast=0` disables).
+
+**Criss-cross** = run the single-band math twice (factor it into an inner `_band(offset_deg)` helper) at `angle` and `angle+90`, then **multiply the two brightness factors** — the cells where both rows are bright pop most, giving the checkerboard look of a fairway mown both ways. Enable per-layer with `stripes=dict(..., crisscross=True)`. Cost is a few extra math nodes — negligible.
+
+After a material nuke+recreate the Landscape's `landscape_material` pointer goes null; rebind it to the **MIC** (`MIC_PracticeRange`/`MIC_GolfsimCourse`), not the base material, so live tuning works.
+
+## `unreal.Rotator` positional order is (roll, pitch, yaw); TextRender face = local +X
+
+`unreal.Rotator(a, b, c)` positionally maps to **roll=a, pitch=b, yaw=c** (verified empirically — easy to assume pitch-first and silently get a no-op tilt). Use keyword args when it matters: `unreal.Rotator(roll=0, pitch=P, yaw=Y)`.
+
+A `TextRenderActor`'s readable face normal is its **local +X (forward vector)**; the glyph "up" is local +Z. So `yaw=180` faces text back toward the tee (the edge-stake convention). For a number lying near-flat on the turf but readable from the tee, combine `yaw=180` with a **positive** pitch (~75°): forward then points up-and-slightly-toward-tee `(-0.26,0,+0.97)` and the glyph top points downrange, so it reads upright from the tee. Negative pitch faces it into the ground. Default TextRender material is **unlit** → full-bright in every Time/Sky preset (free low-light legibility; that's how the range yardage numbers satisfy GOL-28's dusk/night clause).
+
+---
+
 ## UMG procedural layout: full-width bottom bar (GOL-145)
 
 Mixed canvas anchors (stretch one axis, point the other) are fiddly to get right for a full-bleed bottom bar. The robust recipe: a **full-screen `UVerticalBox`** as the root canvas's only child (`SetAnchors(FAnchors(0,0,1,1))` + `SetOffsets(FMargin(0))`), then:

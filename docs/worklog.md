@@ -2,6 +2,30 @@
 
 > Dated milestone summaries, newest on top. The durable outcome + the committed artifact, not the blow-by-blow — process detail lives in git history, `docs/ue5-cookbook.md`, and the scripts themselves.
 
+## 2026-06-06 — Range on-turf numbers + criss-cross mow stripes (GOL-28/GOL-168, Windows)
+
+More range polish for screenshots: distance numbers on the turf and a mown look on the grass.
+
+- **On-turf distance numbers (GOL-28 / GOL-168):** `engine/scripts/place_range_props.py` gained a
+  second prop type — big `TextRenderActor` numbers lying near-flat on the **centerline** turf at
+  100/150/200/250 yd (real driving-range style), complementing the existing fairway-edge stakes.
+  They sit on the ball path but are flat, collision-less, unlit (full-bright in every Time preset),
+  so the ball flies over them — exactly like painted range numbers. Same tee-origin +
+  `X = TeeX + yd*91.44` convention as the stakes/pin. Gotcha caught: `unreal.Rotator` positional
+  order is `(roll, pitch, yaw)` — the tilt now uses keyword args.
+- **Criss-cross mow stripes (range grass):** the range material `build_range_material.py` was a
+  drifted *older fork* of `build_course_material.py` — it never got the GOL-163 MIC + live-tunable
+  per-surface params + mow-stripe machinery. Re-synced the fork's engine (`_stripe_mask`, param
+  tints/roughness, `_build_mic`) and added a **criss-cross extension**: `_stripe_mask` now factors
+  the single mower-direction band into an inner helper and, when `crisscross=True`, multiplies in a
+  second band at angle+90° for a lattice/checkerboard mown look. Range `Fairway` enabled it
+  (`width_m=2.0, contrast=0.12`). New `MIC_PracticeRange` is now what the range Landscape uses, so
+  stripe width/angle/contrast + tint/roughness are live-tunable with no rebuild. Same `_stripe_mask`
+  added to the course script too (course config unchanged) so the two forks stay trivially diffable.
+- Ran both scripts in-editor (UE 5.7, PracticeRange): material rebuilt (all 3 channel chains wired,
+  no compile errors), MIC built + assigned, 14 edge markers + 4 on-turf numbers placed, level saved.
+  Visual look (stripe read, number legibility, low-light) verified by user in PIE. No C++ touched.
+
 ## 2026-06-06 — Golf-ball look + strike SFX + ball-ready UI (GOL-186, Windows)
 
 Range-polish batch: a proper ball, a strike sound, an armed-LM indicator, and a slicker control bar.

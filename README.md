@@ -3,9 +3,7 @@
 Open-source, cross-platform golf simulator with AI-assisted course building, walking/treadmill
 integration, and a clean BLE-based hardware story for launch monitors.
 
-> **Status:** early, pre-1.0, and moving fast. **v0.0.5-alpha** is a visual + hardware step up on v0.0.4's UI rebuild. The course and range got an **art facelift**: distinct mown turf with **mowing stripes** (down-range on the fairway, a criss-cross checkerboard on the range), a real **pond-water** surface, a **mixed-species tree line**, golden-hour **atmosphere**, ambient **birdsong**, a fluttering branded **pin flag**, a dimpled **ball** with a strike sound, and a **textured target green** with a collar, hole cup and striped flagstick. On the hardware side, GolfForge now speaks **GSPro Open Connect** as a server, so the community's launch-monitor connectors work with it directly — **no GSPro subscription required.** You can still play a full **18-hole single-player round on a real LIDAR-cooked course with just a keyboard**. Expect rough edges.
->
-> _The repository is still named `golfsim` while the rename to GolfForge is in progress._
+> **Status:** early, pre-1.0, and moving fast. **v0.0.5-alpha** is a visual + hardware step up on v0.0.4's UI rebuild. The course and range got an **art facelift**: distinct mown turf with **mowing stripes** (down-range on the fairway, a criss-cross checkerboard on the range), a real **pond-water** surface, a **mixed-species tree line**, golden-hour **atmosphere**, ambient **birdsong**, a fluttering branded **pin flag**, a dimpled **ball** with a strike sound, and a **textured target green** with a collar, hole cup and striped flagstick. On the hardware side, GolfForge now speaks **GSPro Open Connect** as a server, so you can bring your own launch monitor over its connector — **no GSPro subscription required** (Square Omni validated; more connectors in progress). You can still play a full **18-hole single-player round on a real LIDAR-cooked course with just a keyboard**. Expect rough edges.
 
 ## Why
 
@@ -24,7 +22,7 @@ attack:
 
 Pre-built packages are attached to the latest [GitHub Release](https://github.com/GolfForge/golfforge/releases). v0.0.5-alpha ships with two playable surfaces:
 
-- **Single-player round** — main menu → **Play Course** → a guided round-setup flow (pick the course, set the format — game type, holes, turn order — and add up to four players with names, tee boxes and handicaps) → land on hole 1's tee → swing through 18 holes on a real LIDAR-cooked course. A glass HUD tracks your score, distance to pin and conditions; a scorecard caps the round. No launch monitor needed; the built-in keyboard swing meter handles it.
+- **Single-player round** — main menu → **Play Course** → a guided round-setup flow (pick the course, choose how many holes — full 18, front/back 9, or a custom set — and the hole-out rule) → land on hole 1's tee → play stroke play on a real LIDAR-cooked course. A glass HUD tracks your score, distance to pin and conditions; a scorecard caps the round. No launch monitor needed; the built-in keyboard swing meter handles it. _(The setup wizard also lays out game types, multiple players, handicaps and tee boxes, but those aren't wired into play yet — today's round is one player, stroke play. See [Coming soon](#coming-soon).)_
 - **Practice range** — fixed-distance target green with collar/flag, full 14-club bag, a moving pin, and launch-monitor support via [OpenFlight](https://github.com/jewbetcha/openflight) (Doppler radar), the **GSPro Open Connect** connectors (use your own launch monitor — see below), or a manual-shot dialog for hardware-free testing.
 
 ![Main menu — Play Course / Range / Practice / Settings bento, with a live clock + conditions cluster](docs/screenshots/mainmenu.png)
@@ -35,7 +33,7 @@ Round setup is a three-step wizard — pick the course, set the format, add your
 
 ![Round setup, step 2 — set the format: game type, holes, turn order and hole-out rule](docs/screenshots/format.png)
 
-![Round setup, step 3 — add up to four players with names, tee boxes and handicaps, with a live round summary](docs/screenshots/players.png)
+![Round setup, step 3 — set your player name, tee box and handicap, with a live round summary](docs/screenshots/players.png)
 
 Then you're on the course:
 
@@ -71,7 +69,7 @@ Not yet packaged. Build from source — instructions TBD.
 
 Optional, for the simulator-grade experience:
 
-- A **launch monitor** that speaks our driver protocol. Today: [OpenFlight](https://github.com/jewbetcha/openflight) (DIY, ~$800 in parts, Doppler radar). More to follow.
+- A **launch monitor** over its **GSPro Open Connect** connector — **no GSPro subscription required.** The Square Omni (via the [squaregolf connector](https://github.com/brentyates/squaregolf-connector)) is validated end-to-end today; other community connectors speak the same protocol and are being brought up. Or build the DIY [OpenFlight](https://github.com/jewbetcha/openflight) Doppler radar (~$800 in parts), which has a native driver. See [`docs/launch-monitors.md`](docs/launch-monitors.md).
 - A **treadmill** broadcasting Bluetooth FTMS, for the walking tier — coming soon.
 
 ## Coming soon
@@ -83,7 +81,7 @@ In rough priority order:
 - **More real-world courses.** The first cooked course (GolfForge Demo Black) is one shipped track; the pipeline can produce others — add yours via the [course pipeline](pipeline/README.md).
 - **Course-quality polish.** Bunker geometry (raised lip + depression), course-side lighting bake, 3D grass, night/low-light presets, water caustics. (Mowing stripes, distinct mown surfaces, pond water, mixed-species trees and golden-hour atmosphere landed in v0.0.5.)
 - **Walking integration.** Bluetooth FTMS treadmill driver (build-it-yourself ESP32 reference design or any FTMS-compliant treadmill); compressed walk mode; eventual incline-matching from hole elevation profiles.
-- **More launch monitors.** Validating the full set of GSPro Open Connect connectors against GolfForge (Square Omni + Rapsodo MLM2PRO / FlightScope Mevo+ confirmed so far), plus native drivers for auth-gated devices (Rapsodo R50, Foresight Launch Pro, GCQuad).
+- **More launch monitors.** Bringing up more GSPro Open Connect connectors against GolfForge (Square Omni confirmed so far; others in progress), plus native drivers for auth-gated devices (Rapsodo R50, Foresight Launch Pro, GCQuad).
 - **Mac/iPadOS GPU acceleration.** MetalFX upscaling for Apple Silicon (currently TSR-only).
 - **Cross-platform pipeline.** Make the Python course pipeline work on Windows (Mac/Linux already supported).
 
@@ -100,9 +98,9 @@ running the same binary. See [`docs/event-protocol.md`](docs/event-protocol.md).
 
 GolfForge talks to launch monitors through a pluggable driver framework; the sim only ever sees a
 normalized shot event, never the device. It speaks the open **GSPro Open Connect** protocol as a server,
-so the community launch-monitor connectors work with it directly — **use your existing connector, no GSPro
-subscription required** (Square Omni, Rapsodo MLM2PRO, FlightScope Mevo+ validated; SkyTrak / Garmin R10 /
-Foresight GC2 via the generic option). The DIY **OpenFlight** radar has a native driver, and a manual-shot
+so the community launch-monitor connectors can talk to it directly — **use your existing connector, no GSPro
+subscription required.** The Square Omni is validated end-to-end today (via the squaregolf connector); other
+community connectors speak the same protocol and are being brought up. The DIY **OpenFlight** radar has a native driver, and a manual-shot
 dialog + keyboard swing let you play with no hardware at all. Walking/treadmill support over BLE FTMS is on
 the roadmap.
 
@@ -154,17 +152,13 @@ keep its dual license. See [`CONTRIBUTING.md`](CONTRIBUTING.md) and the
 
 GolfForge builds on excellent open-source work:
 
-- **Launch-monitor connectors.** GolfForge speaks the **GSPro Open Connect** protocol as a server, so the
-  community's connector ecosystem works with it directly — no GSPro subscription required. Special thanks
-  to **[@brentyates](https://github.com/brentyates)** and the
+- **Launch-monitor connectors.** GolfForge speaks the **GSPro Open Connect** protocol as a server, so
+  community connectors can talk to it directly — no GSPro subscription required. Special thanks to
+  **[@brentyates](https://github.com/brentyates)** and the
   [squaregolf-connector](https://github.com/brentyates/squaregolf-connector) (MIT), the first connector
-  validated end-to-end against GolfForge, and to the broader projects we interoperate with:
-  [springbok/MLM2PRO-GSPro-Connector](https://github.com/springbok/MLM2PRO-GSPro-Connector) (Rapsodo
-  MLM2PRO, FlightScope Mevo+), [OpenSkyPlus2](https://github.com/OpenSkyPlus2/OpenSkyPlus2) (SkyTrak),
-  [travislang/gspro-garmin-connect-v2](https://github.com/travislang/gspro-garmin-connect-v2) (Garmin
-  Approach R10), and [matthew-johnston/gspro-gc2-connector](https://github.com/matthew-johnston/gspro-gc2-connector)
-  (Foresight GC2). GolfForge talks to these as separate processes over the open protocol — their source
-  is not vendored.
+  validated end-to-end against GolfForge. GolfForge talks to GSPro Open Connect connectors as separate
+  processes over the open protocol (their source is not vendored); bringing up the broader community
+  ecosystem is ongoing.
 - **[OpenFlight](https://github.com/jewbetcha/openflight)** — the open-source DIY Doppler-radar launch
   monitor and GolfForge's first launch-monitor driver.
 - **[Unreal Claude MCP](https://github.com/NAJEMWEHBE/UnrealClaudeMCP)** (MIT) — the UE5 ↔ MCP

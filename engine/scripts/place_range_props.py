@@ -81,6 +81,10 @@ TEXT_YAW        = 180.0      # face glyphs back toward the tee (-X)
 # the short grass down the middle of the lane, complementing the edge stakes.
 # Placed at Y=0 (the ball path) but they are flat-on-ground TextRenderActors with
 # NO collision -- the ball flies over them, exactly as painted range numbers do.
+# DISABLED for now (the flat TextRender glyphs read poorly on the turf); flip
+# PLACE_GROUND_NUMS=True to bring them back, or revisit with a nicer treatment
+# (decal/painted-number material) later.
+PLACE_GROUND_NUMS = globals().get("PLACE_GROUND_NUMS", False)
 GROUND_NUM_YARDS  = (100, 150, 200, 250)   # landing-zone distances, centerline
 GROUND_NUM_SIZE   = 600.0    # world_size; big so it reads from the tee (tune in PIE)
 GROUND_NUM_PITCH  = 75.0     # with yaw=180: lays the number near-flat, readable
@@ -333,11 +337,12 @@ def _build():
             spawned += 1
 
     ground_nums = 0
-    for yd in GROUND_NUM_YARDS:
-        x = tee_x + yd * CM_PER_YD
-        gz = _ground_z(x, 0.0)
-        _spawn_ground_number(x, gz, str(yd))
-        ground_nums += 1
+    if PLACE_GROUND_NUMS:
+        for yd in GROUND_NUM_YARDS:
+            x = tee_x + yd * CM_PER_YD
+            gz = _ground_z(x, 0.0)
+            _spawn_ground_number(x, gz, str(yd))
+            ground_nums += 1
 
     try:
         _layers().editor_refresh_layer_browser()

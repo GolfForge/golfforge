@@ -130,30 +130,47 @@ Auth-gated devices whose vendor connectors do a server-side handshake (Garmin R5
 Foresight GCQuad/GC3, possibly Uneekor) are **out of scope** here — they go under the GOL-180 native
 -connector epic. Per-connector compatibility is validated under GOL-181 before any public claim.
 
-**Transport: raw TCP, `127.0.0.1:921`, newline-delimited JSON, no auth** (verbatim spec: "the socket
-connection is open and does not require authentication"). No websockets, so it sidesteps GOL-36 entirely.
+**Transport: raw TCP, `127.0.0.1:921`, no auth** (verbatim spec: "the socket connection is open and does
+not require authentication"). No websockets, so it sidesteps GOL-36 entirely. **Framing varies by
+connector** — some newline-delimit their JSON, others concatenate it with no delimiter — so the listener
+uses a streaming brace-depth object extractor (`UGSProConnectDriver::ExtractJsonObjects`, string/escape
+aware) that handles both. Don't split on `\n`.
 
-- **Dropdown entries:** one `UGSProConnectDriver` class backs several selectable entries via
-  `SetIdentity(id, label)` — registered as `gsproconnect` ("GSPro Connect", generic) and `squaregolf`
-  ("Square Golf") today; adding `mlm2pro` / `skytrak` / … is one line in `LaunchMonitorManager::Initialize`.
-  They all speak the same protocol but appear separately so a specific connector can be troubleshot in
-  isolation. Only the **active** entry binds the port, so registering several is safe.
+- **Dropdown entries + per-connector profiles:** one `UGSProConnectDriver` class backs several selectable
+  entries, each registered with an `FGSProConnectProfile` (`SetProfile`) — `gsproconnect` ("GSPro Connect",
+  generic), `squaregolf` ("Square Golf"), `springbok` ("Springbok (MLM2PRO / Mevo+)") today; adding
+  `skytrak` / `r10` / `gc2` is one profile in `LaunchMonitorManager::Initialize`. **The open-source
+  connectors do NOT all implement Open Connect identically**, so each connector's quirks live in its
+  profile — tuning one cannot break another. Only the **active** entry binds the port.
+
+  | profile field | squaregolf | springbok | meaning |
+  |---|---|---|---|
+  | framing | newline-delimited | concatenated, no delimiter | handled universally by the extractor |
+  | `bArmModel` | **true** | false | arm `{Code:201}` on connect + re-arm after club-data (one shot per arm) |
+  | `{Code:201}` meaning | "ready"/arm signal | club change only (**`KeyError` without `Player.Club`**) | so we always send `Player.Club` |
+  | `BackSpin` key | `BackSpin` | `Backspin` (lowercase s) | parser accepts either |
+
+  (Source for the springbok contract: `springbok/MLM2PRO-GSPro-Connector` — `gspro_connect.py`,
+  `ball_data.py`, `gspro_connection.py`. squaregolf: `brentyates/squaregolf-connector` `connection.go`.)
 - **Listener:** `Connect()` binds a listening `FSocket` on the configured port and spawns a dedicated
   `FRunnable` (`FGSProConnectListener`) for the blocking accept + recv loop. Parsed shots + status changes
   cross to the game thread over SPSC `TQueue`s, drained by an `FTSTicker` — publishing MUST be on the game
   thread (synchronous EventBus dispatch touches the world). One client at a time, **last-wins** (a new
   connection closes the old). Config: `[LaunchMonitor.GSProConnect] Port` (default 921).
-- **Responses:** every received line is acked `{"Code":200}`. The player-info / "ready" push is
+- **Responses:** every message is acked `{"Code":200,"Message":"Shot received"}` (connectors only check
+  non-empty == received; the body isn't parsed). The player push is
   `{"Code":201,"Message":"GSPro Player Information","Player":{"Handed":"RH","Club":"<code>"}}` — the
-  `Message` MUST be the verbatim string `GSPro Player Information`; connectors switch on it to recognize
-  the arm signal (a custom string is logged "Unknown GSPro message type" and never arms). Club name →
-  GSPro code via `DisplayClubToGSPro`; handedness defaults RH.
-- **Arm/fire/re-arm protocol (verified vs `squaregolf-connector`):** the connector fires **one shot per
-  arm**, then resets to idle (~2-3s, no "reset done" signal). Per-shot order: `LaunchMonitorIsReady:true`
-  heartbeat (ready) → **ball-data** (`ContainsBallData:true`, the shot) → **club-data**
-  (`ContainsClubData:true`, *end of shot*) → internal reset. So: the connect-time `{Code:201}` arms shot
-  #1; on **club-data** we wait a **~3s settle** then send **exactly one** re-arm `{Code:201}`. Re-arming
-  on ball-data / immediately / on a timer lands mid-reset and **freezes** the connector's detection loop.
+  `Message` MUST be the verbatim string `GSPro Player Information` (connectors switch on it; squaregolf
+  treats it as the arm signal, a custom string is "Unknown GSPro message type" and never arms), and we
+  **always include `Player.Club`** (springbok `KeyError`s without it; default `DR`). Club name → GSPro code
+  via `DisplayClubToGSPro`; handedness defaults RH.
+- **Arm/fire/re-arm protocol (`bArmModel` profiles only, e.g. `squaregolf`):** the connector fires **one
+  shot per arm**, then resets to idle (~2-3s, no "reset done" signal). Per-shot order:
+  `LaunchMonitorIsReady:true` (ready) → **ball-data** (the shot) → **club-data** (*end of shot*) → reset.
+  So the connect-time `{Code:201}` arms shot #1; on **club-data** we wait the profile's **~3s settle** then
+  send **exactly one** re-arm `{Code:201}`. Re-arming on ball-data / immediately / on a timer lands
+  mid-reset and **freezes** the loop. **Non-arm connectors (springbok, generic) send shots autonomously
+  and read any 201 as a club change — so we never re-arm them.**
 - **Status:** `Online` once a client is connected, else `Off` (bound, no client) — the driver→manager
   seam carries a connected bool; surfacing the `LaunchMonitorIsReady` heartbeat as a player-facing
   "ready to fire" state (and the 4-state `Pairing`) is GOL-186.

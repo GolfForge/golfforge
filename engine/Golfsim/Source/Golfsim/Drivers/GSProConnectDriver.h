@@ -26,6 +26,24 @@
 struct FShotTakenEvent;
 class FGSProConnectListener;
 
+/**
+ * Per-connector behavior profile. The open-source GSPro connectors do NOT all implement Open Connect
+ * identically (squaregolf: newline framing + arm/re-arm + 201-as-ready; springbok: concatenated JSON +
+ * no arming + 201-is-club-change-and-requires-Player.Club). One UGSProConnectDriver is registered once
+ * per connector, each carrying its own profile, so a quirk fix for one connector can't break another.
+ * Framing is intentionally NOT here -- the streaming object extractor handles both delimited and
+ * concatenated JSON, so it's universal.
+ */
+struct FGSProConnectProfile
+{
+	FString Id = TEXT("gsproconnect");
+	FText   DisplayName = NSLOCTEXT("Golfsim", "GSProConnectDriver", "GSPro Connect");
+	bool    bArmModel = false;            // squaregolf: arm {Code:201} on connect + re-arm after club-data
+	double  RearmSettleSeconds = 3.0;     // used only when bArmModel
+	bool    bSendPlayerOnConnect = true;  // push a {Code:201} player/club on connect
+	FString DefaultClub = TEXT("DR");     // Club sent in any 201 when none selected (springbok needs it present)
+};
+
 UCLASS()
 class GOLFSIM_API UGSProConnectDriver : public ULaunchMonitorDriver
 {
@@ -36,14 +54,14 @@ public:
 	// (where FGSProConnectListener is complete), not inline / in the UHT-generated constructor.
 	virtual ~UGSProConnectDriver() override;
 
-	/** Set this instance's dropdown identity. All GSPro-connector entries (gsproconnect, squaregolf,
-	 *  mlm2pro, ...) share this one driver -- they speak the same GSPro Open Connect protocol -- but
-	 *  register as separate selectable entries so a specific connector can be troubleshot in isolation.
-	 *  Only the active entry binds the port, so registering several is safe. */
-	void SetIdentity(const FString& InId, const FText& InDisplayName) { DriverId = InId; DisplayName = InDisplayName; }
+	/** Set this entry's behavior profile (identity + per-connector quirks). All GSPro-connector entries
+	 *  share this one driver but register separately, each with its own profile, so they can be
+	 *  troubleshot + tuned in isolation. Only the active entry binds the port, so registering several
+	 *  is safe. Call once at registration (before Connect). */
+	void SetProfile(const FGSProConnectProfile& InProfile) { Profile = InProfile; }
 
-	virtual FString GetDriverId() const override { return DriverId; }
-	virtual FText GetDisplayName() const override { return DisplayName; }
+	virtual FString GetDriverId() const override { return Profile.Id; }
+	virtual FText GetDisplayName() const override { return Profile.DisplayName; }
 
 	virtual void Connect() override;       // bind + listen on 921, spawn the listener thread
 	virtual void Disconnect() override;    // stop the thread, close sockets
@@ -58,15 +76,23 @@ public:
 	 */
 	static bool ParseShot(const FString& Json, FShotTakenEvent& Out, bool& bOutSpinEstimated);
 
+	/**
+	 * Extract complete top-level JSON objects from a receive buffer. Brace-depth scan, string/escape
+	 * aware, so it handles BOTH newline-delimited (squaregolf) and raw-concatenated (springbok) framing.
+	 * Appends each object's text to OutObjects; returns the number of leading chars consumed (up to the
+	 * end of the last complete object) so the caller can chop them and keep any partial tail buffered.
+	 * Pure -> unit-testable headless.
+	 */
+	static int32 ExtractJsonObjects(const FString& Buffer, TArray<FString>& OutObjects);
+
 private:
 	static bool ParseShotObject(const TSharedPtr<class FJsonObject>& Root, FShotTakenEvent& Out, bool& bOutSpinEstimated);
 
 	// Drain the listener's shot + status queues on the game thread; publish + fire status there.
 	bool DrainQueues(float DeltaTime);
 
-	// Dropdown identity (settable per registered instance; defaults to the generic GSPro Connect entry).
-	FString DriverId = TEXT("gsproconnect");
-	FText DisplayName = NSLOCTEXT("Golfsim", "GSProConnectDriver", "GSPro Connect");
+	// Per-connector behavior profile (identity + quirks); set at registration via SetProfile.
+	FGSProConnectProfile Profile;
 
 	// Owned listener thread (raw ptr, not TUniquePtr: a forward-declared TUniquePtr member forces the
 	// UHT-generated constructor to instantiate the deleter on the incomplete type). new'd in Connect,

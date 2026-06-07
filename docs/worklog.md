@@ -2,6 +2,31 @@
 
 > Dated milestone summaries, newest on top. The durable outcome + the committed artifact, not the blow-by-blow — process detail lives in git history, `docs/ue5-cookbook.md`, and the scripts themselves.
 
+## 2026-06-06 — GSPro connector behavior profiles + Springbok (GOL-181, Windows)
+
+Bringing up the springbok connector (`springbok/MLM2PRO-GSPro-Connector`) proved the open-source
+connectors do NOT implement GSPro Open Connect identically, so the driver was refactored from a
+squaregolf-tuned single path to **per-connector behavior profiles** — each connector's quirks are data,
+so tuning one can't break another.
+
+- **`FGSProConnectProfile`** (in `GSProConnectDriver.h`): `Id`, `DisplayName`, `bArmModel`,
+  `RearmSettleSeconds`, `bSendPlayerOnConnect`, `DefaultClub`. `SetIdentity`→`SetProfile`. The listener
+  takes the profile; the manager registers three entries — `gsproconnect` (generic), `squaregolf`
+  (`bArmModel=true`), `springbok` ("Springbok (MLM2PRO / Mevo+)"). Only the active entry binds 921.
+- **Universal fixes** (needed by springbok, safe for squaregolf): (1) **streaming JSON extractor**
+  `UGSProConnectDriver::ExtractJsonObjects` (brace-depth, string/escape aware) replaces the `\n` split, so
+  it handles both newline-delimited (squaregolf) AND raw-concatenated (springbok) framing; (2) **`{Code:201}`
+  always includes `Player.Club`** (springbok `KeyError`s without it; default `DR`); (3) **re-arm gated on
+  `bArmModel`** (springbok/generic never get the spurious post-shot 201); (4) **`Backspin` casing** —
+  parser accepts `BackSpin` or `Backspin`; (5) ack body `{"Code":200,"Message":"Shot received"}`; (6)
+  `Shot.Source = Profile.Id` for provenance.
+- **Verified:** clean UE 5.7 build; **10** `Golfsim.GSProConnect.*` tests (added `ExtractJsonObjects` +
+  `BackspinCasing`). **Springbok live-validated** end-to-end — its real connector (concatenated JSON)
+  connected and fired realistic shots (159 mph / 15.8 / 2788 rpm → 235 m carry) under the `springbok`
+  entry; squaregolf path unchanged. 2 of 6 connectors validated (GOL-181).
+- Docs: springbok contract folded into `Drivers/README.md` (per-connector profile table); the root
+  `SPRINGBOK_SERVER_CONTRACT.md` (from the connector agent) removed. Adding the next connector = one profile.
+
 ## 2026-06-06 — Range tree scatter: chilled for perf (GOL-167 follow-on, Windows)
 
 The range's GOL-167 mixed forest was authored at the course's density/height (0.35 ppsm, full size),

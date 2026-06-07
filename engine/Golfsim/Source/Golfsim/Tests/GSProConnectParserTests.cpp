@@ -188,4 +188,72 @@ bool FGolfsimGSProInvalidTest::RunTest(const FString& /*Parameters*/)
 	return true;
 }
 
+// --- Streaming object extractor: handles both newline-delimited and concatenated framing ------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FGolfsimGSProExtractObjectsTest, "Golfsim.GSProConnect.ExtractJsonObjects",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FGolfsimGSProExtractObjectsTest::RunTest(const FString& /*Parameters*/)
+{
+	{
+		// Concatenated, no delimiter (springbok framing).
+		TArray<FString> Objs;
+		const int32 Consumed = UGSProConnectDriver::ExtractJsonObjects(TEXT("{\"a\":1}{\"b\":2}"), Objs);
+		TestEqual(TEXT("concatenated -> 2 objects"), Objs.Num(), 2);
+		TestEqual(TEXT("obj0"), Objs.IsValidIndex(0) ? Objs[0] : FString(), FString(TEXT("{\"a\":1}")));
+		TestEqual(TEXT("obj1"), Objs.IsValidIndex(1) ? Objs[1] : FString(), FString(TEXT("{\"b\":2}")));
+		TestEqual(TEXT("consumed all"), Consumed, 14);
+	}
+	{
+		// Newline-delimited (squaregolf framing) + trailing newline.
+		TArray<FString> Objs;
+		UGSProConnectDriver::ExtractJsonObjects(TEXT("{\"a\":1}\n{\"b\":2}\n"), Objs);
+		TestEqual(TEXT("newline-delimited -> 2 objects"), Objs.Num(), 2);
+	}
+	{
+		// Nested object + a string value containing braces/quotes must not fool the brace counter.
+		TArray<FString> Objs;
+		UGSProConnectDriver::ExtractJsonObjects(TEXT("{\"m\":\"a}b{c\",\"n\":{\"x\":1}}"), Objs);
+		TestEqual(TEXT("brace-in-string -> 1 object"), Objs.Num(), 1);
+	}
+	{
+		// Partial trailing object: nothing complete -> 0 objects, 0 consumed (caller keeps it buffered).
+		TArray<FString> Objs;
+		const int32 Consumed = UGSProConnectDriver::ExtractJsonObjects(TEXT("{\"a\":1"), Objs);
+		TestEqual(TEXT("partial -> 0 objects"), Objs.Num(), 0);
+		TestEqual(TEXT("partial -> 0 consumed"), Consumed, 0);
+	}
+	{
+		// One complete object followed by a partial: extract the first, leave the tail unconsumed.
+		TArray<FString> Objs;
+		const int32 Consumed = UGSProConnectDriver::ExtractJsonObjects(TEXT("{\"a\":1}{\"b\":"), Objs);
+		TestEqual(TEXT("complete+partial -> 1 object"), Objs.Num(), 1);
+		TestEqual(TEXT("consumed only the complete one"), Consumed, 7);
+	}
+	return true;
+}
+
+// --- springbok lowercase "Backspin" is read as backspin --------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FGolfsimGSProBackspinCasingTest, "Golfsim.GSProConnect.BackspinCasing",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FGolfsimGSProBackspinCasingTest::RunTest(const FString& /*Parameters*/)
+{
+	// springbok BallData omits TotalSpin's authority and uses "Backspin"/"SideSpin"; no TotalSpin here,
+	// so the measured-components path must pick up the lowercase key.
+	const FString Json = TEXT("{\"BallData\":{\"Speed\":150.0,\"Backspin\":3000.0,\"SideSpin\":-250.0,\"VLA\":12.0},")
+		TEXT("\"ShotDataOptions\":{\"ContainsBallData\":true,\"ContainsClubData\":false,\"IsHeartBeat\":false}}");
+
+	FShotTakenEvent Out;
+	bool bSpinEstimated = true;
+	const bool bOk = UGSProConnectDriver::ParseShot(Json, Out, bSpinEstimated);
+
+	TestTrue(TEXT("parse succeeded"), bOk);
+	TestFalse(TEXT("measured, not estimated"), bSpinEstimated);
+	TestTrue(TEXT("lowercase Backspin read"), FMath::IsNearlyEqual(Out.BackspinRpm, 3000.0, 0.5));
+	TestTrue(TEXT("sidespin used"), FMath::IsNearlyEqual(Out.SidespinRpm, -250.0, 0.5));
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

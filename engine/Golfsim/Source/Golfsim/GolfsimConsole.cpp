@@ -369,7 +369,9 @@ namespace
 			return;
 		}
 		// Canned payloads are driver-shaped: each driver's InjectTestMessage parses its own wire form.
-		const bool bGSPro = Driver->GetDriverId() == TEXT("gsproconnect");
+		// All GSPro-family entries (gsproconnect / squaregolf / springbok / ...) share the GSPro parser.
+		const FString DriverId = Driver->GetDriverId();
+		const bool bGSPro = DriverId == TEXT("gsproconnect") || DriverId == TEXT("squaregolf") || DriverId == TEXT("springbok");
 		FString Payload;
 		if (Args.Num() == 0)
 		{

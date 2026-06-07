@@ -64,7 +64,8 @@ namespace
 class FGSProConnectListener : public FRunnable
 {
 public:
-	explicit FGSProConnectListener(int32 InPort) : Port(InPort) {}
+	FGSProConnectListener(int32 InPort, const FGSProConnectProfile& InProfile)
+		: Port(InPort), Profile(InProfile) {}
 
 	virtual ~FGSProConnectListener() override
 	{
@@ -211,7 +212,10 @@ private:
 			RecvBuffer.Empty();
 		}
 		StatusQueue.Enqueue({ true, FString::Printf(TEXT("GSPro Connect: client connected (%s)"), *Remote->ToString(true)) });
-		SendPlayer();   // GSPro pushes player info on connect so the connector knows handedness/club
+		if (Profile.bSendPlayerOnConnect)
+		{
+			SendPlayer();   // GSPro pushes player info on connect (arms squaregolf; sets initial club elsewhere)
+		}
 	}
 
 	void CloseClient(bool bEnqueueStatus)
@@ -232,54 +236,53 @@ private:
 		}
 	}
 
-	// Split RecvBuffer on '\n'; ack + parse each complete line. Remainder stays buffered.
+	// Pull every complete JSON object out of RecvBuffer (delimited OR concatenated framing), handle each,
+	// and keep any partial trailing object buffered for the next recv.
 	void ProcessBuffer()
 	{
-		int32 NewlineIdx = INDEX_NONE;
-		while (RecvBuffer.FindChar(TCHAR('\n'), NewlineIdx))
+		TArray<FString> Objects;
+		const int32 Consumed = UGSProConnectDriver::ExtractJsonObjects(RecvBuffer, Objects);
+		if (Consumed > 0)
 		{
-			FString Line = RecvBuffer.Left(NewlineIdx);
-			RecvBuffer.RightChopInline(NewlineIdx + 1, EAllowShrinking::No);
-			Line.TrimStartAndEndInline();   // strips a trailing '\r' + whitespace
-			if (!Line.IsEmpty())
-			{
-				HandleLine(Line);
-			}
+			RecvBuffer.RightChopInline(Consumed, EAllowShrinking::No);
+		}
+		for (const FString& Obj : Objects)
+		{
+			HandleMessage(Obj);
 		}
 	}
 
-	void HandleLine(const FString& Line)
+	void HandleMessage(const FString& Msg)
 	{
 		// Raw connector frame, for protocol/field-mapping troubleshooting (enable `log LogTemp Verbose`).
-		UE_LOG(LogTemp, Verbose, TEXT("golfsim GSProConnect: raw <- %s"), *Line);
+		UE_LOG(LogTemp, Verbose, TEXT("golfsim GSProConnect: raw <- %s"), *Msg);
 
-		// Ack every message the connector sends -- it treats {Code:200} as "the server got it".
-		SendRaw(TEXT("{\"Code\":200}\n"));
+		// Ack every message. The connector only checks non-empty == received (body not inspected).
+		SendRaw(TEXT("{\"Code\":200,\"Message\":\"Shot received\"}\n"));
 
-		// Ball-data = the shot itself: parse + publish. Re-arm is NOT sent here -- the connector is
-		// still mid-cycle (a club-data message + an internal reset follow), and an immediate {Code:201}
-		// lands mid-cycle and cancels its detection loop.
+		// Ball-data = the shot itself: parse + publish (tagged with this connector's id for provenance).
 		FShotTakenEvent Shot;
 		bool bSpinEstimated = false;
-		if (UGSProConnectDriver::ParseShot(Line, Shot, bSpinEstimated))
+		if (UGSProConnectDriver::ParseShot(Msg, Shot, bSpinEstimated))
 		{
+			Shot.Source = Profile.Id;
 			UE_LOG(LogTemp, Display,
-				TEXT("golfsim GSProConnect: shot %.1f mph launch %.1f spin %.0f%s -> shot.taken"),
-				Shot.BallSpeedMps / GMphToMps, Shot.LaunchAngleDeg, Shot.BackspinRpm,
+				TEXT("golfsim GSProConnect[%s]: shot %.1f mph launch %.1f spin %.0f%s -> shot.taken"),
+				*Profile.Id, Shot.BallSpeedMps / GMphToMps, Shot.LaunchAngleDeg, Shot.BackspinRpm,
 				bSpinEstimated ? TEXT(" (est)") : TEXT(""));
 			ShotQueue.Enqueue(Shot);
 		}
 
-		// Club-data marks END OF SHOT (per-shot order: ready heartbeat -> ball-data -> club-data). The
-		// connector fires exactly one shot per arm, then resets to idle (~2-3s). To get the next shot we
-		// re-arm with a {Code:201}, but only AFTER a short settle so the reset completes (an immediate
-		// re-arm is swallowed). Schedule it; the Run loop fires it when RearmDueTime elapses. The
-		// connect-time 201 arms the first shot.
-		if (MessageHasClubData(Line))
+		// ARM-MODEL connectors only (squaregolf): club-data marks end-of-shot; the connector fires one
+		// shot per arm then resets (~2-3s), so we re-arm with a {Code:201} after a settle. NON-arm
+		// connectors (springbok/generic) send shots autonomously and read ANY 201 as a club change, so
+		// we must NOT re-arm them. Gated on the profile.
+		if (Profile.bArmModel && MessageHasClubData(Msg))
 		{
-			RearmDueTime = FPlatformTime::Seconds() + RearmSettleSeconds;
+			RearmDueTime = FPlatformTime::Seconds() + Profile.RearmSettleSeconds;
 			UE_LOG(LogTemp, Display,
-				TEXT("golfsim GSProConnect: club-data (end of shot) -> re-arm in %.1fs"), RearmSettleSeconds);
+				TEXT("golfsim GSProConnect[%s]: club-data (end of shot) -> re-arm in %.1fs"),
+				*Profile.Id, Profile.RearmSettleSeconds);
 		}
 	}
 
@@ -307,13 +310,14 @@ private:
 		FString Line;
 		{
 			FScopeLock Lock(&ClientCS);
-			// Message MUST be the verbatim GSPro string "GSPro Player Information": connectors switch on
-			// this exact text to recognize the player-info/"ready" signal that arms ball detection. A
-			// custom string (e.g. "GolfForge Player") falls through as "Unknown GSPro message type" and
-			// never arms. (Confirmed against squaregolf-connector connection.go.)
-			Line = ClubCode.IsEmpty()
-				? FString::Printf(TEXT("{\"Code\":201,\"Message\":\"GSPro Player Information\",\"Player\":{\"Handed\":\"%s\"}}\n"), *Handed)
-				: FString::Printf(TEXT("{\"Code\":201,\"Message\":\"GSPro Player Information\",\"Player\":{\"Handed\":\"%s\",\"Club\":\"%s\"}}\n"), *Handed, *ClubCode);
+			// Always include Player.Club -- springbok throws KeyError on a 201 without it; default to the
+			// profile's club until one is selected. Message MUST be the verbatim "GSPro Player Information":
+			// connectors switch on that exact text (squaregolf treats it as the arm signal; a custom string
+			// falls through as "Unknown GSPro message type"). Confirmed vs squaregolf + springbok contracts.
+			const FString Club = ClubCode.IsEmpty() ? Profile.DefaultClub : ClubCode;
+			Line = FString::Printf(
+				TEXT("{\"Code\":201,\"Message\":\"GSPro Player Information\",\"Player\":{\"Handed\":\"%s\",\"Club\":\"%s\"}}\n"),
+				*Handed, *Club);
 		}
 		SendRaw(Line);
 	}
@@ -340,12 +344,9 @@ private:
 	FString Handed = TEXT("RH");        // default handedness; SetClub updates the club code
 	FString ClubCode;
 
+	FGSProConnectProfile Profile;       // per-connector behavior (arm model, default club, ...)
 	FString RecvBuffer;                 // socket-thread only
 	double RearmDueTime = 0.0;          // socket-thread only; FPlatformTime::Seconds() due time, 0 = none
-	// Settle after club-data before re-arming. The connector's post-shot reset (idle + ~2s) isn't
-	// instant and gives no "reset done" signal; re-arming during it freezes its detection loop. ~3s
-	// clears the reset. Magic number, inherent to re-arming the connector from outside its teardown.
-	static constexpr double RearmSettleSeconds = 3.0;
 	std::atomic<bool> bStop{ false };
 
 	TQueue<FShotTakenEvent, EQueueMode::Spsc> ShotQueue;        // socket thread -> game thread
@@ -383,7 +384,7 @@ void UGSProConnectDriver::Connect()
 	int32 Port = 921;
 	GConfig->GetInt(TEXT("LaunchMonitor.GSProConnect"), TEXT("Port"), Port, GGameIni);
 
-	Listener = new FGSProConnectListener(Port);
+	Listener = new FGSProConnectListener(Port, Profile);
 	if (!Listener->Start())
 	{
 		delete Listener;
@@ -472,6 +473,54 @@ bool UGSProConnectDriver::DrainQueues(float /*DeltaTime*/)
 // Parsing (pure + defensive -- unit-tested headless; no socket/world)
 // ---------------------------------------------------------------------------------------------------
 
+int32 UGSProConnectDriver::ExtractJsonObjects(const FString& Buffer, TArray<FString>& OutObjects)
+{
+	// Walk the buffer tracking brace depth, ignoring braces inside JSON strings (and escaped quotes).
+	// Each time depth returns to 0 on a '}' we've got one complete top-level object. Works whether the
+	// connector delimits objects (newlines/whitespace, which sit at depth 0 and are skipped) or
+	// concatenates them back-to-back. Returns chars consumed up to the end of the last complete object.
+	int32 Depth = 0;
+	int32 Start = INDEX_NONE;
+	int32 Consumed = 0;
+	bool bInString = false;
+	bool bEscaped = false;
+	const int32 Len = Buffer.Len();
+	for (int32 i = 0; i < Len; ++i)
+	{
+		const TCHAR Ch = Buffer[i];
+		if (bInString)
+		{
+			if (bEscaped)            { bEscaped = false; }
+			else if (Ch == TCHAR('\\')) { bEscaped = true; }
+			else if (Ch == TCHAR('"'))  { bInString = false; }
+			continue;
+		}
+		if (Ch == TCHAR('"'))
+		{
+			bInString = true;
+		}
+		else if (Ch == TCHAR('{'))
+		{
+			if (Depth == 0) { Start = i; }
+			++Depth;
+		}
+		else if (Ch == TCHAR('}'))
+		{
+			if (Depth > 0)
+			{
+				--Depth;
+				if (Depth == 0 && Start != INDEX_NONE)
+				{
+					OutObjects.Add(Buffer.Mid(Start, i - Start + 1));
+					Consumed = i + 1;
+					Start = INDEX_NONE;
+				}
+			}
+		}
+	}
+	return Consumed;
+}
+
 bool UGSProConnectDriver::ParseShot(const FString& Json, FShotTakenEvent& Out, bool& bOutSpinEstimated)
 {
 	bOutSpinEstimated = false;
@@ -540,7 +589,9 @@ bool UGSProConnectDriver::ParseShotObject(const TSharedPtr<FJsonObject>& Root, F
 	// a device reports all of them they need not be self-consistent (TotalSpin != hypot(Back,Side)), so
 	// the measured components are authoritative, not the decomposition.
 	double BackSpin = 0.0;
-	const bool bHasBack = Ball->TryGetNumberField(TEXT("BackSpin"), BackSpin);
+	// springbok sends "Backspin" (lowercase s); squaregolf/GSPro use "BackSpin". Accept either.
+	const bool bHasBack = Ball->TryGetNumberField(TEXT("BackSpin"), BackSpin)
+		|| Ball->TryGetNumberField(TEXT("Backspin"), BackSpin);
 	double SideSpin = 0.0;
 	const bool bHasSide = Ball->TryGetNumberField(TEXT("SideSpin"), SideSpin);
 	double TotalSpin = 0.0;

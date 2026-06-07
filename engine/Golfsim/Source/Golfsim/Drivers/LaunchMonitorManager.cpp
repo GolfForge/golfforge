@@ -18,19 +18,35 @@ void ULaunchMonitorManager::Initialize(FSubsystemCollectionBase& Collection)
 	RegisterDriver(NewObject<UOpenFlightDriver>(this));
 
 	// GSPro Open Connect server (GOL-178): one TCP listener (921) inherits the whole connector
-	// ecosystem (MLM2PRO, Mevo+, SkyTrak, R10, Square Omni/Square Golf, GC2). We register it as
-	// separate dropdown entries per connector -- all share UGSProConnectDriver (same protocol) but
-	// appear individually so a specific connector can be troubleshot in isolation; only the active
-	// entry binds the port. Adding another (mlm2pro, skytrak, ...) is one line here. Opt-in -- the
-	// default active driver stays openflight; select via golfsim.LMSelect / the settings UI.
+	// ecosystem. The open-source connectors don't implement Open Connect identically, so each is
+	// registered as its own dropdown entry carrying a behavior PROFILE (framing is universal; arm
+	// model / 201 rules / default club differ) -- tuning one connector can't break another. Only the
+	// active entry binds the port. Adding another (skytrak, r10, gc2, ...) is one profile here. Opt-in
+	// -- default active stays openflight; select via golfsim.LMSelect / the settings UI.
 	{
-		UGSProConnectDriver* GSPro = NewObject<UGSProConnectDriver>(this);
-		GSPro->SetIdentity(TEXT("gsproconnect"), NSLOCTEXT("Golfsim", "GSProConnectDriver", "GSPro Connect"));
-		RegisterDriver(GSPro);
+		auto RegisterGSPro = [this](const FGSProConnectProfile& P)
+		{
+			UGSProConnectDriver* D = NewObject<UGSProConnectDriver>(this);
+			D->SetProfile(P);
+			RegisterDriver(D);
+		};
 
-		UGSProConnectDriver* SquareGolf = NewObject<UGSProConnectDriver>(this);
-		SquareGolf->SetIdentity(TEXT("squaregolf"), NSLOCTEXT("Golfsim", "SquareGolfDriver", "Square Golf"));
-		RegisterDriver(SquareGolf);
+		FGSProConnectProfile Generic;   // generic GSPro Open Connect (no arm model)
+		Generic.Id = TEXT("gsproconnect");
+		Generic.DisplayName = NSLOCTEXT("Golfsim", "GSProConnectDriver", "GSPro Connect");
+		RegisterGSPro(Generic);
+
+		FGSProConnectProfile SquareGolf;   // squaregolf-connector: arm-on-connect + re-arm after club-data
+		SquareGolf.Id = TEXT("squaregolf");
+		SquareGolf.DisplayName = NSLOCTEXT("Golfsim", "SquareGolfDriver", "Square Golf");
+		SquareGolf.bArmModel = true;
+		RegisterGSPro(SquareGolf);
+
+		FGSProConnectProfile Springbok;   // springbok-connector (Rapsodo MLM2PRO + FlightScope Mevo+)
+		Springbok.Id = TEXT("springbok");
+		Springbok.DisplayName = NSLOCTEXT("Golfsim", "SpringbokDriver", "Springbok (MLM2PRO / Mevo+)");
+		// bArmModel stays false (sends shots autonomously); 201-always-includes-Club is universal.
+		RegisterGSPro(Springbok);
 	}
 
 	FString ConfiguredActive = TEXT("openflight");

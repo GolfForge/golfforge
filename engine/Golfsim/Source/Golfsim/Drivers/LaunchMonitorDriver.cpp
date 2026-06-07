@@ -24,3 +24,11 @@ void ULaunchMonitorDriver::SetStatus(bool bInConnected, const FString& Detail)
 		OnStatusChanged(bInConnected, Detail);
 	}
 }
+
+void ULaunchMonitorDriver::SetReady(bool bReady)
+{
+	if (OnReadyChanged)
+	{
+		OnReadyChanged(bReady);
+	}
+}

@@ -3,6 +3,7 @@
 #include "Components/StaticMeshComponent.h"
 #include "Engine/StaticMesh.h"
 #include "Engine/World.h"
+#include "Materials/MaterialInterface.h"
 #include "UObject/ConstructorHelpers.h"
 #include "DrawDebugHelpers.h"
 #include "Physics/BallRender.h"
@@ -20,6 +21,14 @@ AGolfBallActor::AGolfBallActor()
 	{
 		BallMesh->SetStaticMesh(SphereMesh.Object);
 		BallMesh->SetRelativeScale3D(FVector(0.12f));   // ~12 cm: visible while still ball-ish
+	}
+
+	// Golf-ball look: off-white semi-gloss + tiled dimple normal (M_GolfBall, authored by
+	// engine/scripts/build_golfball_assets.py). Replaces the bare gray engine sphere material.
+	static ConstructorHelpers::FObjectFinder<UMaterialInterface> BallMat(TEXT("/Game/Models/Golf/M_GolfBall.M_GolfBall"));
+	if (BallMat.Succeeded())
+	{
+		BallMesh->SetMaterial(0, BallMat.Object);
 	}
 }
 

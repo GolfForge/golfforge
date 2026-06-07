@@ -18,6 +18,7 @@
 #include "Events/EventBusSubsystem.h"      // publish shot.taken / subscribe shot.outcome (GOL-7)
 #include "Drivers/LaunchMonitorManager.h"  // active-driver status -> panel dot (GOL-11)
 #include "Drivers/LaunchMonitorDriver.h"
+#include "Sound/SoundBase.h"               // ball-strike one-shot SFX
 #include "Physics/BallFlightTypes.h"       // FBallTrajectory (carried on the outcome event)
 #include "Physics/RangeSurface.h"          // ClassifyRangeLie -> the integrator's surface provider (GOL-9)
 #include "Round/RoundSubsystem.h"          // IsActive() guard for the range pin (GOL-117)
@@ -486,6 +487,12 @@ void AGolfRangeHUD::EnsureInputBound()
 					{
 						D->SetSelectedClub(GBag[FMath::Clamp(HUD->ActiveClub, 0, GBagNum - 1)].Name);
 					}
+				};
+
+				// Ball-ready indicator (GOL-186): the active driver reports "armed / take your shot".
+				LM->OnActiveReadyChanged = [WeakThis](bool bReady)
+				{
+					if (AGolfRangeHUD* HUD = WeakThis.Get()) { HUD->ApplyLaunchMonitorReady(bReady); }
 				};
 
 				// Dropdown options: "Simulated (no device)" (index 0 = keyboard/game) + each available
@@ -1563,7 +1570,14 @@ void AGolfRangeHUD::ApplyLaunchMonitorState(ELaunchMonitorStatus Status, const F
 	{
 		Panel->SetLaunchMonitorStatus(Status, Name);
 		Panel->SetPrimaryActionLabel(Status == ELaunchMonitorStatus::Online ? TEXT("Sim shot") : TEXT("Swing"));
+		// Ball-ready only makes sense for a live device; clear it whenever we're not Online (GOL-186).
+		if (Status != ELaunchMonitorStatus::Online) { Panel->SetLaunchMonitorReady(false); }
 	}
+}
+
+void AGolfRangeHUD::ApplyLaunchMonitorReady(bool bReady)
+{
+	if (Panel) { Panel->SetLaunchMonitorReady(bReady); }
 }
 
 void AGolfRangeHUD::TriggerPrimaryAction()
@@ -1855,6 +1869,17 @@ void AGolfRangeHUD::OnShotOutcome(const FGolfEvent& Event)
 		if (Ball)
 		{
 			Ball->PlayTrajectory(Out.Trajectory);
+		}
+
+		// Ball-strike SFX: one-shot at the tee as the ball launches (CC0 SW_BallStrike). Lazy-loaded
+		// once; plays for every shot source (keyboard / LM / manual) since they all land here.
+		if (!StrikeSound)
+		{
+			StrikeSound = LoadObject<USoundBase>(nullptr, TEXT("/Game/Audio/BallStrike/SW_BallStrike.SW_BallStrike"));
+		}
+		if (StrikeSound)
+		{
+			UGameplayStatics::PlaySoundAtLocation(World, StrikeSound, Loc);
 		}
 	}
 

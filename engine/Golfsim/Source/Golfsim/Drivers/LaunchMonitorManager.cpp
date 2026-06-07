@@ -112,6 +112,17 @@ void ULaunchMonitorManager::RegisterDriver(ULaunchMonitorDriver* Driver)
 				bConnected ? ELaunchMonitorStatus::Online : ELaunchMonitorStatus::Off, Detail);
 		}
 	};
+
+	// Forward the active driver's ball-ready state to the HUD (GOL-186), same active-only gating.
+	Driver->OnReadyChanged = [WeakThis, WeakDriver](bool bReady)
+	{
+		ULaunchMonitorManager* M = WeakThis.Get();
+		ULaunchMonitorDriver* D = WeakDriver.Get();
+		if (M && D && D->GetDriverId() == M->ActiveDriverId && M->OnActiveReadyChanged)
+		{
+			M->OnActiveReadyChanged(bReady);
+		}
+	};
 	Drivers.Add(Driver);
 }
 

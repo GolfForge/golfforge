@@ -180,6 +180,7 @@ public:
 	// --- Game-thread accessors (drained by the driver's ticker) -----------------------------------
 	bool PopShot(FShotTakenEvent& Out)    { return ShotQueue.Dequeue(Out); }
 	bool PopStatus(FGSProConnectStatus& Out) { return StatusQueue.Dequeue(Out); }
+	bool PopReady(bool& Out) { return ReadyQueue.Dequeue(Out); }
 
 	// Called from the game thread (SetSelectedClub): update the player + push a fresh {Code:201}.
 	void SetClub(const FString& Code)
@@ -271,6 +272,14 @@ private:
 				*Profile.Id, Shot.BallSpeedMps / GMphToMps, Shot.LaunchAngleDeg, Shot.BackspinRpm,
 				bSpinEstimated ? TEXT(" (est)") : TEXT(""));
 			ShotQueue.Enqueue(Shot);
+			ReadyQueue.Enqueue(false);   // shot taken -> LM no longer "armed, waiting" (GOL-186)
+		}
+		else if (MessageReadyFlag(Msg))
+		{
+			// Armed heartbeat (LaunchMonitorIsReady, no ball data) -> "ready, take your shot". Most
+			// meaningful for arm-model connectors (squaregolf); autonomous ones rarely send a standalone
+			// ready so the indicator just won't light between their shots.
+			ReadyQueue.Enqueue(true);
 		}
 
 		// ARM-MODEL connectors only (squaregolf): club-data marks end-of-shot; the connector fires one
@@ -303,6 +312,26 @@ private:
 		bool bClub = false;
 		(*Opts)->TryGetBoolField(TEXT("ContainsClubData"), bClub);
 		return bClub;
+	}
+
+	// True if the message's ShotDataOptions.LaunchMonitorIsReady is set (the "armed" signal). Uses
+	// omitempty semantics on the connector side: key present+true = ready, absent = not ready.
+	static bool MessageReadyFlag(const FString& Json)
+	{
+		TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(Json);
+		TSharedPtr<FJsonObject> Root;
+		if (!FJsonSerializer::Deserialize(Reader, Root) || !Root.IsValid())
+		{
+			return false;
+		}
+		const TSharedPtr<FJsonObject>* Opts = nullptr;
+		if (!Root->TryGetObjectField(TEXT("ShotDataOptions"), Opts) || !Opts || !Opts->IsValid())
+		{
+			return false;
+		}
+		bool bReady = false;
+		(*Opts)->TryGetBoolField(TEXT("LaunchMonitorIsReady"), bReady);
+		return bReady;
 	}
 
 	void SendPlayer()
@@ -351,6 +380,7 @@ private:
 
 	TQueue<FShotTakenEvent, EQueueMode::Spsc> ShotQueue;        // socket thread -> game thread
 	TQueue<FGSProConnectStatus, EQueueMode::Spsc> StatusQueue;  // socket thread -> game thread
+	TQueue<bool, EQueueMode::Spsc> ReadyQueue;                  // socket thread -> game thread (GOL-186)
 };
 
 // ---------------------------------------------------------------------------------------------------
@@ -460,6 +490,11 @@ bool UGSProConnectDriver::DrainQueues(float /*DeltaTime*/)
 	while (Listener->PopShot(Shot))
 	{
 		PublishShot(Shot);   // synchronous EventBus dispatch on the game thread
+	}
+	bool bReady = false;
+	while (Listener->PopReady(bReady))
+	{
+		SetReady(bReady);    // GOL-186 ball-ready indicator (drained before status so a disconnect wins)
 	}
 	FGSProConnectStatus St;
 	while (Listener->PopStatus(St))

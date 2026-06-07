@@ -105,6 +105,30 @@ void UGolfRangePanel::BuildTree()
 		MS->SetOffsets(FMargin(28.f, 28.f, 0.f, 0.f));
 	}
 
+	// ── Top-right ball-ready badge (GOL-186) ───────────────────────────────────────────────────────
+	// "Take your shot" chip, mirroring the top-left Menu (same 28px inset). Floats over the scene;
+	// hidden (Collapsed) until a live launch monitor reports it's armed. The HUD toggles it.
+	ReadyBadge = WidgetTree->ConstructWidget<UBorder>();
+	ReadyBadge->SetPadding(FMargin(14.f, 8.f));
+	{
+		FLinearColor ReadyFill = Color::Accent(); ReadyFill.A = 0.18f;
+		FLinearColor ReadyLine = Color::Accent(); ReadyLine.A = 0.55f;
+		ReadyBadge->SetBrush(RoundedBrush(ReadyFill, Radius::Sm, ReadyLine, 1.f));
+		UTextBlock* ReadyText = WidgetTree->ConstructWidget<UTextBlock>();
+		ReadyText->SetText(FText::FromString(TEXT("● TAKE YOUR SHOT")));
+		ReadyText->SetFont(Mono(14, FName(TEXT("SemiBold"))));
+		ReadyText->SetColorAndOpacity(FSlateColor(Color::Accent()));
+		ReadyBadge->SetContent(ReadyText);
+	}
+	ReadyBadge->SetVisibility(ESlateVisibility::Collapsed);
+	if (UCanvasPanelSlot* RBS = Root->AddChildToCanvas(ReadyBadge))
+	{
+		RBS->SetAnchors(FAnchors(1.f, 0.f, 1.f, 0.f));   // top-right
+		RBS->SetAlignment(FVector2D(1.f, 0.f));          // pivot on the chip's top-right corner
+		RBS->SetAutoSize(true);
+		RBS->SetOffsets(FMargin(-28.f, 28.f, 0.f, 0.f)); // 28px inset from the right + top
+	}
+
 	// ── Telemetry readout (bottom-left glass card) ───────────────────────────────────────────────
 	UBorder* Readout = MakeGlassPanel(WidgetTree);
 	if (UVerticalBoxSlot* RS = Stack->AddChildToVerticalBox(Readout))
@@ -231,8 +255,10 @@ void UGolfRangePanel::BuildTree()
 	}
 
 	// ── Control bar (full-width bottom glass bar) ────────────────────────────────────────────────
+	// Flat edge-to-edge strip (no rounded corners / border) for a slicker look -- it spans the full
+	// width at the very bottom, so a rounded card outline read as fussy.
 	UBorder* Bar = WidgetTree->ConstructWidget<UBorder>();
-	Bar->SetBrush(RoundedBrush(Color::GlassFill(), Radius::Lg, Color::Border(), 1.f));
+	Bar->SetBrush(RoundedBrush(Color::GlassFill(), 0.f));
 	Bar->SetPadding(FMargin(24.f, 12.f));
 	if (UVerticalBoxSlot* BarSlot = Stack->AddChildToVerticalBox(Bar)) { BarSlot->SetHorizontalAlignment(HAlign_Fill); }
 
@@ -518,5 +544,13 @@ void UGolfRangePanel::SetLaunchMonitorStatus(ELaunchMonitorStatus Status, const 
 		}
 		StatusValue->SetText(FText::FromString(Val));
 		StatusValue->SetColorAndOpacity(FSlateColor(bOnline ? Tint : Color::Text()));
+	}
+}
+
+void UGolfRangePanel::SetLaunchMonitorReady(bool bReady)
+{
+	if (ReadyBadge)
+	{
+		ReadyBadge->SetVisibility(bReady ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Collapsed);
 	}
 }

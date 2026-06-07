@@ -41,10 +41,11 @@ Access methods used by the pipeline:
   cite the relevant dataset DOI when reusing data fetched through it. https://opentopography.org
 - **AWS Entwine / USGS 3DEP** point-cloud tiles (alternate `pdal` backend) — https://usgs.entwine.io/
 
-## Audio — ambient SFX (GOL-166)
+## Audio — ambient SFX (GOL-166) + gameplay SFX
 
-The ambient sound layer (birdsong + the optional wind/distant-traffic beds) imported into
-`engine/Golfsim/Content/Audio/Ambient/` (sources kept in `_src/`) is sourced from **BigSoundBank**
+The ambient sound layer (birdsong + the optional wind/distant-traffic beds) and the gameplay SFX
+(ball-strike) imported into `engine/Golfsim/Content/Audio/` (sources kept in each `_src/`) are sourced
+from **BigSoundBank**
 (Joseph SARDIN), released under a **public-domain-equivalent license (CC0)** — free for commercial
 and personal use, no attribution required, redistribution allowed. License:
 https://bigsoundbank.com/licenses.html. CC0 was chosen specifically so the clips can live in this
@@ -60,6 +61,7 @@ Courtesy credit (not legally required) for the clips in use:
 | `SW_AmbientBird_ForestEdge` | Forest: On the Edge (s0905) | https://bigsoundbank.com/forest-on-the-edge-s0905.html |
 | `SW_AmbientWind_Trees` | Wind in the Trees (s0904) | https://bigsoundbank.com/forest-wind-in-the-trees-s0904.html |
 | `SW_AmbientMurmur_Distant` | Parisian Ring Road #2 (s3027) | https://bigsoundbank.com/parisian-ring-road-2-s3027.html |
+| `SW_BallStrike` (ball-strike SFX, trimmed to ~0.55 s around the impact) | Golf Swing with a Wooden Club (s0455) | https://bigsoundbank.com/golf-swing-with-a-wooden-club-s0455.html |
 
 ## Carrying attribution in distributed builds
 

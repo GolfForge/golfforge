@@ -45,6 +45,11 @@ public:
 	/** Fired on connect/disconnect/error. The manager forwards the active driver's status to the UI. */
 	TFunction<void(bool /*bConnected*/, const FString& /*Detail*/)> OnStatusChanged;
 
+	/** Fired when the device's "armed / ready for your shot" state changes (GOL-186). Drivers that have
+	 *  no distinct ready concept simply never call it. The manager forwards the active driver's ready
+	 *  state to the HUD's ball-ready indicator. */
+	TFunction<void(bool /*bReady*/)> OnReadyChanged;
+
 	/** Set by the manager right after creation so the driver can publish + reach the world.
 	 *  Body lives in the .cpp -- TWeakObjectPtr assignment needs the complete manager type. */
 	void SetManager(ULaunchMonitorManager* InManager);
@@ -54,6 +59,8 @@ protected:
 	void PublishShot(const FShotTakenEvent& Shot);
 	/** Update connection state + fire OnStatusChanged. */
 	void SetStatus(bool bInConnected, const FString& Detail);
+	/** Fire OnReadyChanged (device armed / waiting for a shot). */
+	void SetReady(bool bReady);
 
 	TWeakObjectPtr<ULaunchMonitorManager> Manager;
 	bool bConnected = false;

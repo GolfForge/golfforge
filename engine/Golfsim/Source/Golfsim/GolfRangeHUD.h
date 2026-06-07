@@ -55,6 +55,9 @@ private:
 	bool bAmbientAudible = false;
 	UPROPERTY(Transient) TArray<TObjectPtr<class UAudioComponent>> AmbientComponents;
 
+	// Ball-strike one-shot SFX (CC0 SW_BallStrike), lazy-loaded on first shot; played in OnShotOutcome.
+	UPROPERTY(Transient) TObjectPtr<class USoundBase> StrikeSound;
+
 	void EnsureInputBound();
 	void SelectClub(int32 Index);
 	// GOL-123: ungated club switch used by SelectPutterIfAvailable + SelectClub. The public
@@ -181,6 +184,8 @@ public:
 	// button label ("Sim shot" vs "Swing"). TriggerPrimaryAction routes that button by mode: Game ->
 	// advance the swing meter (same as Space); Online -> ask the active driver to emit a shot.
 	void ApplyLaunchMonitorState(ELaunchMonitorStatus Status, const FString& Name);
+	// GOL-186: show/hide the "take your shot" ball-ready badge as the active LM reports armed/not.
+	void ApplyLaunchMonitorReady(bool bReady);
 	void TriggerPrimaryAction();
 
 	// GOL-122: swap the swing-meter difficulty profile (Easy / Normal / Pro). Easy on entry; the

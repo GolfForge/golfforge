@@ -43,6 +43,10 @@ public:
 	// HUD from the active driver's status (which also flips the input mode + swing-meter visibility).
 	void SetLaunchMonitorStatus(ELaunchMonitorStatus Status, const FString& Name);
 
+	// GOL-186: show/hide the "take your shot" ball-ready badge in the control bar. The HUD toggles it
+	// from the active launch monitor's armed state (shown only while a device is Online + armed).
+	void SetLaunchMonitorReady(bool bReady);
+
 	// Label of the primary-action button in the telemetry readout: "Swing" (game mode) / "Sim shot"
 	// (a real LM owns the stream). The HUD sets it alongside SetLaunchMonitorStatus.
 	void SetPrimaryActionLabel(const FString& Label);
@@ -137,6 +141,7 @@ private:
 	UPROPERTY(Transient) TObjectPtr<UBorder> StatusDot;
 	UPROPERTY(Transient) TObjectPtr<UTextBlock> StatusEyebrow;   // "MODE" / "MONITOR"
 	UPROPERTY(Transient) TObjectPtr<UTextBlock> StatusValue;     // "Game · Keyboard" / "{Name} · Live"
+	UPROPERTY(Transient) TObjectPtr<UBorder> ReadyBadge;        // GOL-186 "take your shot" badge (hidden by default)
 
 	// Telemetry readout (bottom-left).
 	UPROPERTY(Transient) TObjectPtr<UButton> PrimaryButton;        // Swing / Sim shot

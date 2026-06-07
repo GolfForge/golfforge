@@ -66,6 +66,10 @@ public:
 	/** Fired when the active driver's connection status changes (HUD wires it to the status pill). */
 	TFunction<void(ELaunchMonitorStatus /*Status*/, const FString& /*Detail*/)> OnActiveStatusChanged;
 
+	/** Fired when the active driver's "armed / ready for your shot" state changes (GOL-186); the HUD
+	 *  wires it to the ball-ready indicator. */
+	TFunction<void(bool /*bReady*/)> OnActiveReadyChanged;
+
 private:
 	void RegisterDriver(ULaunchMonitorDriver* Driver);
 

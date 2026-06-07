@@ -2,6 +2,31 @@
 
 > Dated milestone summaries, newest on top. The durable outcome + the committed artifact, not the blow-by-blow — process detail lives in git history, `docs/ue5-cookbook.md`, and the scripts themselves.
 
+## 2026-06-06 — Golf-ball look + strike SFX + ball-ready UI (GOL-186, Windows)
+
+Range-polish batch: a proper ball, a strike sound, an armed-LM indicator, and a slicker control bar.
+
+- **Ball look:** the in-flight ball was a gray `/Engine/BasicShapes/Sphere` with no material. New
+  `engine/scripts/build_golfball_assets.py` generates a seamless tiling **dimple micro-normal** (stdlib
+  cosine-grid → wrapped central-diff → RGB PNG, the `T_WaterNormal` technique) → `T_GolfBallDimples`
+  (`TC_NORMALMAP`) and authors **`M_GolfBall`** (off-white semi-gloss + tiled normal, params) via
+  `MaterialEditingLibrary`. `AGolfBallActor` assigns it. No Fab dependency (the Fab `GOLF_BALL_PACK` mesh
+  is a 3-ball showcase, unusable as a single ball).
+- **Strike SFX:** new `engine/scripts/import_ball_strike_sfx.py` trims BigSoundBank "Golf Swing with a
+  Wooden Club" (s0455, **CC0**) from its 10.5 s take down to a **~0.55 s** clip around the loudest
+  transient (pure stdlib: `aifc` reads the AIFF, `audioop` finds the peak + byteswaps, `wave` writes the
+  clip) → non-looping `SW_BallStrike`. `AGolfRangeHUD::OnShotOutcome` plays it one-shot at the tee via
+  `UGameplayStatics::PlaySoundAtLocation` for every shot source. ATTRIBUTION credit added.
+- **GOL-186 ball-ready UI:** a readiness signal plumbed driver→manager→HUD, separate from the connected
+  bool — `UGSProConnectDriver` detects the `LaunchMonitorIsReady` heartbeat (arm-model connectors) →
+  `OnReadyChanged` → `OnActiveReadyChanged` → HUD → a **"● TAKE YOUR SHOT" badge** floating **top-right**
+  (mirrors the top-left Menu chip), hidden until armed, auto-clears on shot/disconnect. Drives off
+  squaregolf's arm cycle; autonomous connectors (springbok) don't light it.
+- **Control bar:** flattened the bottom bar from a rounded/bordered glass card to a **flat full-width
+  strip** (slicker).
+- Verified: clean UE 5.7 build; 10 `Golfsim.GSProConnect.*` tests stay green; ball + strike + flat bar
+  confirmed in PIE (keyboard shots), badge confirmed with squaregolf armed. Assets are ours/CC0 (no Fab).
+
 ## 2026-06-06 — GSPro connector behavior profiles + Springbok (GOL-181, Windows)
 
 Bringing up the springbok connector (`springbok/MLM2PRO-GSPro-Connector`) proved the open-source

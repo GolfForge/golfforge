@@ -158,12 +158,16 @@ aware) that handles both. Don't split on `\n`.
   thread (synchronous EventBus dispatch touches the world). One client at a time, **last-wins** (a new
   connection closes the old). Config: `[LaunchMonitor.GSProConnect] Port` (default 921).
 - **Responses:** every message is acked `{"Code":200,"Message":"Shot received"}` (connectors only check
-  non-empty == received; the body isn't parsed). The player push is
+  non-empty == received; the body isn't parsed). **Ack promptly** — springbok blocks on `recv` after each
+  shot with a **~2 s socket timeout**; no reply → it times out after 2 retries, closes the socket, and the
+  next shot fails (`WinError 10038`, "not a socket"). The player push is
   `{"Code":201,"Message":"GSPro Player Information","Player":{"Handed":"RH","Club":"<code>"}}` — the
   `Message` MUST be the verbatim string `GSPro Player Information` (connectors switch on it; squaregolf
   treats it as the arm signal, a custom string is "Unknown GSPro message type" and never arms), and we
-  **always include `Player.Club`** (springbok `KeyError`s without it; default `DR`). Club name → GSPro code
-  via `DisplayClubToGSPro`; handedness defaults RH.
+  **always include `Player.Club`** (springbok `KeyError`s without it; default `DR`). `Club` is a GSPro club
+  code: `DR`, `W3`, `H4`, `I7`, `PW`/`GW`/`SW`/`LW`, `PT` — mapped from our display name via
+  `DisplayClubToGSPro`; handedness defaults RH. (springbok never sends heartbeats — `IsHeartBeat` is always
+  false — and needs no periodic server message beyond the per-shot ack.)
 - **Arm/fire/re-arm protocol (`bArmModel` profiles only, e.g. `squaregolf`):** the connector fires **one
   shot per arm**, then resets to idle (~2-3s, no "reset done" signal). Per-shot order:
   `LaunchMonitorIsReady:true` (ready) → **ball-data** (the shot) → **club-data** (*end of shot*) → reset.

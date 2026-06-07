@@ -137,11 +137,16 @@ uses a streaming brace-depth object extractor (`UGSProConnectDriver::ExtractJson
 aware) that handles both. Don't split on `\n`.
 
 - **Dropdown entries + per-connector profiles:** one `UGSProConnectDriver` class backs several selectable
-  entries, each registered with an `FGSProConnectProfile` (`SetProfile`) — `gsproconnect` ("GSPro Connect",
-  generic), `squaregolf` ("Square Golf"), `springbok` ("Springbok (MLM2PRO / Mevo+)") today; adding
-  `skytrak` / `r10` / `gc2` is one profile in `LaunchMonitorManager::Initialize`. **The open-source
-  connectors do NOT all implement Open Connect identically**, so each connector's quirks live in its
-  profile — tuning one cannot break another. Only the **active** entry binds the port.
+  entries, each registered with an `FGSProConnectProfile` (`SetProfile`) — shipping today: `gsproconnect`
+  ("GSPro Connect", generic) + `squaregolf` ("Square Golf", **validated**). The `springbok`
+  ("Springbok (MLM2PRO / Mevo+)") entry is **commented out in `LaunchMonitorManager::Initialize`** (hidden
+  from the shipping dropdown) until it's validated (GOL-181) — the springbok project looks stale and its
+  full release expects the GSPro APIv1 connect-window handshake we don't implement yet; likely needs an
+  official path with them first. Its profile + parser quirks stay in the driver, so re-enabling is just
+  un-commenting the registration block. **Do not re-add it to the dropdown before then.** Adding
+  `skytrak` / `r10` / `gc2` is one profile each. **The open-source connectors do NOT all implement Open
+  Connect identically**, so each connector's quirks live in its profile — tuning one cannot break
+  another. Only the **active** entry binds the port.
 
   | profile field | squaregolf | springbok | meaning |
   |---|---|---|---|

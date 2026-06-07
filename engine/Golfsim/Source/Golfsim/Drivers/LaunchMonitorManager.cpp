@@ -42,11 +42,16 @@ void ULaunchMonitorManager::Initialize(FSubsystemCollectionBase& Collection)
 		SquareGolf.bArmModel = true;
 		RegisterGSPro(SquareGolf);
 
-		FGSProConnectProfile Springbok;   // springbok-connector (Rapsodo MLM2PRO + FlightScope Mevo+)
-		Springbok.Id = TEXT("springbok");
-		Springbok.DisplayName = NSLOCTEXT("Golfsim", "SpringbokDriver", "Springbok (MLM2PRO / Mevo+)");
-		// bArmModel stays false (sends shots autonomously); 201-always-includes-Club is universal.
-		RegisterGSPro(Springbok);
+		// Springbok connector (Rapsodo MLM2PRO + FlightScope Mevo+) is HIDDEN until validated (GOL-181):
+		// the springbok project looks stale and its full release expects the GSPro APIv1 connect-window
+		// handshake we don't implement yet -- we likely need an official path with them first. The profile
+		// + parser quirks (concatenated JSON framing, lowercase "Backspin", 201-must-carry-Club, no
+		// heartbeat) are all still in GSProConnectDriver, so re-enabling is just restoring this block once
+		// the connect-window work lands. Do NOT re-add to the shipping dropdown before then.
+		// FGSProConnectProfile Springbok;
+		// Springbok.Id = TEXT("springbok");
+		// Springbok.DisplayName = NSLOCTEXT("Golfsim", "SpringbokDriver", "Springbok (MLM2PRO / Mevo+)");
+		// RegisterGSPro(Springbok);   // bArmModel stays false; 201-always-includes-Club is universal.
 	}
 
 	FString ConfiguredActive = TEXT("openflight");

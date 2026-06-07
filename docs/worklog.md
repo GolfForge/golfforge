@@ -2,6 +2,32 @@
 
 > Dated milestone summaries, newest on top. The durable outcome + the committed artifact, not the blow-by-blow — process detail lives in git history, `docs/ue5-cookbook.md`, and the scripts themselves.
 
+## 2026-06-07 — Range pin overhaul + mow-stripe checkerboard fix (GOL-28/GOL-29/GOL-168, Windows)
+
+Range-polish continued; tagged the result **v0.0.5-alpha** (the GOL-160 visual facelift + GSPro Open
+Connect launch-monitor support since v0.0.4-alpha).
+
+- **Pin/green overhaul (GOL-29):** `AGolfPinActor` gained a **collar/fringe ring** (a darker, duller,
+  finer-grain textured disc just under the green; it tracks green size), a dark **hole cup** at the pole
+  base, and a **white/black banded flagstick** (new `M_FlagPole`). `M_GolfGreen` went from a flat color
+  circle to a **textured** round disc — a procedural stdlib turf-grain normal (`T_TurfGrain`, Fab-free,
+  the ball-dimple technique) + `Color`/`Roughness`/`GrainTiling`/`GrainShade` params; the green disc reads
+  the material's default `Color`, so its shade tunes via the script with no C++ rebuild. Green darkened +
+  grain re-tuned finer/softer after a first pass read as coarse "knife" gouges. New
+  `build_flagpole_material.py`; `build_golf_green_material.py` rewritten. Two full editor rebuilds (new
+  components aren't Live-Codeable).
+- **Mow-stripe checkerboard fix:** the GOL-168 criss-cross multiplied two smooth sine *brightness
+  factors*, which peaks at the corners → soft blobs ("splotches"). Reworked `_stripe_mask` to **sharpen
+  each band toward a square wave** (`clamp(sin*sharpness, -1, 1)`) and combine the two perpendicular
+  square *signals* (sign product, contrast applied once) → a true **checkerboard** of crisp mown squares.
+  New `_StripeSharpness` param. Range Fairway: angle 45°, width 4 m, contrast 0.18, sharpness 4. Mirrored
+  into `build_course_material.py` (config unchanged) to keep the forks diffable.
+- **On-turf range numbers disabled:** the flat centerline `TextRender` numbers read poorly on the turf,
+  so they're gated behind `PLACE_GROUND_NUMS` (default off); the fairway-edge yardage stakes stay.
+  **GOL-28 closed** (the edge stakes deliver the distance reference).
+- **Release:** `ProjectVersion` → 0.0.5-alpha; README + docs brought up to date with the facelift +
+  open-connector launch-monitor story.
+
 ## 2026-06-06 — Range on-turf numbers + criss-cross mow stripes (GOL-28/GOL-168, Windows)
 
 More range polish for screenshots: distance numbers on the turf and a mown look on the grass.

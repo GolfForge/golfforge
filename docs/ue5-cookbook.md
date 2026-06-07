@@ -20,6 +20,14 @@ After a material nuke+recreate the Landscape's `landscape_material` pointer goes
 
 A `TextRenderActor`'s readable face normal is its **local +X (forward vector)**; the glyph "up" is local +Z. So `yaw=180` faces text back toward the tee (the edge-stake convention). For a number lying near-flat on the turf but readable from the tee, combine `yaw=180` with a **positive** pitch (~75°): forward then points up-and-slightly-toward-tee `(-0.26,0,+0.97)` and the glyph top points downrange, so it reads upright from the tee. Negative pitch faces it into the ground. Default TextRender material is **unlit** → full-bright in every Time/Sky preset (free low-light legibility; that's how the range yardage numbers satisfy GOL-28's dusk/night clause).
 
+## Editor-Python workflow gotchas: PIE blocks asset create/import; new components need a full rebuild
+
+Two time-sinks worth remembering when authoring assets/actors via MCP `execute_unreal_python`:
+
+- **Asset create/delete/import is blocked while the editor is in PIE.** The Python error is a misleading `RuntimeError: failed to import /Game/...` (or a silent create failure) with `LogUtils: Error: The Editor is currently in a play mode.` buried in the log — NOT a script bug. If a material/texture script suddenly fails after working before, check PIE first: `pie_control(action=query)`, and `pie_control(action=stop)` before re-running. (You generally can't tell from the Python traceback; read the wider Output Log at Warning+.)
+- **Reimporting a texture in-place fails while a material still references it.** Delete the referencing material (and the texture) in a *separate* `execute_unreal_python` call so the engine flushes the deletion, then import fresh — delete+import in one tick conflicts.
+- **Adding/removing a UPROPERTY (e.g. a new `UStaticMeshComponent` on an actor) is NOT Live-Codeable.** It changes class layout, so Live Coding refuses; it needs a full `Build.bat GolfsimEditor` + editor restart. Plan asset-authoring scripts to run *before* the restart so the rebuilt constructor's `ConstructorHelpers::FObjectFinder` paths resolve.
+
 ---
 
 ## UMG procedural layout: full-width bottom bar (GOL-145)

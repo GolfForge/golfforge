@@ -3,7 +3,7 @@
 Open-source, cross-platform golf simulator with AI-assisted course building, walking/treadmill
 integration, and a clean BLE-based hardware story for launch monitors.
 
-> **Status:** early, pre-1.0, and moving fast. **v0.0.4-alpha** brings a completely rebuilt UI — a themed main menu, a guided round-setup flow (course → format → players, with game types, handicaps and tee boxes), a glass in-round HUD with a live hole map and conditions strip, and an end-of-round scorecard. You can play a full **18-hole single-player round on a real LIDAR-cooked course with just a keyboard** — no launch monitor required. The practice range still runs, OpenFlight drives it, and OpenStreetMap + USGS feed the course pipeline. Expect rough edges.
+> **Status:** early, pre-1.0, and moving fast. **v0.0.5-alpha** is a visual + hardware step up on v0.0.4's UI rebuild. The course and range got an **art facelift**: distinct mown turf with **mowing stripes** (down-range on the fairway, a criss-cross checkerboard on the range), a real **pond-water** surface, a **mixed-species tree line**, golden-hour **atmosphere**, ambient **birdsong**, a fluttering branded **pin flag**, a dimpled **ball** with a strike sound, and a **textured target green** with a collar, hole cup and striped flagstick. On the hardware side, GolfForge now speaks **GSPro Open Connect** as a server, so the community's launch-monitor connectors work with it directly — **no GSPro subscription required.** You can still play a full **18-hole single-player round on a real LIDAR-cooked course with just a keyboard**. Expect rough edges.
 >
 > _The repository is still named `golfsim` while the rename to GolfForge is in progress._
 
@@ -22,10 +22,10 @@ attack:
 
 ## Try it
 
-Pre-built packages are attached to the latest [GitHub Release](https://github.com/GolfForge/golfforge/releases). v0.0.4-alpha ships with two playable surfaces:
+Pre-built packages are attached to the latest [GitHub Release](https://github.com/GolfForge/golfforge/releases). v0.0.5-alpha ships with two playable surfaces:
 
 - **Single-player round** — main menu → **Play Course** → a guided round-setup flow (pick the course, set the format — game type, holes, turn order — and add up to four players with names, tee boxes and handicaps) → land on hole 1's tee → swing through 18 holes on a real LIDAR-cooked course. A glass HUD tracks your score, distance to pin and conditions; a scorecard caps the round. No launch monitor needed; the built-in keyboard swing meter handles it.
-- **Practice range** — fixed-distance pin, full 14-club bag, launch-monitor support via [OpenFlight](https://github.com/jewbetcha/openflight) (Doppler radar) or manual-shot dialog for hardware-free testing.
+- **Practice range** — fixed-distance target green with collar/flag, full 14-club bag, a moving pin, and launch-monitor support via [OpenFlight](https://github.com/jewbetcha/openflight) (Doppler radar), the **GSPro Open Connect** connectors (use your own launch monitor — see below), or a manual-shot dialog for hardware-free testing.
 
 ![Main menu — Play Course / Range / Practice / Settings bento, with a live clock + conditions cluster](docs/screenshots/mainmenu.png)
 
@@ -81,9 +81,9 @@ In rough priority order:
 - **Practice modes.** Closest-to-the-pin with configurable distance range; TopGolf-style islands practice map; putting drills.
 - **Local multiplayer.** Stroke play with 2–4 humans on the same machine; future online peer-to-peer.
 - **More real-world courses.** The first cooked course (GolfForge Demo Black) is one shipped track; the pipeline can produce others — add yours via the [course pipeline](pipeline/README.md).
-- **Course-quality polish.** Bunker geometry (raised lip + depression), fairway mowing patterns (stripes / criss-cross / diagonal), course-side lighting bake.
+- **Course-quality polish.** Bunker geometry (raised lip + depression), course-side lighting bake, 3D grass, night/low-light presets, water caustics. (Mowing stripes, distinct mown surfaces, pond water, mixed-species trees and golden-hour atmosphere landed in v0.0.5.)
 - **Walking integration.** Bluetooth FTMS treadmill driver (build-it-yourself ESP32 reference design or any FTMS-compliant treadmill); compressed walk mode; eventual incline-matching from hole elevation profiles.
-- **More launch monitors.** Square Omni driver alongside OpenFlight; other consumer LMs as the community brings them.
+- **More launch monitors.** Validating the full set of GSPro Open Connect connectors against GolfForge (Square Omni + Rapsodo MLM2PRO / FlightScope Mevo+ confirmed so far), plus native drivers for auth-gated devices (Rapsodo R50, Foresight Launch Pro, GCQuad).
 - **Mac/iPadOS GPU acceleration.** MetalFX upscaling for Apple Silicon (currently TSR-only).
 - **Cross-platform pipeline.** Make the Python course pipeline work on Windows (Mac/Linux already supported).
 

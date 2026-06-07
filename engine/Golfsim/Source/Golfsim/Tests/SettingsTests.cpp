@@ -43,6 +43,29 @@ bool FGolfsimSettingsClampTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FGolfsimSettingsFrameGenTest, "Golfsim.Settings.FrameGen",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FGolfsimSettingsFrameGenTest::RunTest(const FString&)
+{
+	// ClampFrameGenMode: known EStreamlineDLSSGMode values pass; anything else -> Off (0).
+	TestEqual(TEXT("Off stays Off"), GolfDisplay::ClampFrameGenMode(0), 0);
+	TestEqual(TEXT("2X (17) passes"), GolfDisplay::ClampFrameGenMode(17), 17);
+	TestEqual(TEXT("4X (31) passes"), GolfDisplay::ClampFrameGenMode(31), 31);
+	TestEqual(TEXT("Auto (251) passes"), GolfDisplay::ClampFrameGenMode(251), 251);
+	TestEqual(TEXT("unknown -> Off"), GolfDisplay::ClampFrameGenMode(99), 0);
+	TestEqual(TEXT("negative -> Off"), GolfDisplay::ClampFrameGenMode(-3), 0);
+	// Names.
+	TestTrue(TEXT("0 -> Off"), GolfDisplay::FrameGenModeName(0) == TEXT("Off"));
+	TestTrue(TEXT("17 -> 2X"), GolfDisplay::FrameGenModeName(17) == TEXT("2X"));
+	TestTrue(TEXT("23 -> 3X"), GolfDisplay::FrameGenModeName(23) == TEXT("3X"));
+	TestTrue(TEXT("251 -> Auto"), GolfDisplay::FrameGenModeName(251) == TEXT("Auto"));
+	// SupportedFrameGenModes always offers Off, listed first -- even under -nullrhi / no plugin.
+	const TArray<int32> Modes = GolfDisplay::SupportedFrameGenModes();
+	TestTrue(TEXT("offers at least Off"), Modes.Num() >= 1);
+	TestEqual(TEXT("Off is first"), Modes[0], 0);
+	return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FGolfsimSettingsCreditsTest, "Golfsim.Settings.CreditsContent",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 bool FGolfsimSettingsCreditsTest::RunTest(const FString&)

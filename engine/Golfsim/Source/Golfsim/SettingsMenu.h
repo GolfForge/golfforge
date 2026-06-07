@@ -68,12 +68,14 @@ private:
 	UPROPERTY(Transient) TObjectPtr<USegmentedControl> GrassSeg;   // GOL-162 grass detail (Off/Low/High)
 	UPROPERTY(Transient) TObjectPtr<USegmentedControl> UpscalerSeg;
 	UPROPERTY(Transient) TObjectPtr<UComboBoxString> UpscaleModeCombo;   // render-scale tiers (dropdown; 5-7 options)
+	UPROPERTY(Transient) TObjectPtr<USegmentedControl> FrameGenSeg;   // GOL-189 DLSS-FG (Off/2X[/3X/4X]/Auto), GPU-gated
 	UPROPERTY(Transient) TObjectPtr<UTextBlock> CreditsBody;
 	UPROPERTY(Transient) TObjectPtr<UButton> MainMenuBtn;
 	UPROPERTY(Transient) TObjectPtr<UButton> QuitBtn;
 
 	TArray<FIntPoint> ResOptions;          // index-aligned with ResCombo options
 	TArray<int32> UpscalerOptionIndices;   // fixed upscaler index per UpscalerSeg option
+	TArray<int32> FrameGenOptionModes;     // EStreamlineDLSSGMode value per FrameGenSeg option (GOL-189)
 	int32 ModeSegUpscaler = 0;             // which upscaler the render-scale seg is populated for
 	int32 CurrentSection = 0;
 };

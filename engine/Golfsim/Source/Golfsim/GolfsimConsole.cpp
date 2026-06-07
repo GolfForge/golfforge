@@ -480,6 +480,26 @@ namespace
 		UE_LOG(LogTemp, Display, TEXT("golfsim.SetGrassDetail: %d"), S.GrassDetailLevel);
 	}
 
+	// golfsim.SetFrameGen <0-4> -- DLSS Frame Generation (GOL-189). 0=Off 1=2X 2=3X 3=4X 4=Auto. Maps to
+	// the EStreamlineDLSSGMode the Streamline library applies; unsupported modes fall back to Off. NOTE:
+	// DLSS-FG is inert in editor PIE -- test in a Standalone Game or the cooked build.
+	void SetFrameGenCmd(const TArray<FString>& Args, UWorld* /*World*/)
+	{
+		if (Args.Num() < 1)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("Usage: golfsim.SetFrameGen <0-4>  (0=Off 1=2X 2=3X 3=4X 4=Auto; NVIDIA DLSS-FG; standalone/cooked only)."));
+			return;
+		}
+		static const int32 ModeForArg[] = { 0, 17, 23, 31, 251 };   // Off / On2X / On3X / On4X / Auto
+		const int32 Idx = FMath::Clamp(FCString::Atoi(*Args[0]), 0, 4);
+		FGolfDisplaySettings S = GolfDisplay::ReadCurrent();
+		S.FrameGenMode = GolfDisplay::ClampFrameGenMode(ModeForArg[Idx]);
+		GolfDisplay::Apply(S);
+		UE_LOG(LogTemp, Display, TEXT("golfsim.SetFrameGen: %s%s"),
+			*GolfDisplay::FrameGenModeName(S.FrameGenMode),
+			GolfDisplay::IsFrameGenAvailable() ? TEXT("") : TEXT(" (DLSS-FG unavailable on this GPU/build)"));
+	}
+
 	void CreditsCmd(const TArray<FString>& /*Args*/, UWorld* World)
 	{
 		if (!World) { return; }
@@ -838,6 +858,11 @@ static FAutoConsoleCommandWithWorldAndArgs GSetGrassDetailCmd(
 	TEXT("golfsim.SetGrassDetail"),
 	TEXT("3D fairway grass density: golfsim.SetGrassDetail <0-2> (0=Off 1=Low 2=High; persists)."),
 	FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&SetGrassDetailCmd));
+
+static FAutoConsoleCommandWithWorldAndArgs GSetFrameGenCmd(
+	TEXT("golfsim.SetFrameGen"),
+	TEXT("NVIDIA DLSS Frame Generation: golfsim.SetFrameGen <0-4> (0=Off 1=2X 2=3X 3=4X 4=Auto; persists). Standalone/cooked only -- inert in editor PIE."),
+	FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&SetFrameGenCmd));
 
 static FAutoConsoleCommandWithWorldAndArgs GCreditsCmd(
 	TEXT("golfsim.Credits"),

@@ -4,6 +4,18 @@ The engine-side knowledge base: hard-won pitfalls, working recipes, and the curr
 
 ---
 
+## NVIDIA DLSS Frame Generation (DLSS-FG) — wiring + why it "does nothing" (GOL-189)
+
+The `StreamlineDLSSG` plugin ("NVIDIA DLSS Frame Generation and DLSS Multi Frame Generation") + `StreamlineCore` + `StreamlineReflex` are enabled in `Golfsim.uproject` (Win64, Optional). Control surface (all behind `#if GOLF_WITH_DLSSG`, a define set in `Golfsim.Build.cs` only when the plugin dir exists, so Mac/plugin-less builds still compile):
+
+- **`UStreamlineLibraryDLSSG`** (module `StreamlineDLSSGBlueprint`): `IsDLSSGSupported()`, `GetSupportedDLSSGModes()` (authoritative per-GPU list — **use this to populate the UI** instead of hardcoding 40xx=2X/50xx=multi), `SetDLSSGMode(EStreamlineDLSSGMode)` (Off=0, On2X=17, On3X=23, On4X=31, …, Auto=251). It drives the cvars `r.Streamline.DLSSG.Enable` + `r.Streamline.DLSSG.FramesToGenerate` internally.
+
+**The traps that make it look broken:**
+- **`stat fps` / the in-game FPS counter does NOT include generated frames.** FG inserts frames at *present*; UE measures the render loop, so the counter is unchanged (often slightly lower from FG cost) even when FG works. Confirm with the built-in **`stat DLSSG`** group ("DLSS-G: Frames Presented", "DLSS-G: Average FPS") — no custom overlay needed — or the NVIDIA app overlay.
+- **Requires NVIDIA Reflex active at runtime**, else `DLSSGStatus::eFailReflexNotDetectedAtRuntime` and it silently generates nothing. Reflex is **not** on by default — set `t.Streamline.Reflex.Mode 1` whenever FG is on (we tie them together in `GolfDisplay::SetFrameGenMode`).
+- **Inert in editor PIE viewport**, and gated on a **foreground + large-enough real swapchain** (`StreamlineDLSSG.cpp` forces mode Off when `!(bIsForeground && bIsLargeEnough)`). **Standalone-from-editor (`UnrealEditor.exe -game`) may not qualify either** — test the **cooked `GolfForge.exe`**. (This is the open lead on GOL-189: `stat DLSSG` Frames Presented stayed 0 in standalone-from-editor with Reflex forced on.)
+- **VSync / FPS caps** (`r.VSync`, `t.MaxFPS`, smoothed frame rate) clamp the generated frames — uncap to see the gain.
+
 ## Criss-cross mow stripes + keep the range/course material forks in sync (GOL-28/GOL-168)
 
 `build_range_material.py` is a deliberate **fork** of `build_course_material.py` (the two diverge on layers/textures/grass but the *build engine* is meant to stay "trivially diffable"). The fork had drifted — it never received the GOL-163 upgrades (live-tunable MIC, per-surface `_Tint`/`_Rough` params, mow stripes). When touching either, port the engine functions verbatim so a `diff` of the two stays small.

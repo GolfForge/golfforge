@@ -2,6 +2,31 @@
 
 > Dated milestone summaries, newest on top. The durable outcome + the committed artifact, not the blow-by-blow — process detail lives in git history, `docs/ue5-cookbook.md`, and the scripts themselves.
 
+## 2026-06-07 — Hide springbok connector + DLSS Frame Generation toggle (GOL-181/GOL-189, Windows)
+
+Pre-cook session: pulled the unvalidated connector from the shipping dropdown and added a (mechanically
+complete, not-yet-confirmed) DLSS Frame Generation toggle.
+
+- **Springbok/MLM2PRO hidden (GOL-181):** the springbok connector looks stale and its full release
+  expects the GSPro APIv1 connect-window handshake we don't implement, so its dropdown entry is commented
+  out in `LaunchMonitorManager::Initialize` (profile + parser quirks stay in `GSProConnectDriver` for an
+  easy re-enable; `Drivers/README.md` notes the gate). Shipping connectors: OpenFlight + GSPro Connect
+  (generic) + Square Golf (squaregolf, the validated one). README already scoped to Square Omni only.
+- **DLSS Frame Generation toggle (GOL-189):** the `StreamlineDLSSG` plugin ("NVIDIA DLSS Frame Generation
+  and DLSS Multi Frame Generation") was already enabled; wired a **family-aware** Frame Generation setting.
+  `GolfDisplaySettings` gained `FrameGenMode` + `IsFrameGenAvailable()` / `SupportedFrameGenModes()` (driven
+  by the GPU's own `GetSupportedDLSSGModes()` so the selector shows only supported modes — 40-series 2X,
+  50-series 2X/3X/4X) + `Apply()` via `UStreamlineLibraryDLSSG::SetDLSSGMode()`; persisted in
+  `[GolfForge.Graphics] FrameGen` + boot-applied; `golfsim.SetFrameGen <0-4>` console cmd; a Settings >
+  Graphics row (NVIDIA-gated); and Reflex forced on with FG (`t.Streamline.Reflex.Mode 1` — DLSS-FG fails
+  without Reflex). `Golfsim.Build.cs` links the optional `StreamlineDLSSGBlueprint` module only when present
+  (`GOLF_WITH_DLSSG`), so Mac/plugin-less builds are unaffected. Build green; `Golfsim.Settings.FrameGen`
+  automation passes.
+- **Open (GOL-189):** FG isn't actually generating frames yet — `stat DLSSG` Frames Presented = 0 in
+  standalone-from-editor with Reflex on. Prime suspect: needs the cooked `GolfForge.exe` (the standalone
+  swapchain may not qualify); also check vsync/FPS caps + Reflex-at-runtime. The toggle ships in 0.0.5; the
+  gain is unconfirmed. Cookbook documents the `stat DLSSG` check + the Reflex/PIE/swapchain traps.
+
 ## 2026-06-07 — Range pin overhaul + mow-stripe checkerboard fix (GOL-28/GOL-29/GOL-168, Windows)
 
 Range-polish continued; tagged the result **v0.0.5-alpha** (the GOL-160 visual facelift + GSPro Open

@@ -237,6 +237,24 @@ UScrollBox* USettingsMenu::BuildGraphicsTab()
 	RepopulateModeCombo(0, 100.f);   // TSR/Native until SetUpscalerOptions + SetCurrent run
 	AddRow(Tab, TEXT("Render scale"), TEXT("Internal resolution / quality tier"), UpscaleModeCombo, false);
 
+	// DLSS Frame Generation (GOL-189). Options are exactly what the current GPU reports (40-series Off/2X,
+	// 50-series Off/2X/3X/4X, + Auto); the control is disabled with a reason when DLSS-FG isn't available
+	// (non-NVIDIA, plugin absent, or unsupported GPU). DLSS-FG is inert in editor PIE -- active only in a
+	// standalone/cooked build. Pairs with the DLSS upscaler + Reflex.
+	const bool bFrameGenAvail = GolfDisplay::IsFrameGenAvailable();
+	FrameGenOptionModes = GolfDisplay::SupportedFrameGenModes();
+	FrameGenSeg = CreateWidget<USegmentedControl>(this);
+	{
+		TArray<FString> FGNames;
+		for (int32 M : FrameGenOptionModes) { FGNames.Add(GolfDisplay::FrameGenModeName(M)); }
+		FrameGenSeg->SetOptions(FGNames);
+	}
+	if (!bFrameGenAvail) { FrameGenSeg->SetControlEnabled(false); }
+	AddRow(Tab, TEXT("Frame Generation"),
+		bFrameGenAvail ? TEXT("NVIDIA DLSS-FG: AI-generated frames (pairs with DLSS upscaling)")
+		               : TEXT("NVIDIA DLSS-FG -- requires an RTX 40/50 GPU + the DLSS plugin"),
+		FrameGenSeg, false);
+
 	return Tab;
 }
 
@@ -422,6 +440,11 @@ void USettingsMenu::SetCurrent(const FGolfDisplaySettings& S)
 		if (Sel != INDEX_NONE) { UpscalerSeg->SetSelectedIndex(Sel, false); }
 	}
 	RepopulateModeCombo(S.UpscalerIndex, S.ScreenPercentage);
+	if (FrameGenSeg)
+	{
+		const int32 Sel = FrameGenOptionModes.IndexOfByKey(GolfDisplay::ClampFrameGenMode(S.FrameGenMode));
+		FrameGenSeg->SetSelectedIndex(Sel != INDEX_NONE ? Sel : 0, false);
+	}
 }
 
 void USettingsMenu::HandleApplyClicked()
@@ -440,6 +463,11 @@ void USettingsMenu::HandleApplyClicked()
 		S.UpscalerIndex = UpscalerOptionIndices[UpscalerSeg->GetSelectedIndex()];
 	}
 	S.ScreenPercentage = UpscaleModeCombo ? GolfDisplay::ScreenPctForMode(S.UpscalerIndex, UpscaleModeCombo->GetSelectedIndex()) : 100.f;
+	// Frame Generation: read the seg when DLSS-FG is available, else keep the persisted value (don't let
+	// an unavailable/disabled row clobber a mode saved on a capable machine).
+	S.FrameGenMode = (GolfDisplay::IsFrameGenAvailable() && FrameGenSeg && FrameGenOptionModes.IsValidIndex(FrameGenSeg->GetSelectedIndex()))
+		? FrameGenOptionModes[FrameGenSeg->GetSelectedIndex()]
+		: GolfDisplay::ReadCurrent().FrameGenMode;
 	if (OnApplyDisplay) { OnApplyDisplay(S); }
 }
 

@@ -1,6 +1,7 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 
 using UnrealBuildTool;
+using System.IO;
 
 public class Golfsim : ModuleRules
 {
@@ -20,6 +21,23 @@ public class Golfsim : ModuleRules
 		// ImageWrapper: runtime PNG decode for the course splatmaps (GOL-40, Physics/CourseSurface).
 		// JsonUtilities: FJsonObjectConverter for the ShotHistory JSONL round-trip (GOL-65).
 		PrivateDependencyModuleNames.AddRange(new string[] { "WebSockets", "Sockets", "Networking", "Json", "JsonUtilities", "RHI", "ImageWrapper" });
+
+		// DLSS Frame Generation (GOL-189). The StreamlineDLSSGBlueprint module exposes
+		// UStreamlineLibraryDLSSG (per-GPU capability query + SetDLSSGMode), which the Frame Generation
+		// setting drives. It's an Optional, Win64-only marketplace plugin, so link it ONLY when it's
+		// actually present -- the project still builds on Mac/Linux or without the plugin installed
+		// (GOLF_WITH_DLSSG=0, and the toggle hides itself). Keeps the "DLSS stays optional" stance the
+		// upscaler already follows (soft cvar lookups, no hard plugin dependency).
+		bool bHasDLSSG = Directory.Exists(Path.Combine(EngineDirectory, "Plugins", "Marketplace", "StreamlineDLSSG"));
+		if (Target.Platform == UnrealTargetPlatform.Win64 && bHasDLSSG)
+		{
+			PrivateDependencyModuleNames.Add("StreamlineDLSSGBlueprint");
+			PublicDefinitions.Add("GOLF_WITH_DLSSG=1");
+		}
+		else
+		{
+			PublicDefinitions.Add("GOLF_WITH_DLSSG=0");
+		}
 
 		// Uncomment if you are using online features
 		// PrivateDependencyModuleNames.Add("OnlineSubsystem");

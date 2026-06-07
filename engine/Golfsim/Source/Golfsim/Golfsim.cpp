@@ -14,15 +14,20 @@ public:
 	virtual void StartupModule() override
 	{
 		PostInitHandle = FCoreDelegates::OnPostEngineInit.AddStatic(&GolfDisplay::ApplyGrassDetailFromSaved);
+		// Restore the saved DLSS Frame Generation mode on a cold launch (GOL-189), same as grass. DLSS-FG
+		// is inert in the editor; in a standalone/cooked build this re-applies the persisted choice.
+		FrameGenInitHandle = FCoreDelegates::OnPostEngineInit.AddStatic(&GolfDisplay::ApplyFrameGenFromSaved);
 	}
 
 	virtual void ShutdownModule() override
 	{
 		FCoreDelegates::OnPostEngineInit.Remove(PostInitHandle);
+		FCoreDelegates::OnPostEngineInit.Remove(FrameGenInitHandle);
 	}
 
 private:
 	FDelegateHandle PostInitHandle;
+	FDelegateHandle FrameGenInitHandle;
 };
 
 IMPLEMENT_PRIMARY_GAME_MODULE( FGolfsimModule, Golfsim, "Golfsim" );

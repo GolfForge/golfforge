@@ -18,6 +18,10 @@ struct FGolfDisplaySettings
 	// set per-platform in ReadCurrent()/ApplyGrassDetailFromSaved() (Mac=Low, Windows=High); this POD
 	// default is only the cold fallback if GConfig is unavailable.
 	int32 GrassDetailLevel = 2;
+	// DLSS Frame Generation mode (GOL-189), stored as the EStreamlineDLSSGMode value so the header stays
+	// engine-enum-free: 0=Off, 17=2X, 23=3X, 31=4X, 37=5X, 41=6X, 251=Auto. Library-driven; only the modes
+	// the current GPU reports are offered (40-series -> 2X; 50-series -> 2X/3X/4X). Off on non-NVIDIA / no plugin.
+	int32 FrameGenMode = 0;
 };
 
 namespace GolfDisplay
@@ -31,6 +35,14 @@ namespace GolfDisplay
 	TArray<FString> GrassDetailNames();                        // {"Off","Low","High"} (UI single source)
 	float GrassDensityScaleFor(int32 Level);                   // level -> grass.densityScale (0/0.5/1)
 	float GrassCullScaleFor(int32 Level);                      // level -> grass.CullDistanceScale (0/0.7/1)
+
+	// DLSS Frame Generation (GOL-189). FrameGenMode holds an EStreamlineDLSSGMode value (0/17/23/31/37/41/251).
+	int32 ClampFrameGenMode(int32 ModeValue);                  // -> a known mode value, else 0 (Off). Pure/testable.
+	FString FrameGenModeName(int32 ModeValue);                 // "Off"/"2X"/"3X"/"4X"/"5X"/"6X"/"Auto" (UI label)
+	bool IsFrameGenAvailable();                                // NVIDIA + DLSS-FG plugin present + GPU supports it
+	TArray<int32> SupportedFrameGenModes();                    // mode values to offer (Off first); the GPU-supported set
+	void ApplyFrameGenFromSaved();                             // boot-time apply (module OnPostEngineInit)
+
 	FString UpscalerName(int32 Index);                         // 0=TSR 1=DLSS 2=XeSS
 	TArray<int32> AvailableUpscalerIndices();                  // TSR always; DLSS if NVIDIA + plugin; XeSS if plugin
 	TArray<FString> UpscaleModeNames(int32 UpscalerIndex);          // per-upscaler tier names, high->low quality

@@ -7,8 +7,19 @@
 #include "HAL/PlatformProcess.h"   // FPlatformProcess::UserName for the player-name default (GOL-121)
 #include "RHI.h"   // IsRHIDeviceNVIDIA() -- gate DLSS to NVIDIA GPUs
 
+#if GOLF_WITH_DLSSG
+#include "StreamlineLibraryDLSSG.h"   // UStreamlineLibraryDLSSG + EStreamlineDLSSGMode (Win64 + plugin only)
+#endif
+
 namespace GolfDisplay
 {
+	// EStreamlineDLSSGMode values, mirrored as plain ints so the header/POD stays engine-enum-free and the
+	// non-Win64 / no-plugin build (GOLF_WITH_DLSSG=0) still has the names + clamp. Matches the plugin enum.
+	namespace FG
+	{
+		static constexpr int32 Off = 0, Auto = 251, Dynamic = 241,
+			On2X = 17, On3X = 23, On4X = 31, On5X = 37, On6X = 41;
+	}
 	TOptional<FIntPoint> ParseResolution(const FString& In)
 	{
 		FString L, R;
@@ -52,6 +63,65 @@ namespace GolfDisplay
 #endif
 	}
 
+	// --- DLSS Frame Generation (GOL-189) --------------------------------------------------------------
+	int32 ClampFrameGenMode(int32 M)
+	{
+		switch (M)
+		{
+			case FG::On2X: case FG::On3X: case FG::On4X: case FG::On5X: case FG::On6X:
+			case FG::Auto: case FG::Dynamic: case FG::Off:
+				return M;
+			default:
+				return FG::Off;
+		}
+	}
+
+	FString FrameGenModeName(int32 M)
+	{
+		switch (M)
+		{
+			case FG::On2X:    return TEXT("2X");
+			case FG::On3X:    return TEXT("3X");
+			case FG::On4X:    return TEXT("4X");
+			case FG::On5X:    return TEXT("5X");
+			case FG::On6X:    return TEXT("6X");
+			case FG::Auto:    return TEXT("Auto");
+			case FG::Dynamic: return TEXT("Dynamic");
+			default:          return TEXT("Off");
+		}
+	}
+
+	bool IsFrameGenAvailable()
+	{
+#if GOLF_WITH_DLSSG
+		// The DLSS-FG cvars are registered even on non-RTX GPUs, so also require an NVIDIA device + the
+		// plugin's own support verdict (driver/GPU-family aware). IsDLSSGSupported() returns false when
+		// WITH_STREAMLINE is off, so this is safe.
+		return IsRHIDeviceNVIDIA() && UStreamlineLibraryDLSSG::IsDLSSGSupported();
+#else
+		return false;
+#endif
+	}
+
+	TArray<int32> SupportedFrameGenModes()
+	{
+		TArray<int32> Out;
+#if GOLF_WITH_DLSSG
+		if (IsFrameGenAvailable())
+		{
+			// Authoritative per-GPU list ("Can be used to populate UI"): 40-series -> Off/2X(+Auto),
+			// 50-series -> Off/2X/3X/4X. Drop Dynamic to keep the selector to Off / NX / Auto.
+			for (EStreamlineDLSSGMode Mode : UStreamlineLibraryDLSSG::GetSupportedDLSSGModes())
+			{
+				const int32 V = (int32)Mode;
+				if (V != FG::Dynamic) { Out.AddUnique(V); }
+			}
+		}
+#endif
+		if (!Out.Contains(FG::Off)) { Out.Insert(FG::Off, 0); }   // Off is always offerable + first
+		return Out;
+	}
+
 	// Vendor-plugin cvars, driven by name (not by linking the plugins) so this builds with or without
 	// them installed; an absent cvar means that upscaler isn't available. Verified against the UE 5.7
 	// NVIDIA DLSS + Intel XeSS plugins. FSR deferred (GOL-62): r.FidelityFX.FSR.Enabled +
@@ -66,6 +136,7 @@ namespace GolfDisplay
 	static const TCHAR* GRASS_CULL_CVAR    = TEXT("grass.CullDistanceScale");
 	static const TCHAR* GraphicsSection = TEXT("GolfForge.Graphics");
 	static const TCHAR* GrassDetailKey  = TEXT("GrassDetail");
+	static const TCHAR* FrameGenKey     = TEXT("FrameGen");   // DLSS-FG mode value (GOL-189)
 
 	FString UpscalerName(int32 Index)
 	{
@@ -167,6 +238,26 @@ namespace GolfDisplay
 		SetCVarFloatIfPresent(GRASS_CULL_CVAR, GrassCullScaleFor(Level));
 	}
 
+	// Apply a DLSS-FG mode via the Streamline library (it sets r.Streamline.DLSSG.Enable +
+	// FramesToGenerate internally). Falls back to Off if the GPU/driver doesn't support the requested
+	// mode. No-op without the plugin. Shared by Apply() and the boot-time ApplyFrameGenFromSaved().
+	static void SetFrameGenMode(int32 ModeValue)
+	{
+#if GOLF_WITH_DLSSG
+		EStreamlineDLSSGMode Mode = (EStreamlineDLSSGMode)ClampFrameGenMode(ModeValue);
+		if (!IsFrameGenAvailable() || !UStreamlineLibraryDLSSG::IsDLSSGModeSupported(Mode))
+		{
+			Mode = EStreamlineDLSSGMode::Off;
+		}
+		// DLSS-FG REQUIRES NVIDIA Reflex active at runtime, or it fails with
+		// DLSSGStatus::eFailReflexNotDetectedAtRuntime and silently generates nothing. Reflex isn't on by
+		// default, so tie it to FG: t.Streamline.Reflex.Mode 1 (low-latency) when FG is on, 0 when off.
+		// Soft cvar set -> no-op if the Reflex plugin isn't present. (We expose no separate Reflex control.)
+		SetCVarIfPresent(TEXT("t.Streamline.Reflex.Mode"), (Mode != EStreamlineDLSSGMode::Off) ? 1 : 0);
+		UStreamlineLibraryDLSSG::SetDLSSGMode(Mode);
+#endif
+	}
+
 	// XeSS uses its own quality enum (0=UltraPerf 3x .. 6=AntiAliasing 1x). It ignores r.ScreenPercentage
 	// since UE5.1, so map the render scale chosen by the Upscale Mode preset to the nearest XeSS tier.
 	static int32 XeSSQualityFromScreenPct(float Pct)
@@ -222,6 +313,10 @@ namespace GolfDisplay
 		int32 Grass = PlatformDefaultGrassDetail();
 		if (GConfig) { GConfig->GetInt(GraphicsSection, GrassDetailKey, Grass, GGameUserSettingsIni); }
 		S.GrassDetailLevel = ClampGrassDetail(Grass);
+		// DLSS Frame Generation rides the same custom ini section; default Off.
+		int32 FrameGen = FG::Off;
+		if (GConfig) { GConfig->GetInt(GraphicsSection, FrameGenKey, FrameGen, GGameUserSettingsIni); }
+		S.FrameGenMode = ClampFrameGenMode(FrameGen);
 		return S;
 	}
 
@@ -272,6 +367,16 @@ namespace GolfDisplay
 			GConfig->SetInt(GraphicsSection, GrassDetailKey, Grass, GGameUserSettingsIni);
 			GConfig->Flush(/*bRead=*/false, GGameUserSettingsIni);
 		}
+		// DLSS Frame Generation: drive it through the Streamline library + persist the requested mode
+		// (clamped to a known value; applied mode falls back to Off if the GPU can't do it). DLSS-FG is
+		// inert in editor PIE -- it only kicks in in a real/standalone/cooked swapchain.
+		const int32 FrameGen = ClampFrameGenMode(S.FrameGenMode);
+		SetFrameGenMode(FrameGen);
+		if (GConfig)
+		{
+			GConfig->SetInt(GraphicsSection, FrameGenKey, FrameGen, GGameUserSettingsIni);
+			GConfig->Flush(/*bRead=*/false, GGameUserSettingsIni);
+		}
 		GUS->ApplySettings(false);
 		GUS->SaveSettings();
 	}
@@ -281,6 +386,13 @@ namespace GolfDisplay
 		int32 Grass = PlatformDefaultGrassDetail();
 		if (GConfig) { GConfig->GetInt(GraphicsSection, GrassDetailKey, Grass, GGameUserSettingsIni); }
 		SetGrassCVars(ClampGrassDetail(Grass));
+	}
+
+	void ApplyFrameGenFromSaved()
+	{
+		int32 FrameGen = FG::Off;
+		if (GConfig) { GConfig->GetInt(GraphicsSection, FrameGenKey, FrameGen, GGameUserSettingsIni); }
+		SetFrameGenMode(ClampFrameGenMode(FrameGen));
 	}
 
 	TArray<FIntPoint> SupportedResolutions()

@@ -248,13 +248,16 @@ def _tex(mat, path, sampler, x, y, tiling):
 def _stripe_mask(mat, layer, x, y):
     """Mowing stripes (GOL-163): a WORLD-aligned brightness band -> scalar multiplier ~[1-c, 1+c]
     to multiply into the albedo. World-position-driven so rows stay straight regardless of texture
-    tiling/terrain. Width(m)/angle(deg)/contrast are live-tunable ScalarParameters on the MIC;
-    contrast=0 disables the stripes. UE Sine/Cosine use a Period (default 1.0) -> input is in TURNS,
-    so feed degrees/360 and coord/width directly (no manual 2*pi).
+    tiling/terrain. Width(m)/angle(deg)/contrast/sharpness are live-tunable ScalarParameters on the
+    MIC; contrast=0 disables the stripes. UE Sine/Cosine use a Period (default 1.0) -> input is in
+    TURNS, so feed degrees/360 and coord/width directly (no manual 2*pi).
 
-    cfg['crisscross']=True multiplies in a SECOND band at angle+90deg, giving the lattice /
-    checkerboard look of a fairway mown in both directions (the two brightness factors multiply, so
-    the cells where both rows are bright pop the most). Single band otherwise (default)."""
+    Each band is a Sine pushed toward a SQUARE wave by <name>_StripeSharpness (clamp(sin*sharpness,
+    -1, 1)): sharpness 1 = soft sine rows (default), higher = crisp flat-topped stripes with an
+    anti-aliased edge. cfg['crisscross']=True multiplies the two perpendicular *square band signals*
+    (NOT two brightness factors) -> a true CHECKERBOARD of mown squares: the sign product is +1 in
+    two diagonal cells and -1 in the others, then contrast is applied once. (Multiplying brightness
+    factors instead peaks at the corners -> soft blobs / "splotches"; that was the original bug.)"""
     name = layer["name"]
     cfg = layer["stripes"]
     me = _mel().create_material_expression
@@ -287,14 +290,15 @@ def _stripe_mask(mat, layer, x, y):
     wx = _mask(x + 180, y - 60, "r")
     wy = _mask(x + 180, y + 60, "g")
 
-    # shared knobs: angle(deg), width(m->cm), contrast -- all live-tunable params.
+    # shared knobs: angle(deg), width(m->cm), contrast, sharpness -- all live-tunable params.
     ang = _scalar(x, y + 180, "_StripeAngle", cfg.get("angle_deg", 0.0))
     wid = _scalar(x + 520, y + 180, "_StripeWidth", cfg.get("width_m", 1.5))
     wcm = _mul(x + 680, y + 180, wid, "", _const(x + 520, y + 250, 100.0), "")
-    con = _scalar(x + 1000, y + 180, "_StripeContrast", cfg.get("contrast", 0.08))
+    con = _scalar(x + 1100, y + 340, "_StripeContrast", cfg.get("contrast", 0.08))
+    shp = _scalar(x + 360, y + 340, "_StripeSharpness", cfg.get("sharpness", 1.0))
 
     def _band(yoff, offset_deg):
-        """One mower direction -> brightness factor 1 + sin(coord/width)*contrast.
+        """One mower direction -> band signal in ~[-1,1], a Sine sharpened toward a square wave.
         offset_deg rotates this band off the shared StripeAngle (90 = perpendicular)."""
         # (angle + offset)(deg) -> turns -> cos/sin (Period=1 => cos(2pi*turns))
         if offset_deg:
@@ -313,22 +317,27 @@ def _stripe_mask(mat, layer, x, y):
         coord = me(mat, unreal.MaterialExpressionAdd, x + 680, y + yoff)
         cn(_mul(x + 520, y + yoff - 40, wx, "", cosn, ""), "", coord, "A")
         cn(_mul(x + 520, y + yoff + 60, wy, "", sinn, ""), "", coord, "B")
-        # phase = coord / (width_m * 100 cm) -> Sine(Period=1) = the band, -1..1
+        # phase = coord / (width_m * 100 cm) -> Sine(Period=1) = a soft row, -1..1
         div = me(mat, unreal.MaterialExpressionDivide, x + 840, y + yoff)
         cn(coord, "", div, "A"); cn(wcm, "", div, "B")
-        band = me(mat, unreal.MaterialExpressionSine, x + 1000, y + yoff)
-        cn(div, "", band, "")
-        # brightness = 1 + band * contrast
-        bright = me(mat, unreal.MaterialExpressionAdd, x + 1320, y + yoff)
-        cn(_const(x + 1160, y + yoff + 80, 1.0), "", bright, "A")
-        cn(_mul(x + 1160, y + yoff - 40, band, "", con, ""), "", bright, "B")
-        return bright
+        raw = me(mat, unreal.MaterialExpressionSine, x + 1000, y + yoff)
+        cn(div, "", raw, "")
+        # sharpen toward a square wave: clamp(sin * sharpness, -1, 1)
+        wide = _mul(x + 1160, y + yoff, raw, "", shp, "")
+        sq = me(mat, unreal.MaterialExpressionClamp, x + 1320, y + yoff)
+        sq.set_editor_property("min_default", -1.0)
+        sq.set_editor_property("max_default", 1.0)
+        cn(wide, "", sq, "")
+        return sq
 
-    b1 = _band(40, 0.0)
+    sig = _band(40, 0.0)
     if cfg.get("crisscross"):
-        b2 = _band(440, 90.0)
-        return _mul(x + 1520, y, b1, "", b2, ""), ""
-    return b1, ""
+        sig = _mul(x + 1520, y + 240, sig, "", _band(460, 90.0), "")   # checkerboard sign product
+    # brightness = 1 + sig * contrast
+    bright = me(mat, unreal.MaterialExpressionAdd, x + 1720, y + 120)
+    cn(_const(x + 1560, y + 60, 1.0), "", bright, "A")
+    cn(_mul(x + 1560, y + 180, sig, "", con, ""), "", bright, "B")
+    return bright, ""
 
 
 def _macro_albedo(mat, layer, x, y):

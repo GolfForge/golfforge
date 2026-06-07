@@ -14,6 +14,7 @@ This file stays slim on purpose. The heavyweight reference material lives in `do
 - `docs/pipeline-data-contract.md` — the `courses/<id>/` file-shape contract
 - `docs/plan.md` — full project plan, MVP ladder, decisions
 - `docs/event-protocol.md` — the event envelope every driver implements
+- `docs/launch-monitors.md` — user-facing guide: connect an LM via its GSPro Open Connect connector (dev internals live in `engine/Golfsim/Source/Golfsim/Drivers/README.md`)
 - `docs/windows-setup.md` — Windows prerequisites + UE5 project creation + MCP wiring
 - `README.md`, `pipeline/README.md` — human-facing orientation + pipeline quickstart
 

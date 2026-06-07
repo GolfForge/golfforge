@@ -99,9 +99,15 @@ running the same binary. See [`docs/event-protocol.md`](docs/event-protocol.md).
 ## Hardware
 
 GolfForge talks to launch monitors through a pluggable driver framework; the sim only ever sees a
-normalized shot event, never the device. The first supported monitor is the open-source **OpenFlight**
-DIY Doppler-radar launch monitor (over a local socket). A built-in manual-shot dialog lets you play
-with no hardware at all. Walking/treadmill support over BLE FTMS is on the roadmap.
+normalized shot event, never the device. It speaks the open **GSPro Open Connect** protocol as a server,
+so the community launch-monitor connectors work with it directly — **use your existing connector, no GSPro
+subscription required** (Square Omni, Rapsodo MLM2PRO, FlightScope Mevo+ validated; SkyTrak / Garmin R10 /
+Foresight GC2 via the generic option). The DIY **OpenFlight** radar has a native driver, and a manual-shot
+dialog + keyboard swing let you play with no hardware at all. Walking/treadmill support over BLE FTMS is on
+the roadmap.
+
+**→ Setup guide: [`docs/launch-monitors.md`](docs/launch-monitors.md)** — which connector to install, how
+to point it at GolfForge, and the connection order that matters.
 
 ## Repo layout
 

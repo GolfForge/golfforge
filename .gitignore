@@ -105,6 +105,12 @@ Thumbs.db
 courses/**/osm_raw.json
 courses/**/dem.tif
 
+# QA overlay PNGs embed third-party basemap imagery (Esri World Imagery / OSM
+# tiles) — regenerable dev visual-check aids, not part of our committed reference
+# data, and avoiding committing third-party imagery into the public repo.
+courses/**/qa_overlay_*.png
+courses/**/_tilecache/
+
 # One-shot diagnostic scripts under pipeline/_*.py — local scratch tools (OSM
 # audits, geometry classifiers, etc.). Recipes live in worklog / Linear if we
 # ever need to re-run them.

@@ -16,6 +16,10 @@ Reference for the UE-side agent: every file the Python pipeline writes into `cou
 | `splatmap.png` | RGBA 8-bit (R=fairway, G=green, B=bunker, A=rough) | Single import covering all 4 layers if your material supports RGBA splat |
 | `splatmap.json` | Channel legend `{R, G, B, A → layer name}` + `size_px` + `bbox_wgs84` | Sanity-check channel→layer mapping |
 | `splat_{fairway,green,bunker,rough}.png` | One 8-bit grayscale per layer | UE5.7 Landscape > Manage > Import "Layers" array (one PNG per row) — this is the path that actually works in 5.7 |
+| `fairway.geojson` | Polygon FeatureCollection | Vector form of the fairway areas (alongside the raster channel). Includes **synthesized** fallback corridors (see below). Use to conform fairway rendering to real shapes. |
+| `green.geojson` | Polygon FeatureCollection | Vector form of the green areas. Use to place the pin at the **green centroid** (vs the `hole.geojson` centerline endpoint) and conform the green to its real shape instead of a synthetic disc. |
+
+**Synthesized fairway corridors:** OSM coverage is uneven — some holes (par 3s especially) have no `golf=fairway` polygon, so they'd render fairway-less. For any hole whose tee→green centerline isn't already covered by an OSM fairway, the pipeline buffers the centerline into a corridor polygon and adds it to both `splat_fairway.png` and `fairway.geojson`. These carry `properties.synthesized = true` (and `osm_tags.synthesized = "yes"`, `osm_tags.source_hole_ref = <hole ref>`, `osm_way_id = null`) so a consumer can treat them differently (e.g. de-emphasize, or prefer real OSM data). Real OSM features have `synthesized = false`. Detection threshold + corridor widths live in `build_splatmap.py` constants (`SYNTH_FAIRWAY_*`) and are tunable; validate with the QA overlays.
 
 ## Extras (one per non-core feature type)
 
@@ -52,7 +56,18 @@ Both `cart_path.geojson` and `water.geojson` (and any future vector layer) use t
 }
 ```
 
-Coordinates are WGS84 lon/lat. Polygon rings are guaranteed closed (first vertex == last vertex). Properties always have `osm_way_id` and `osm_tags` — features without those are a bug.
+Coordinates are WGS84 lon/lat. Polygon rings are guaranteed closed (first vertex == last vertex). Properties always have `osm_way_id` and `osm_tags` — features without those are a bug. **Polygon** features additionally carry `synthesized` (bool) — `true` only for pipeline-generated geometry (currently fallback fairway corridors); `osm_way_id` is `null` for those.
+
+## QA overlays (visual check — not committed)
+
+`build_qa_overlay.py` renders two images per course for eyeballing that derived features land in the right place:
+
+| File | Basemap | Use |
+|---|---|---|
+| `qa_overlay_aerial.png` | Esri World Imagery (satellite) | Check features against the real ground (catches both pipeline bugs and wrong/missing OSM data) |
+| `qa_overlay_osm.png` | OpenStreetMap rendered tiles | Check our lon/lat→pixel alignment against OSM's own rendering |
+
+Each draws the derived layers (fairway/green/bunker/rough/tee/water/cart_path, including synthesized corridors) as semi-transparent fills + per-hole centerlines and numbers. Basemap tiles (Web Mercator) are reprojected onto our equirectangular grid so the overlay is trustworthy for alignment. **Both are gitignored** (they embed third-party basemap imagery and are regenerable); tiles cache under `_tilecache/` (also gitignored). Runs after `build_splatmap.py` in `example.sh`; `SKIP_TILES=1` (or `--skip-tiles`) emits a masks-only version offline.
 
 **Recommended UE-side helper**: a single `load_layer_geojson(course_id, layer_name) -> List[FeatureDict]` function works for every current and future vector layer. The conversion from WGS84 lon/lat to landscape-local UE units needs to be done once per course (it's just an affine derived from `heightmap.json.bbox_wgs84` + the landscape's world transform).
 

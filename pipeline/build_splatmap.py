@@ -65,8 +65,8 @@ HTTP_HEADERS = {
 # original cart-path "huge white areas" bug — open linestrings got force-closed into
 # bounding-box polygons and flood-filled.
 FEATURE_LAYERS = {
-    "fairway": {"channel": 0,    "osm_tag": ["golf=fairway"],                       "geom": "polygon"},
-    "green":   {"channel": 1,    "osm_tag": ["golf=green"],                         "geom": "polygon"},
+    "fairway": {"channel": 0,    "osm_tag": ["golf=fairway"],                       "geom": "polygon", "emit_geojson": True},
+    "green":   {"channel": 1,    "osm_tag": ["golf=green"],                         "geom": "polygon", "emit_geojson": True},
     "bunker":  {"channel": 2,    "osm_tag": ["golf=bunker", "natural=sand"],        "geom": "polygon"},
     "rough":   {"channel": 3,    "osm_tag": ["golf=rough"],                         "geom": "polygon"},  # also implicit-fill
     # Extras — flags:
@@ -96,6 +96,21 @@ FEATURE_LAYERS = {
                                                                                     "emit_geojson": True,
                                                                                     "skip_raster": True},
 }
+
+
+# --- Synthesized fallback fairway corridors -----------------------------------
+# OSM coverage is uneven: some holes (par 3s especially) have no golf=fairway
+# polygon, so the course renders fairway-less there. For any hole whose tee->green
+# centerline isn't already covered by an OSM fairway, we buffer the centerline into
+# a corridor polygon so every hole is playable. Synthesized corridors are flagged
+# (synthesized=yes) so they're distinguishable from real OSM data. The detection
+# threshold + widths are tunable; validate visually with build_qa_overlay.py.
+SYNTH_FAIRWAY_COVERAGE_THRESHOLD = 0.34   # min fraction of centerline sample
+                                          # points inside an OSM fairway to count
+                                          # as "already has a fairway"
+SYNTH_FAIRWAY_SAMPLES = 11                # sample points along each centerline
+SYNTH_FAIRWAY_HALF_WIDTH_M = {3: 14.0, 4: 18.0, 5: 22.0}  # corridor half-width by par
+SYNTH_FAIRWAY_DEFAULT_HALF_WIDTH_M = 18.0
 
 
 def overpass_query(bbox: Tuple[float, float, float, float]) -> dict:
@@ -182,6 +197,123 @@ def osm_element_to_lines(elem: dict) -> List[List[Tuple[float, float]]]:
                 if len(coords) >= 2:
                     lines.append(coords)
     return lines
+
+
+def _point_in_ring(x: float, y: float, ring: List[Tuple[float, float]]) -> bool:
+    """Even-odd ray-cast point-in-polygon. `ring` is a closed list of (lon, lat)."""
+    inside = False
+    n = len(ring)
+    for i in range(n - 1):
+        x1, y1 = ring[i]
+        x2, y2 = ring[i + 1]
+        if (y1 > y) != (y2 > y):
+            xint = (x2 - x1) * (y - y1) / (y2 - y1) + x1
+            if x < xint:
+                inside = not inside
+    return inside
+
+
+def _sample_polyline(line: List[Tuple[float, float]], n: int) -> List[Tuple[float, float]]:
+    """Return `n` points evenly spaced by vertex-index parameter along a polyline."""
+    if len(line) < 2:
+        return list(line)
+    out: List[Tuple[float, float]] = []
+    for k in range(n):
+        t = k / (n - 1)
+        pos = t * (len(line) - 1)
+        i = min(int(pos), len(line) - 2)
+        f = pos - i
+        x = line[i][0] + (line[i + 1][0] - line[i][0]) * f
+        y = line[i][1] + (line[i + 1][1] - line[i][1]) * f
+        out.append((x, y))
+    return out
+
+
+def synthesize_corridor_ring(line: List[Tuple[float, float]],
+                             half_width_m: float,
+                             lat0: float) -> List[Tuple[float, float]]:
+    """Buffer a tee->green centerline into a single closed corridor ring (lon/lat).
+
+    Works in a meters-local frame (handling lon/lat anisotropy at `lat0`) so the
+    corridor width is uniform in meters, then converts back to lon/lat. Adequate
+    for the near-straight hole centerlines here; sharp doglegs may self-intersect
+    at the joint, which is acceptable for a fallback corridor.
+    """
+    mlon = 111320.0 * math.cos(math.radians(lat0))
+    mlat = 110540.0
+    pts_m = [(lon * mlon, lat * mlat) for lon, lat in line]
+    left: List[Tuple[float, float]] = []
+    right: List[Tuple[float, float]] = []
+    n = len(pts_m)
+    for i in range(n):
+        # Segment direction: prev->cur for the last point, else cur->next.
+        if i < n - 1:
+            ax, ay = pts_m[i]; bx, by = pts_m[i + 1]
+        else:
+            ax, ay = pts_m[i - 1]; bx, by = pts_m[i]
+        dx, dy = bx - ax, by - ay
+        L = math.hypot(dx, dy) or 1.0
+        dx, dy = dx / L, dy / L
+        px, py = -dy, dx  # left-perpendicular
+        cx, cy = pts_m[i]
+        left.append((cx + px * half_width_m, cy + py * half_width_m))
+        right.append((cx - px * half_width_m, cy - py * half_width_m))
+    ring_m = left + right[::-1] + [left[0]]  # closed ring
+    return [(x / mlon, y / mlat) for x, y in ring_m]
+
+
+def synthesize_missing_fairways(elements_by_layer: Dict[str, List[dict]],
+                                bbox: Tuple[float, float, float, float]) -> List[dict]:
+    """Build synthetic golf=fairway corridor ways for holes lacking an OSM fairway.
+
+    For each `golf=hole` centerline whose sample points are mostly NOT inside any
+    OSM fairway polygon, buffer the centerline into a corridor and return it as a
+    synthetic OSM-shaped way (so it flows through the existing raster + geojson
+    paths). Holes that share geometry across tracks (Black/Red/Green) are deduped
+    by rounded endpoints so each physical hole gets at most one corridor.
+    """
+    minlon, minlat, maxlon, maxlat = bbox
+    lat0 = (minlat + maxlat) / 2.0
+
+    fairway_rings: List[List[Tuple[float, float]]] = []
+    for elem in elements_by_layer.get("fairway", []):
+        fairway_rings.extend(osm_element_to_polygons(elem))
+
+    synthetic: List[dict] = []
+    seen_keys = set()
+    for elem in elements_by_layer.get("hole", []):
+        for line in osm_element_to_lines(elem):
+            if len(line) < 2:
+                continue
+            # Dedupe shared geometry across tracks; ~1e-5 deg ≈ 1m.
+            key = (round(line[0][0], 5), round(line[0][1], 5),
+                   round(line[-1][0], 5), round(line[-1][1], 5))
+            if key in seen_keys:
+                continue
+            seen_keys.add(key)
+
+            samples = _sample_polyline(line, SYNTH_FAIRWAY_SAMPLES)
+            covered = sum(1 for sx, sy in samples
+                          if any(_point_in_ring(sx, sy, r) for r in fairway_rings))
+            if samples and covered / len(samples) >= SYNTH_FAIRWAY_COVERAGE_THRESHOLD:
+                continue  # adequately inside an existing fairway
+
+            par = elem.get("tags", {}).get("par")
+            try:
+                half_w = SYNTH_FAIRWAY_HALF_WIDTH_M.get(int(par), SYNTH_FAIRWAY_DEFAULT_HALF_WIDTH_M)
+            except (TypeError, ValueError):
+                half_w = SYNTH_FAIRWAY_DEFAULT_HALF_WIDTH_M
+
+            ring = synthesize_corridor_ring(line, half_w, lat0)
+            synthetic.append({
+                "type": "way",
+                "id": None,  # no OSM provenance
+                "tags": {"golf": "fairway", "synthesized": "yes",
+                         "source_hole_ref": elem.get("tags", {}).get("ref")},
+                "geometry": [{"lon": lo, "lat": la} for lo, la in ring],
+                "synthesized": True,
+            })
+    return synthetic
 
 
 def meters_per_pixel(bbox: Tuple[float, float, float, float], size_px: int) -> float:
@@ -300,6 +432,9 @@ def export_polygons_geojson(elements_by_layer: Dict[str, List[dict]],
                 "properties": {
                     "osm_way_id": elem.get("id"),
                     "osm_tags": elem.get("tags", {}),
+                    # True only for pipeline-synthesized features (e.g. fallback
+                    # fairway corridors); real OSM elements have no such flag.
+                    "synthesized": bool(elem.get("synthesized")),
                 },
                 "geometry": {
                     "type": "Polygon",
@@ -328,6 +463,14 @@ def build_splatmap(osm_data: dict,
         f"{k}={len(v)}" for k, v in elements_by_layer.items() if len(v) > 0
     ))
 
+    # Fallback fairway corridors for holes with no OSM fairway. Injected into the
+    # fairway bucket BEFORE rasterization + geojson emit, so they flow through both
+    # paths with no further change (and subtract from implicit rough below).
+    synthetic_fairways = synthesize_missing_fairways(elements_by_layer, bbox)
+    if synthetic_fairways:
+        elements_by_layer["fairway"].extend(synthetic_fairways)
+        print(f"[splatmap] synthesized {len(synthetic_fairways)} fallback fairway corridors")
+
     # Rasterize core layers into the 4-channel splatmap (all polygons).
     course_mask = rasterize_layer(elements_by_layer, "course", bbox, size, geom="polygon")
     fairway = rasterize_layer(elements_by_layer, "fairway", bbox, size, geom="polygon")
@@ -354,6 +497,18 @@ def build_splatmap(osm_data: dict,
         Image.fromarray(rgba[:, :, i], mode="L").save(out_layer)
         print(f"[splatmap] wrote {out_layer}")
         written[f"splat_{layer_name}"] = str(out_layer)
+
+    # GeoJSON sidecars for the core channel layers that opt in (fairway, green).
+    # The extras loop below skips channel-bearing layers, so vector consumers
+    # (pin-at-green-centroid, green/fairway conforming on the course) are served
+    # from here instead.
+    for layer_name in ("fairway", "green", "bunker", "rough"):
+        cfg = FEATURE_LAYERS.get(layer_name, {})
+        if cfg.get("emit_geojson"):
+            gj_path = out_dir / f"{layer_name}.geojson"
+            n = export_polygons_geojson(elements_by_layer, layer_name, gj_path)
+            print(f"[splatmap] wrote {gj_path}  ({n} polygon features)")
+            written[f"{layer_name}_geojson"] = str(gj_path)
 
     # Extras. Each non-core layer may emit a raster PNG, a GeoJSON sidecar, or
     # both, depending on its flags (see FEATURE_LAYERS docstring).

@@ -345,10 +345,12 @@ def test_build_splatmap_produces_expected_files(tmp_path):
     # Water is geojson-only (skip_raster=True); see test_skip_raster_*.
     assert not (out_dir / "layer_water.png").exists()
     assert (out_dir / "water.geojson").exists()
-    # Fairway/green emit BOTH a splat channel and a geojson sidecar (vector
-    # consumers: pin-at-green-centroid, green/fairway conforming on the course).
+    # Fairway/green/bunker emit BOTH a splat channel and a geojson sidecar
+    # (vector consumers: pin-at-green-centroid, green/fairway conforming, and
+    # bunker depression/lip sculpting from bunker.geojson — GOL-34).
     assert (out_dir / "fairway.geojson").exists()
     assert (out_dir / "green.geojson").exists()
+    assert (out_dir / "bunker.geojson").exists()
 
 
 def test_fairway_and_green_emit_geojson_sidecars(tmp_path):

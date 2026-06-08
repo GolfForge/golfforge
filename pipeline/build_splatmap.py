@@ -67,7 +67,7 @@ HTTP_HEADERS = {
 FEATURE_LAYERS = {
     "fairway": {"channel": 0,    "osm_tag": ["golf=fairway"],                       "geom": "polygon", "emit_geojson": True},
     "green":   {"channel": 1,    "osm_tag": ["golf=green"],                         "geom": "polygon", "emit_geojson": True},
-    "bunker":  {"channel": 2,    "osm_tag": ["golf=bunker", "natural=sand"],        "geom": "polygon"},
+    "bunker":  {"channel": 2,    "osm_tag": ["golf=bunker", "natural=sand"],        "geom": "polygon", "emit_geojson": True},
     "rough":   {"channel": 3,    "osm_tag": ["golf=rough"],                         "geom": "polygon"},  # also implicit-fill
     # Extras — flags:
     #   geom         — "polygon" (flood-fill closed rings) or "line" (stroke at width_m)

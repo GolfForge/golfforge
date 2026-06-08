@@ -92,8 +92,9 @@ Gitignored: `engine/**/Content/Megaplant_Library/`, `Megascans/`, `Fab/`, and `P
 **UE5.7:** Quixel Bridge is deprecated; Megascans now comes via the Fab plugin (Window → Fab) and imports under `/Game/Fab/...`; some marketplace packs import to their own top-level `/Game/<Pack>/` (gitignore those explicitly). ("Asset not available in UAsset format" = use the Fab plugin's Add-to-project, not the old Bridge.)
 
 **Fresh clone — fetch these from Fab before opening `PracticeRange` / `GolfForgeDemoBlack`** (else you'll see "missing asset" warnings):
-- `Tree_Silver_Birch` (Megaplant) → `/Game/Megaplant_Library/...` — range/course trees (PCG scatter).
-- Fab Megascans surfaces `Lawn_Grass_tkynejer` / `Uncut_Grass_oilpt20` / `Clover_Patches_on_Grass_sgmkajak` / `Bright_Desert_Sand_sjzkfega` / `Concrete_Floor_virrebs` → `/Game/Fab/...` — ground materials.
+- `Tree_Silver_Birch` (Megaplant) + `Tree_Baltic_Pine` → `/Game/Megaplant_Library/...` — range/course trees (PCG scatter).
+- Fab Megascans surfaces `Lawn_Grass_tkynejer` / `Uncut_Grass_oilpt20` / `Clover_Patches_on_Grass_sgmkajak` / `Bright_Desert_Sand_sjzkfega` / `Concrete_Floor_virrebs` / `Cut_Grass_sfenffsa` / `Mossy_Forest_Floor_vfylbge` → `/Game/Fab/...` — ground materials (the last two are the fairway + under-trees surfaces; missing them = checkerboard at cook).
+- Fab Megascans 3D rock/cliff assets `Massive_Tundra_Rock_Formation_wcrmbiar` / `Massive_Tundra_Rock_Formation_wd4icipcb` / `Nordic_Forest_Cliff_Large_xibldbu` / `Tundra_Mossy_Boulder_vivveardw` → `/Game/Fab/...` — course scatter rocks (missing them crashes the cook, not just a warning).
 - `PC3D_Kentucky_Bluegrass_v14` → `/Game/PC3D_Kentucky_Bluegrass_v14/...` — fairway 3D grass.
 
 (`Thatching_Grass` / `Ribbon_Grass` / `Kikuyu_Grass` / `025_Grass` were trialed but the build references KBG — no need to fetch them.)

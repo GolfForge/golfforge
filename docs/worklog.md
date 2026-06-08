@@ -2,6 +2,22 @@
 
 > Dated milestone summaries, newest on top. The durable outcome + the committed artifact, not the blow-by-blow — process detail lives in git history, `docs/ue5-cookbook.md`, and the scripts themselves.
 
+## 2026-06-08 — v0.0.5-alpha macOS arm64 cook + release upload (GOL-157 follow-up, Mac)
+
+Cooked and shipped the Mac build of v0.0.5-alpha. `GolfForge-macos-arm64-v0.0.5-alpha.zip`
+(1.22 GB) is attached to the existing `v0.0.5-alpha` GitHub Release next to the Windows zip.
+
+- **Cook green in 2m51s** (`BuildCookRun` Mac/Development, same flag set as GOL-157). Post-steps:
+  dylib fixup (`libtbb.12` + `libtbbmalloc.2` into `Contents/MacOS/`, GOL-71), course staging
+  (`courses/golfforge-demo-black/` → `Contents/UE/courses/`), `Golfsim.app` → `GolfForge.app`,
+  `xattr -cr`. Smoke test passed (played a hole + range on the cooked build).
+- **New cook-blocker:** the GOL-160 course facelift added Fab dependencies absent from this Mac
+  clone — two cook crashes, fixed by fetching 7 packs from Fab. Missing **3D rocks** (4:
+  `Massive_Tundra_Rock_Formation_wcrmbiar`/`_wd4icipcb`, `Nordic_Forest_Cliff_Large_xibldbu`,
+  `Tundra_Mossy_Boulder_vivveardw`) **crash** the cook; missing **surfaces** (`Cut_Grass_sfenffsa`
+  fairway, `Mossy_Forest_Floor_vfylbge` under-trees) checkerboard; plus `Tree_Baltic_Pine`. The
+  cookbook Fresh-clone recipe now lists all 7.
+
 ## 2026-06-07 — Hide springbok connector + DLSS Frame Generation toggle (GOL-181/GOL-189, Windows)
 
 Pre-cook session: pulled the unvalidated connector from the shipping dropdown and added a (mechanically

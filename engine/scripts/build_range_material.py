@@ -73,11 +73,14 @@ LAYERS = [
          # MIC_PracticeRange (Fairway_Stripe{Width,Angle,Contrast,Sharpness}).
          stripes=dict(width_m=4.0, angle_deg=45.0, contrast=0.18, sharpness=4.0,
                       crisscross=True),
+         variation=dict(amount=0.06, scale=0.0006),                 # GOL-163 P4: tonal patches over the lane
          **_surf("Lawn_Grass_tkynejer", "tkynejer")),
     dict(name="Rough",    mode="textured", tiling=2.0,
+         variation=dict(amount=0.10, scale=0.0005),                 # GOL-163 P4: rough reads patchy/natural
          **_surf("Uncut_Grass_oilpt20", "oilpt20")),
     dict(name="Tee",      mode="textured", tiling=3.0,
          tint=(0.10, 0.26, 0.08),
+         variation=dict(amount=0.05, scale=0.0010),                 # GOL-163 P4
          **_surf("Lawn_Grass_tkynejer", "tkynejer")),
     dict(name="Trees",    mode="textured", tiling=2.5,
          **_surf("Clover_Patches_on_Grass_sgmkajak", "sgmkajak")),
@@ -312,6 +315,60 @@ def _stripe_mask(mat, layer, x, y):
     return bright, ""
 
 
+def _region_variation(mat, layer, x, y):
+    """Per-region color variation (GOL-163 P4): low-frequency procedural Noise on world position ->
+    a scalar brightness multiplier ~[1-amt, 1+amt] to multiply into the albedo, so every fairway/green
+    has gentle color variance over its length with no obvious texture-tile repeat on flyovers. The macro
+    blend (above) breaks the texture repeat; this breaks the FLAT overall tone. Returns (expr, '').
+
+    PROCEDURAL (MaterialExpressionNoise, GRADIENT_ALU) -> adds NO texture sampler (the material already
+    sits near the 16-sampler limit). World-position-driven like _stripe_mask so patches stay put
+    regardless of texture tiling/terrain. Two live-tunable ScalarParameters on the MIC:
+      <name>_VarScale  = world-space frequency (cm^-1); LOWER = larger, lower-frequency patches.
+      <name>_VarAmount = amplitude; 0 disables. brightness = 1 + noise(-1..1) * amount.
+    Noise-node quirks (UE 5.7, confirmed by probe): the function property is `noise_function` (NOT
+    `function`); the Position INPUT pin name is "" (empty), as is the output pin -- so the scaled world
+    position feeds the empty-named input and the node output reads off ""."""
+    name = layer["name"]
+    cfg = layer["variation"]
+    me = _mel().create_material_expression
+    cn = _mel().connect_material_expressions
+
+    # world position -> * <name>_VarScale (frequency knob) -> Noise Position input (pin name "")
+    wp = me(mat, unreal.MaterialExpressionWorldPosition, x, y)
+    scl = me(mat, unreal.MaterialExpressionScalarParameter, x, y + 160)
+    scl.set_editor_property("parameter_name", name + "_VarScale")
+    scl.set_editor_property("default_value", float(cfg.get("scale", 0.0006)))
+    pos = me(mat, unreal.MaterialExpressionMultiply, x + 200, y)
+    cn(wp, "", pos, "A"); cn(scl, "", pos, "B")
+
+    nz = me(mat, unreal.MaterialExpressionNoise, x + 400, y)
+    try:
+        nz.set_editor_property(
+            "noise_function", unreal.NoiseFunction.NOISEFUNCTION_GRADIENT_ALU)  # ALU = tex-free, no sampler
+    except Exception as exc:
+        _log("noise_function note: %s" % str(exc)[:50])
+    for prop, val in (("quality", 1), ("levels", 2), ("turbulence", False),
+                      ("output_min", -1.0), ("output_max", 1.0), ("scale", 1.0)):
+        try:
+            nz.set_editor_property(prop, val)
+        except Exception as exc:
+            _log("noise %s note: %s" % (prop, str(exc)[:40]))
+    cn(pos, "", nz, "")   # scaled world position -> Noise Position input (empty pin name)
+
+    # brightness = 1 + noise(-1..1) * <name>_VarAmount
+    amt = me(mat, unreal.MaterialExpressionScalarParameter, x + 400, y + 200)
+    amt.set_editor_property("parameter_name", name + "_VarAmount")
+    amt.set_editor_property("default_value", float(cfg.get("amount", 0.06)))
+    sig = me(mat, unreal.MaterialExpressionMultiply, x + 580, y)
+    cn(nz, "", sig, "A"); cn(amt, "", sig, "B")
+    one = me(mat, unreal.MaterialExpressionConstant, x + 580, y + 200)
+    one.set_editor_property("r", 1.0)
+    bright = me(mat, unreal.MaterialExpressionAdd, x + 740, y)
+    cn(one, "", bright, "A"); cn(sig, "", bright, "B")
+    return bright, ""
+
+
 def _macro_albedo(mat, layer, x, y):
     """Detail albedo lerp'd with a far-larger-scale sample of itself to
     break the tiling repeat on flyovers. Returns (lerp_expr, '')."""
@@ -366,6 +423,15 @@ def _macro_albedo(mat, layer, x, y):
             _mel().connect_material_expressions(src, pin, mul, "A")  # preserve texture color
         _mel().connect_material_expressions(vp, "", mul, "B")
         out, out_pin = mul, ""
+    # GOL-163 P4 per-region variation: multiply a low-frequency world-noise brightness band into the
+    # albedo so the surface's overall tone varies naturally over its length (no flat-tile look on flyovers).
+    if layer.get("variation"):
+        rv, _rp = _region_variation(mat, layer, x + 200, y - 520)
+        vmul = _mel().create_material_expression(
+            mat, unreal.MaterialExpressionMultiply, x + 660, y - 40)
+        _mel().connect_material_expressions(out, out_pin, vmul, "A")
+        _mel().connect_material_expressions(rv, "", vmul, "B")
+        out, out_pin = vmul, ""
     # GOL-163 mowing stripes: multiply a world-aligned brightness band into the albedo (contrast=0 off).
     if layer.get("stripes"):
         sm, _sp = _stripe_mask(mat, layer, x + 200, y + 560)

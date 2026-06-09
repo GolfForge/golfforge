@@ -2,6 +2,27 @@
 
 > Dated milestone summaries, newest on top. The durable outcome + the committed artifact, not the blow-by-blow — process detail lives in git history, `docs/ue5-cookbook.md`, and the scripts themselves.
 
+## 2026-06-09 — GOL-163 closed: per-region color variation (P4) + surface distinctness re-tune (Windows)
+
+Finished the surface material upgrade (P1-P3 shipped earlier; this is the last two "Done when" boxes)
+now that GOL-171 (layer paint) is resolved and the 5-course set makes flyover tiling visible everywhere.
+
+- **P4 per-region color variation:** new `_region_variation()` in `build_course_material.py` — a
+  low-frequency world-position `MaterialExpressionNoise` (GRADIENT_ALU, **procedural → no texture
+  sampler**, important given the ~16-sampler ceiling) remapped to `1 + noise*amount` and multiplied into
+  the albedo, so each surface's tone drifts naturally over its length (no flat-tile look on flyovers).
+  Two live MIC knobs per grass/sand surface: `<Layer>_VarAmount` (0 disables) + `<Layer>_VarScale`
+  (frequency; lower = bigger patches). On Fairway/Green/Rough/Tee + a subtle pass on Bunker.
+- **Distinctness re-tune (back-ported defaults):** Green cooler/desaturated + wetter (`rough 0.65`),
+  Tee yellower/less saturated, Rough browner/duller, **Bunker whitened off raw desert sand**
+  (`mul_tint (1.0,1.03,1.12)`) toward Bethpage cream (ticket's "NOT yellow-beach-sand"). All 5 surfaces
+  read distinct in PIE.
+- **Range fork kept diffable:** `_region_variation` ported verbatim into `build_range_material.py`
+  + variation on Fairway/Rough/Tee, so the two builders stay trivially diffable (GOL-28/GOL-168 rule).
+- Both materials rebuild clean end-to-end (the reproducibility box), MICs rebuilt + landscapes rebound.
+  `MaterialExpressionNoise` 5.7 Python gotchas (`noise_function` not `function`; empty-string Position
+  pin) documented in the cookbook GOL-163 section.
+
 ## 2026-06-09 — Four more demo courses: the full Bethpage 5-track set (Windows)
 
 Added the other four Bethpage tracks (Blue/Red/Green/Yellow) as standalone playable demo

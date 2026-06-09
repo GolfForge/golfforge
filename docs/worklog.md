@@ -26,8 +26,10 @@ was purely the sculpting step.
   profile, cm→units, idempotency, clamp, PNG round-trip, mask alignment). Full suite 61 green.
 - **Docs:** data-contract `heightmap_bunkers.png` row + cookbook sculpting recipe (incl. the ~1 m/px
   lip-resolution caveat). Green-side lip bias deferred to a follow-up ticket; v1 is a uniform rim.
-- **Remaining (manual, in UE):** re-import each course's `heightmap_bunkers.png` (heightmap only)
-  and validate in PIE — ball settles in the bunker, lip blocks line-of-sight.
+- **PIE-validated (all 5 courses re-imported, heightmap-only):** ball hit into a bunker rolls and
+  comes to rest inside; depressions + lips read well even at the ~1 m/px grid. GOL-34 closed Done.
+  (Rolling back out over the lip is easy because there's no sand drag yet — that's GOL-39 per-surface
+  friction, deferred by design; lie detection GOL-40 already classifies the ball as on sand.)
 
 ## 2026-06-09 — GOL-163 closed: per-region color variation (P4) + surface distinctness re-tune (Windows)
 

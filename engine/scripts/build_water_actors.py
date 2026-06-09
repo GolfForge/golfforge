@@ -35,23 +35,31 @@ import os
 import unreal
 
 # ---------------------------------------------------------------- parameters
-COURSE_ID        = "golfforge-demo-black"
+# A new course is ONE global: set `COURSE_ID` before exec and everything else
+# (geojson path, level name, bbox) derives from it + the course's heightmap.json.
+COURSE_ID        = globals().get("COURSE_ID", "golfforge-demo-black")
 # Repo root from the UE project location (repo/engine/Golfsim -> repo) so this
-# runs for any contributor / checkout. Set GEOJSON_PATH before exec to override.
+# runs for any contributor / checkout.
 _REPO_ROOT       = os.path.normpath(os.path.join(
     unreal.Paths.convert_relative_path_to_full(unreal.Paths.project_dir()),
     "..", ".."))
+_COURSE_DIR      = os.path.join(_REPO_ROOT, "courses", COURSE_ID)
 GEOJSON_PATH     = globals().get("GEOJSON_PATH") or os.path.join(
-    _REPO_ROOT, "courses", COURSE_ID, "water.geojson")
-LEVEL_HINT       = "GolfForgeDemoBlack"
+    _COURSE_DIR, "water.geojson")
+# golfforge-demo-blue -> GolfForgeDemoBlue (matches the .umap name).
+LEVEL_HINT       = globals().get("LEVEL_HINT") or "".join(
+    ("GolfForge" if p == "golfforge" else p.capitalize())
+    for p in COURSE_ID.split("-"))
 LANDSCAPE_LABEL_HINT = "Landscape"
 
-# heightmap.json georeference (minlon, minlat, maxlon, maxlat). Bbox widening
-# history: GOL-33 (2026-05-31) bumped maxlon -73.4374 -> -73.4350 for Black hole
-# 8 east; GOL-108 (2026-06-01) then widened N + W after GOL-85's verify caught 5
-# Black endpoints (1 Tee, 9 Tee, 10 Green, 11 Tee, 18 Green) off the landscape.
-# Keep in sync with build_hole_markers.py BBOX_WGS84.
-BBOX_WGS84       = (-73.4555, 40.7423, -73.4345, 40.7571)
+# heightmap.json georeference (minlon, minlat, maxlon, maxlat) is the pipeline's
+# bbox for THIS course -- read it (single source of truth) rather than hardcoding,
+# so water lands correctly on every course's landscape. Override via BBOX_WGS84.
+if globals().get("BBOX_WGS84"):
+    BBOX_WGS84   = tuple(globals()["BBOX_WGS84"])
+else:
+    with open(os.path.join(_COURSE_DIR, "heightmap.json"), encoding="utf-8") as _hf:
+        BBOX_WGS84 = tuple(json.load(_hf)["bbox_wgs84"])
 WORLD_HALF_XY_CM = 100800.0
 WORLD_ORIGIN_XY  = (0.0, 0.0)
 

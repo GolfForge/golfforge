@@ -39,6 +39,15 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Tuple
 
+# Windows consoles default to cp1252 and raise UnicodeEncodeError on any non-ASCII
+# in print() (e.g. the "~" / "--" status lines). The pipeline is supported on
+# Windows, so force UTF-8 on the standard streams (no-op on Mac/Linux).
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding="utf-8")
+    except (AttributeError, ValueError):
+        pass
+
 import numpy as np
 import requests
 from PIL import Image, ImageDraw

@@ -47,24 +47,34 @@ import os
 import unreal
 
 # ---------------------------------------------------------------- parameters
-COURSE_ID  = "golfforge-demo-black"
-LEVEL_HINT = "GolfForgeDemoBlack"
+# A new course is ONE global: set `COURSE_ID` before exec; the level name, track
+# filter, geojson path and bbox all derive from it + the course's heightmap.json.
+COURSE_ID  = globals().get("COURSE_ID", "golfforge-demo-black")
+# golfforge-demo-blue -> GolfForgeDemoBlue (matches the .umap name).
+LEVEL_HINT = globals().get("LEVEL_HINT") or "".join(
+    ("GolfForge" if p == "golfforge" else p.capitalize())
+    for p in COURSE_ID.split("-"))
 
-# Default: just the headline course. Override via `COURSE_FILTER=(...)` before
-# exec. None == include every `golf=hole` Feature regardless of course-name tag.
-COURSE_FILTER = globals().get("COURSE_FILTER", ("Black",))
+# Default: filter to THIS course's track -- the suffix after the last hyphen,
+# capitalized (mirrors the engine's DeriveTrackName). Override via COURSE_FILTER;
+# None == include every `golf=hole` Feature regardless of course-name tag.
+COURSE_FILTER = globals().get("COURSE_FILTER", (COURSE_ID.split("-")[-1].capitalize(),))
 
 # Repo root from the UE project location (repo/engine/Golfsim -> repo).
 _REPO_ROOT   = os.path.normpath(os.path.join(
     unreal.Paths.convert_relative_path_to_full(unreal.Paths.project_dir()),
     "..", ".."))
+_COURSE_DIR  = os.path.join(_REPO_ROOT, "courses", COURSE_ID)
 GEOJSON_PATH = globals().get("GEOJSON_PATH") or os.path.join(
-    _REPO_ROOT, "courses", COURSE_ID, "hole.geojson")
+    _COURSE_DIR, "hole.geojson")
 
-# heightmap.json georeference (minlon, minlat, maxlon, maxlat). Must match
-# build_water_actors.py BBOX_WGS84. Widened on 2026-06-01 (GOL-108) N + W
-# after GOL-85's verify caught 5 Black endpoints off the prior landscape.
-BBOX_WGS84       = (-73.4555, 40.7423, -73.4345, 40.7571)
+# heightmap.json georeference (minlon, minlat, maxlon, maxlat) for THIS course --
+# single source of truth, must match build_water_actors.py. Override via BBOX_WGS84.
+if globals().get("BBOX_WGS84"):
+    BBOX_WGS84   = tuple(globals()["BBOX_WGS84"])
+else:
+    with open(os.path.join(_COURSE_DIR, "heightmap.json"), encoding="utf-8") as _hf:
+        BBOX_WGS84 = tuple(json.load(_hf)["bbox_wgs84"])
 WORLD_HALF_XY_CM = 100800.0   # landscape default-stretched, see GOL-85
 WORLD_ORIGIN_XY  = (0.0, 0.0)
 FLIP_X, FLIP_Y, SWAP_XY = False, True, False   # verified against painted water

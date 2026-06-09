@@ -44,7 +44,10 @@ import unreal
 
 # ---------------------------------------------------------------- parameters
 LEVEL_RANGE  = "PracticeRange"
-LEVEL_COURSE = "GolfForgeDemoBlack"
+# Prefix-match so every demo course level qualifies (GolfForgeDemoBlack/Blue/Red/
+# Green/Yellow). Bird zones are placed on each level's own scattered trees, so the
+# same course path serves them all.
+LEVEL_COURSE = "GolfForgeDemo"
 
 AUDIO_DIR = "/Game/Audio/Ambient"
 SRC_DIR   = (r"C:\Users\pucho\code\golfsim\engine\Golfsim"

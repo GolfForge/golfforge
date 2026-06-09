@@ -6,8 +6,9 @@ Reference for the UE-side agent: every file the Python pipeline writes into `cou
 
 | File | Format | Consumer |
 |---|---|---|
-| `heightmap.png` | 16-bit grayscale PNG, square dims (UE5-friendly: 505 / 1009 / 2017 / 4033 / 8129) | Landscape > Manage > New > Import from File |
+| `heightmap.png` | 16-bit grayscale PNG, square dims (UE5-friendly: 505 / 1009 / 2017 / 4033 / 8129) | Landscape > Manage > New > Import from File. The pristine raw-DEM baseline — also the idempotency source for `build_bunker_depressions.py` (never overwritten) |
 | `heightmap.json` | `{elev_min_m, elev_max_m, elev_range_m, ue5_z_scale_pct, bbox_wgs84, size_px, backend, course_id}` | Set Landscape `RelativeScale3D.Z` from `ue5_z_scale_pct`; the rest is provenance |
+| `heightmap_bunkers.png` | 16-bit grayscale PNG, **same dims + same `elev_min->0 / elev_max->65535` encoding** as `heightmap.png` | The UE import target **once bunker sculpting has been run** (`pipeline/build_bunker_depressions.py` — depressed sand floors + raised lips, GOL-34). Re-import **heightmap-only** (Landscape > Manage > Import, Layers untouched); the encoding is unchanged so **Z scale stays the same**. Absent until the script is run |
 
 ## Splatmap (weight-paint for materials)
 
@@ -18,7 +19,7 @@ Reference for the UE-side agent: every file the Python pipeline writes into `cou
 | `splat_{fairway,green,bunker,rough}.png` | One 8-bit grayscale per layer | UE5.7 Landscape > Manage > Import "Layers" array (one PNG per row) — this is the path that actually works in 5.7 |
 | `fairway.geojson` | Polygon FeatureCollection | Vector form of the fairway areas (alongside the raster channel). Includes **synthesized** fallback corridors (see below). Use to conform fairway rendering to real shapes. |
 | `green.geojson` | Polygon FeatureCollection | Vector form of the green areas. Use to place the pin at the **green centroid** (vs the `hole.geojson` centerline endpoint) and conform the green to its real shape instead of a synthetic disc. |
-| `bunker.geojson` | Polygon FeatureCollection | Vector form of the bunkers. Consume per-feature to sculpt the heightmap (depression + raised lip) into believable sand traps — see `build_bunker_depressions.py` (GOL-34). |
+| `bunker.geojson` | Polygon FeatureCollection | Vector form of the bunkers. Consumed by `pipeline/build_bunker_depressions.py` (GOL-34) to sculpt the heightmap (depression + raised lip) into believable sand traps → emits `heightmap_bunkers.png` (above). Rings rasterize with the *same* `lonlat_to_pixel` transform as the splatmap, so the sculpt aligns pixel-perfect with `splat_bunker.png`. |
 
 **Synthesized fairway corridors:** OSM coverage is uneven — some holes (par 3s especially) have no `golf=fairway` polygon, so they'd render fairway-less. For any hole whose tee→green centerline isn't already covered by an OSM fairway, the pipeline buffers the centerline into a corridor polygon and adds it to both `splat_fairway.png` and `fairway.geojson`. These carry `properties.synthesized = true` (and `osm_tags.synthesized = "yes"`, `osm_tags.source_hole_ref = <hole ref>`, `osm_way_id = null`) so a consumer can treat them differently (e.g. de-emphasize, or prefer real OSM data). Real OSM features have `synthesized = false`. Detection threshold + corridor widths live in `build_splatmap.py` constants (`SYNTH_FAIRWAY_*`) and are tunable; validate with the QA overlays.
 

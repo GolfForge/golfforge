@@ -2,6 +2,33 @@
 
 > Dated milestone summaries, newest on top. The durable outcome + the committed artifact, not the blow-by-blow — process detail lives in git history, `docs/ue5-cookbook.md`, and the scripts themselves.
 
+## 2026-06-09 — GOL-34: bunker depressions — pipeline-side heightmap sculpting (Windows)
+
+Turned flat painted sand polygons into believable traps by sculpting a depressed sand floor +
+raised lip into the *heightmap*. The pipeline side (`bunker.geojson`) was already emitted, so this
+was purely the sculpting step.
+
+- **New `pipeline/build_bunker_depressions.py`** (numpy/PIL, runs in the pipeline venv — *not* the
+  UE-embedded stdlib interpreter, since UE5.7 can't import heightmaps from Python anyway). Reads the
+  pristine `heightmap.png` baseline + `heightmap.json` + `bunker.geojson`, rasterizes all bunker
+  polygons into one union mask via `build_splatmap.lonlat_to_pixel` (so the sculpt aligns
+  pixel-perfect with `splat_bunker.png` — verified 100% overlap), computes an exact Felzenszwalb
+  distance transform (pure numpy, no scipy), and applies a smoothstep bowl (full depth `floor_radius`
+  inward) + a raised rim lip band. Writes a **sibling `heightmap_bunkers.png`**, leaving
+  `heightmap.png` untouched → re-runs are byte-identical (idempotent by construction). Knobs:
+  `--depression-depth-cm 50 --lip-height-cm 25 --lip-width-cm 300 --floor-radius-cm 200`.
+- **Encoding preserved** (`elev_min→0 / elev_max→65535`), so the UE re-import is heightmap-only with
+  **no Z-scale change** — sidesteps the Z-scale/PCG-tree-float gotcha entirely.
+- **Generated for all 5 demo courses** (black 105 bunkers, blue 168, green 118, red 186, yellow);
+  each shows max drop ~50 cm / max rise ~25 cm. The committed `heightmap_bunkers.png` per course is
+  the new UE import target.
+- **Tests:** `pipeline/tests/test_build_bunker_depressions.py` (12 tests — EDT vs brute force,
+  profile, cm→units, idempotency, clamp, PNG round-trip, mask alignment). Full suite 61 green.
+- **Docs:** data-contract `heightmap_bunkers.png` row + cookbook sculpting recipe (incl. the ~1 m/px
+  lip-resolution caveat). Green-side lip bias deferred to a follow-up ticket; v1 is a uniform rim.
+- **Remaining (manual, in UE):** re-import each course's `heightmap_bunkers.png` (heightmap only)
+  and validate in PIE — ball settles in the bunker, lip blocks line-of-sight.
+
 ## 2026-06-09 — GOL-163 closed: per-region color variation (P4) + surface distinctness re-tune (Windows)
 
 Finished the surface material upgrade (P1-P3 shipped earlier; this is the last two "Done when" boxes)

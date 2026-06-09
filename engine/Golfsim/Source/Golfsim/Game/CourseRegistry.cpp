@@ -11,12 +11,13 @@ namespace GolfCourseRegistry
 		Out.Add({ TEXT("golfforge-demo-black"), TEXT("GolfForge Demo Black"),
 			TEXT("GolfForge demo course"), TEXT("Links"), 18, 72, TEXT("7,000"), 3, true });
 
-		// Disabled placeholders -- the design's fictional tracks, shown greyed until they exist.
-		Out.Add({ TEXT("coastal"),  TEXT("Coastal Links"),     TEXT("Pebble-grade coastal links"), TEXT("Links"),     18, 72, TEXT("7,040"), 4, false });
-		Out.Add({ TEXT("pinewood"), TEXT("Pinewood National"), TEXT("Tree-lined parkland"),         TEXT("Parkland"),  18, 71, TEXT("6,870"), 3, false });
-		Out.Add({ TEXT("desert"),   TEXT("Desert Ridge"),      TEXT("Target golf in the canyons"),  TEXT("Desert"),    18, 72, TEXT("7,210"), 5, false });
-		Out.Add({ TEXT("highland"), TEXT("Highland Moor"),     TEXT("Windswept heathland"),         TEXT("Heathland"), 18, 70, TEXT("6,640"), 4, false });
-		Out.Add({ TEXT("riverbend"),TEXT("Riverbend"),         TEXT("Water on every turn"),         TEXT("Resort"),    18, 72, TEXT("6,950"), 3, false });
+		// The other four GolfForge demo tracks -- same geographic source as Black, trademark-neutral
+		// names per GOL-20. Blue is built + cooked (available); Red/Green/Yellow are greyed until
+		// their levels land. Par/yards for the greyed tracks are placeholders, refined when built.
+		Out.Add({ TEXT("golfforge-demo-blue"),   TEXT("GolfForge Demo Blue"),   TEXT("GolfForge demo course"), TEXT("Parkland"), 18, 72, TEXT("6,700"), 3, true  });
+		Out.Add({ TEXT("golfforge-demo-red"),    TEXT("GolfForge Demo Red"),    TEXT("GolfForge demo course"), TEXT("Parkland"), 18, 70, TEXT("6,500"), 4, false });
+		Out.Add({ TEXT("golfforge-demo-green"),  TEXT("GolfForge Demo Green"),  TEXT("GolfForge demo course"), TEXT("Parkland"), 18, 71, TEXT("6,200"), 2, false });
+		Out.Add({ TEXT("golfforge-demo-yellow"), TEXT("GolfForge Demo Yellow"), TEXT("GolfForge demo course"), TEXT("Parkland"), 18, 71, TEXT("6,300"), 2, false });
 
 		return Out;
 	}

@@ -9,6 +9,7 @@
 #include "Kismet/GameplayStatics.h"   // OpenLevel for course-load
 #include "Misc/Paths.h"
 #include "UObject/UObjectGlobals.h"   // FCoreUObjectDelegates
+#include "Course/CourseLevelMap.h"    // shared course-id <-> level table
 
 namespace
 {
@@ -54,13 +55,9 @@ void URoundSubsystem::Deinitialize()
 
 FString URoundSubsystem::LevelNameForCourse(const FString& CourseId)
 {
-	// Mirror of CourseIdByLevelName in Course/CourseSurfaceSubsystem.cpp. Hardcoded for now;
-	// when the second course lands, hoist this table into a shared header (one source of truth).
-	static const TMap<FString, FString> Map = {
-		{ TEXT("golfforge-demo-black"), TEXT("GolfForgeDemoBlack") },
-	};
-	if (const FString* Found = Map.Find(CourseId)) { return *Found; }
-	return FString();
+	// Single source of truth lives in Course/CourseLevelMap.h (shared with
+	// CourseSurfaceSubsystem so the two directions never drift).
+	return GolfsimCourseMap::LevelNameForCourse(CourseId);
 }
 
 URoundSubsystem* URoundSubsystem::Get(const UObject* WorldContext)

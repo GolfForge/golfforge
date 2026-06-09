@@ -60,10 +60,8 @@ CLIPS = [
     ("bird_countryside.ogg", "SW_AmbientBird_Countryside", "bird"),
     ("bird_forest_edge.ogg", "SW_AmbientBird_ForestEdge",  "bird"),
     ("wind_trees.ogg",       "SW_AmbientWind_Trees",       "wind"),
-    # distant ring-road traffic hum -- a bird-free anchor. (The earlier village
-    # murmur had birdsong baked in, which read as "birds everywhere" since the
-    # murmur is a GLOBAL bed; distant traffic is continuous and bird-free.)
-    ("murmur_distant.ogg",   "SW_AmbientMurmur_Distant",   "murmur"),
+    # (distant-traffic "murmur" bed removed -- it read as cars/road noise on the
+    # course. Birds + wind only now. GOL-166 follow-up.)
 ]
 
 SC_AMBIENT_PATH = AUDIO_DIR + "/SC_Ambient"
@@ -375,9 +373,9 @@ def _place_course(waves, bird_atten):
 
 
 def _place_beds(waves, x, y):
-    """The two global (un-spatialized) beds: wind + distant murmur."""
+    """The global (un-spatialized) wind bed. (Distant-murmur bed removed.)"""
     n = 0
-    for role in ("wind", "murmur"):
+    for role in ("wind",):
         named = _by_role(waves, role)
         if not named:
             continue

@@ -5,34 +5,7 @@
 #include "Misc/Paths.h"
 #include "Events/EventBusSubsystem.h"
 #include "Physics/GroundRoll.h"   // LieToProtocol (logging)
-
-namespace
-{
-	// Single source of truth for the level-name -> course-id mapping. Add an entry per first-party
-	// course as they land; runtime course loading (GOL-86 / GOL-91) replaces this table with a
-	// data-driven path.
-	static const TMap<FString, FString>& CourseIdByLevelName()
-	{
-		static const TMap<FString, FString> Map = {
-			{ TEXT("GolfForgeDemoBlack"), TEXT("golfforge-demo-black") },
-		};
-		return Map;
-	}
-
-	// PIE wraps the map name as `UEDPIE_<n>_<MapName>`; matching by substring sidesteps the prefix
-	// without pulling in UWorld::StripPIEPrefixFromPackageName.
-	FString MatchCourseId(const FString& MapNameRaw)
-	{
-		for (const TPair<FString, FString>& Pair : CourseIdByLevelName())
-		{
-			if (MapNameRaw.Contains(Pair.Key))
-			{
-				return Pair.Value;
-			}
-		}
-		return FString();
-	}
-}
+#include "Course/CourseLevelMap.h"   // shared course-id <-> level table
 
 bool UCourseSurfaceSubsystem::ShouldCreateSubsystem(UObject* Outer) const
 {
@@ -50,7 +23,7 @@ bool UCourseSurfaceSubsystem::ShouldCreateSubsystem(UObject* Outer) const
 		return false;
 	}
 	const FString MapName = FPaths::GetBaseFilename(World->GetMapName());
-	return !MatchCourseId(MapName).IsEmpty();
+	return !GolfsimCourseMap::CourseIdForLevel(MapName).IsEmpty();
 }
 
 void UCourseSurfaceSubsystem::Initialize(FSubsystemCollectionBase& Collection)
@@ -58,7 +31,7 @@ void UCourseSurfaceSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 	Super::Initialize(Collection);
 	// The level name is already validated by ShouldCreateSubsystem; safe to look it up here.
 	const FString MapName  = FPaths::GetBaseFilename(GetWorld()->GetMapName());
-	const FString CourseId = MatchCourseId(MapName);
+	const FString CourseId = GolfsimCourseMap::CourseIdForLevel(MapName);
 	if (CourseId.IsEmpty())
 	{
 		UE_LOG(LogTemp, Warning, TEXT("CourseSurfaceSubsystem: map %s has no course mapping (Initialize)"), *MapName);

@@ -322,8 +322,11 @@ def _synthetic_course_osm():
             tags={"golf": "green"}),
         way(104, [(-0.3, 40.4), (-0.25, 40.4), (-0.25, 40.45), (-0.3, 40.45), (-0.3, 40.4)],
             tags={"golf": "bunker"}),
-        # Cart path (open linestring) — exercises line+geojson path
-        way(105, [(-0.5, 40.5), (-0.4, 40.5), (-0.4, 40.6)],
+        # Cart path (open linestring) — exercises line+geojson path. Kept in the
+        # rough (south of the fairway, inside the course) so it survives the GOL-171
+        # priority de-overlap; a path drawn on the fairway would correctly be
+        # claimed by the higher-priority fairway layer (mirrors the ball lie).
+        way(105, [(-0.5, 40.15), (-0.4, 40.15), (-0.4, 40.2)],
             tags={"golf": "cartpath"}),
         # Water polygon — exercises polygon+emit_geojson path
         way(106, [(0.3, 40.4), (0.35, 40.4), (0.35, 40.45), (0.3, 40.45), (0.3, 40.4)],
@@ -351,6 +354,11 @@ def test_build_splatmap_produces_expected_files(tmp_path):
     assert (out_dir / "fairway.geojson").exists()
     assert (out_dir / "green.geojson").exists()
     assert (out_dir / "bunker.geojson").exists()
+    # GOL-171: emitted masks must be mutually exclusive so UE landscape weight-blend
+    # import doesn't normalize overlaps to a tie and erase small features.
+    chans = [np.asarray(Image.open(out_dir / f"splat_{l}.png").convert("L")) > 128
+             for l in ("fairway", "green", "bunker", "rough")]
+    assert int(np.stack(chans).sum(axis=0).max()) == 1
 
 
 def test_fairway_and_green_emit_geojson_sidecars(tmp_path):

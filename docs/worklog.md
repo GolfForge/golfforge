@@ -2,6 +2,32 @@
 
 > Dated milestone summaries, newest on top. The durable outcome + the committed artifact, not the blow-by-blow — process detail lives in git history, `docs/ue5-cookbook.md`, and the scripts themselves.
 
+## 2026-06-08 — GOL-171 course layer-weight gaps: root-caused + fixed (overlap, not orientation; Windows)
+
+Holes were missing fairway/green/bunker paint after re-import. Root cause was **not** stale
+re-import or sparse OSM (the Mac's GOL-108 widen + synthesized corridors were fine) and **not**
+the splat↔landscape orientation mismatch the cookbook had guessed. The pipeline's `splat_*.png`
+masks are **priority-encoded and overlapping** by design (OSM `golf=rough` blankets whole holes,
+greens sit inside fairways; rough∩fairway≈48%, rough∩bunker≈29%), and the engine lie-classifier
+(`CourseSurface.cpp`) resolves the overlap by first-match priority. But UE landscape import
+**weight-blends** and normalizes overlaps to a ~50/50 tie, so the lower-priority layer wins about
+half the time and small features (greenside bunkers, greens) silently vanish — the "one of two
+adjacent bunkers missing" signature.
+
+- **Fix (canonical):** `build_splatmap.py` now de-overlaps every emitted mask via
+  `resolve_layer_overlap()` — each pixel → its single highest-priority layer (order matches the
+  classifier: bunker > green > tee > fairway > cart_path > trees > rough). Masks become mutually
+  exclusive and weight-blend-import-safe. Runtime ball-lie is byte-identical (mirrors first-match).
+  New test asserts max-1-layer-per-pixel; suite green (36 passed).
+- **Demo course re-cooked** to exclusive masks (`splat_fairway`/`splat_rough`/`layer_cart_path`/
+  `layer_trees`/`splatmap` changed; green/bunker/tee unchanged — top priority, never lose pixels).
+  Re-imported into `GolfForgeDemoBlack.umap`; verified in-editor — all surfaces paint, bunkers back.
+- **Diagnostics built on the way:** ran the pipeline + QA overlays on Windows (`build_qa_overlay.py`,
+  satellite-aligned — confirmed splat geography correct); used `ALandscape.render_weightmap` +
+  `export_render_target` to diff *painted* weights vs splats (the readback recipe is in the cookbook).
+- Docs: cookbook GOL-171 caveat corrected (overlap/normalization, not orientation);
+  `pipeline-data-contract.md` documents the exclusive-mask guarantee.
+
 ## 2026-06-08 — v0.0.5-alpha macOS arm64 cook + release upload (GOL-157 follow-up, Mac)
 
 Cooked and shipped the Mac build of v0.0.5-alpha. `GolfForge-macos-arm64-v0.0.5-alpha.zip`

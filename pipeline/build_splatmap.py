@@ -98,6 +98,39 @@ FEATURE_LAYERS = {
 }
 
 
+# Engine lie-classifier priority (CourseSurface.cpp / .h MaskThresh=128): the first
+# layer whose mask byte > 128 at a pixel wins; Rough is the catch-all. The painted
+# landscape, by contrast, weight-BLENDS layers and normalizes overlaps to a tie --
+# which erases small features (greenside bunkers, greens) wherever the raw splat
+# layers overlap (GOL-171: OSM golf=rough polygons blanket whole holes, greens sit
+# inside fairways). We therefore resolve every pixel to its single highest-priority
+# layer before emitting the masks, making them mutually exclusive and import-ready.
+# Because this mirrors the classifier's first-match-wins, runtime lies are unchanged.
+# Order MUST match the FLayerSpec list in CourseSurface.cpp (rough = catch-all last).
+LAYER_PRIORITY = ["bunker", "green", "tee", "fairway", "cart_path", "trees", "rough"]
+
+
+def resolve_layer_overlap(masks: Dict[str, np.ndarray],
+                          priority: List[str]) -> Dict[str, np.ndarray]:
+    """Assign each pixel to its single highest-priority layer (mask byte > 128),
+    zeroing it in every lower-priority layer. Eliminates the cross-layer overlap
+    that breaks UE landscape weight-blend import (GOL-171). Equivalent to the engine
+    classifier's first-match-wins, so reported lies don't change."""
+    assigned = None
+    out: Dict[str, np.ndarray] = {}
+    for name in priority:
+        m = masks.get(name)
+        if m is None:
+            continue
+        present = m > 128
+        if assigned is None:
+            assigned = np.zeros(present.shape, dtype=bool)
+        excl = present & ~assigned
+        assigned |= excl
+        out[name] = np.where(excl, m, 0).astype(np.uint8)
+    return out
+
+
 # --- Synthesized fallback fairway corridors -----------------------------------
 # OSM coverage is uneven: some holes (par 3s especially) have no golf=fairway
 # polygon, so the course renders fairway-less there. For any hole whose tee->green
@@ -483,6 +516,30 @@ def build_splatmap(osm_data: dict,
     implicit_rough = (course_mask > 0) & ~occupied
     rough = np.maximum(explicit_rough, implicit_rough.astype(np.uint8) * 255)
 
+    # Rasterize the extra weight layers (tee, cart_path, trees) now too, so every
+    # layer can be de-overlapped together before any mask is written (GOL-171). The
+    # raw masks overlap (OSM golf=rough blankets holes; greens sit inside fairways);
+    # UE landscape weight-blend import normalizes that overlap to a tie and erases
+    # small features. resolve_layer_overlap() assigns each pixel to one layer in the
+    # engine classifier's order, leaving runtime lies unchanged but the masks
+    # mutually exclusive and import-ready.
+    extra_raster: Dict[str, np.ndarray] = {}
+    for ln, cfg in FEATURE_LAYERS.items():
+        if cfg["channel"] is not None or cfg.get("skip_raster"):
+            continue
+        if not elements_by_layer.get(ln):
+            continue
+        extra_raster[ln] = rasterize_layer(
+            elements_by_layer, ln, bbox, size,
+            geom=cfg.get("geom", "polygon"), width_m=cfg.get("width_m", 0.0))
+
+    excl = resolve_layer_overlap(
+        {"fairway": fairway, "green": green, "bunker": bunker, "rough": rough,
+         **extra_raster},
+        LAYER_PRIORITY)
+    fairway, green = excl["fairway"], excl["green"]
+    bunker, rough = excl["bunker"], excl["rough"]
+
     # Stack into RGBA
     rgba = np.stack([fairway, green, bunker, rough], axis=-1)
     out_splat = out_dir / "splatmap.png"
@@ -523,11 +580,12 @@ def build_splatmap(osm_data: dict,
         if not elements_by_layer.get(layer_name):
             continue  # no source features → nothing to emit
 
-        # Raster pass (unless suppressed)
+        # Raster pass (unless suppressed). Reuse the de-overlapped mask computed
+        # above (GOL-171) so layer_<name>.png is mutually exclusive with the core
+        # channels, rather than re-rasterizing the raw (overlapping) feature.
         if not skip_raster:
-            mask = rasterize_layer(elements_by_layer, layer_name, bbox, size,
-                                   geom=geom, width_m=width_m)
-            if mask.max() > 0:
+            mask = excl.get(layer_name)
+            if mask is not None and mask.max() > 0:
                 out_path = out_dir / f"layer_{layer_name}.png"
                 Image.fromarray(mask, mode="L").save(out_path)
                 if geom == "line":

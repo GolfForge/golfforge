@@ -1,0 +1,15 @@
+{
+  "course_id": "golfforge-demo-green",
+  "bbox_wgs84": [
+    -73.4577,
+    40.7337,
+    -73.4338,
+    40.7519
+  ],
+  "size_px": 2017,
+  "elev_min_m": 17.95384407043457,
+  "elev_max_m": 48.443599700927734,
+  "elev_range_m": 30.489755630493164,
+  "ue5_z_scale_pct": 5.955030396580696,
+  "backend": "opentopo"
+}

@@ -2,6 +2,32 @@
 
 > Dated milestone summaries, newest on top. The durable outcome + the committed artifact, not the blow-by-blow — process detail lives in git history, `docs/ue5-cookbook.md`, and the scripts themselves.
 
+## 2026-06-09 — Four more demo courses: the full Bethpage 5-track set (Windows)
+
+Added the other four Bethpage tracks (Blue/Red/Green/Yellow) as standalone playable demo
+courses alongside Black, all selectable from the existing course picker. A single unified
+"whole park" map stays deferred (too heavy).
+
+- **Pipeline:** generated `courses/golfforge-demo-{blue,red,green,yellow}/` from per-track
+  **2016m-square real-scale bboxes** (centered on each track's 18-hole extent; matches Black's
+  landscape size so every landscape constant is unchanged). OSM had all 5 tracks fully mapped
+  (18 holes each) once the bbox was wide enough. Exclusive masks via the GOL-171 resolver. Fixed
+  a Windows pipeline crash (non-ASCII `print()` under cp1252 -> force UTF-8 streams).
+- **Per-course level:** duplicated the Black level per track, re-imported each track's heightmap +
+  masks, set the Z scale, then scripted the vibe pass (water + PCG trees + birds-only ambient SFX).
+  Tree counts ~15-23k, all flush to ground.
+- **Engine:** hoisted the course-id<->level map into one shared header
+  (`Course/CourseLevelMap.h`) consumed by `CourseSurfaceSubsystem` + `RoundSubsystem` (kills the
+  duplicate-table TODO). Registered all 4 new tracks in `CourseRegistry` (par from `hole.geojson`)
+  + added the maps to `MapsToCook`. `DeriveTrackName` already filtered holes per track. Validated
+  in PIE: all five show + tee off on their own 18 holes.
+- **Tooling:** parameterized `build_water_actors.py` / `build_hole_markers.py` (a new course is one
+  `COURSE_ID`; level name, track filter, bbox derive from it + `heightmap.json`). `place_ambient_sfx.py`
+  matches any `GolfForgeDemo*` level; dropped the distant-traffic "murmur" bed (read as road noise).
+- **Key gotcha (cookbook):** set a landscape's Z scale **by hand in the Details panel**, never via
+  Python `set_actor_scale3d` -- the latter updates render+collision but leaves PCG sampling the OLD
+  scale, floating every scattered tree at the old height. Set scale BEFORE scattering.
+
 ## 2026-06-08 — GOL-171 course layer-weight gaps: root-caused + fixed (overlap, not orientation; Windows)
 
 Holes were missing fairway/green/bunker paint after re-import. Root cause was **not** stale

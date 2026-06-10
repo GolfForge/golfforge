@@ -69,6 +69,10 @@ Heads-up: moving a panel to the bottom can collide with other bottom-anchored wi
 
 The leave confirm can be reached from inside the Settings modal (Settings → "Main Menu"). Rather than stack modals (z-order + focus + double input-gating headaches), `RequestLeaveToMainMenu()` calls `CloseSettings()` first, then shows the confirm over the bare HUD — so a Cancel returns to the HUD, not back into Settings. On dismiss, `CloseLeaveDialog()` hands keyboard focus back with `FSlateApplication::Get().SetAllUserFocusToGameViewport()` (the same idiom `CloseSettings` uses) so Space/gameplay keys work again. Each modal still owns its keys while up via `SetIsFocusable(true)` + `SetKeyboardFocus()` on open and an `NativeOnKeyDown` Esc/Enter handler.
 
+## `DrawDebug*` helpers are compiled out in Shipping — don't use them for player-facing visuals (GOL-73)
+
+`DrawDebugLine`/`DrawDebugString`/etc. are gated behind `ENABLE_DRAW_DEBUG`, which is **0 in Shipping** (and minimal-build configs). They render fine in Editor/PIE and Development, so a feature drawn with them *looks done* but silently disappears in the cooked Shipping `.exe`. The CTP "ball → pin" result line (GOL-73) used `DrawDebugLine` as a v1 placeholder for exactly this reason — fine for alpha (Development), but it must move to a real primitive (a thin spline/ribbon mesh, a `ULineBatchComponent`-backed actor, or a Niagara ribbon) before ship (GOL-197). Rule: `DrawDebug*` is for dev diagnostics only; anything the *player* is meant to see needs an actual scene primitive. Same "works in Editor, gone when cooked" trap as the LoadObject-path-string assets below.
+
 ## Assets loaded via LoadObject path strings won't cook unless always-cooked (GOL-148)
 
 `GolfUITheme` resolves its fonts + gradient materials with `LoadObject("/Game/UI/Fonts/...")` /

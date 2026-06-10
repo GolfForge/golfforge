@@ -129,14 +129,24 @@ void UEventBusSubsystem::OnShotTaken(const FGolfEvent& Event)
 		// GOL-39: full shots re-sample the surface as they roll, so coefficients change at boundaries
 		// (fairway -> bunker on roll-out, green -> rough on overshoot) and green spin-back applies.
 		const bool bIsPutt = Shot.Club.Equals(TEXT("Putter"), ESearchCase::IgnoreCase);
-		// GOL-196: surface-normal source for the bounce reflection; flat (0,0,1) when none is wired.
+		// GOL-196/GOL-75: surface-normal source for the bounce reflection AND the roll fall-line break;
+		// flat (0,0,1) when none is wired (range synthetic green -> putts stay straight).
 		auto NormalProv = [this](const FVector& P) -> FVector
 		{
 			return GroundNormalProvider ? GroundNormalProvider(P) : FVector::UpVector;
 		};
+		// GOL-75: putts roll cross-surface too, so a putt breaks along the green's fall line (the slope
+		// curves the heading) and slows correctly if it runs off the green. Stimp-aware green friction
+		// overrides the green coefficients; off-green it falls back to the per-surface defaults. (On a
+		// flat green this telescopes to the old single-surface PutterSurfaceRoll rollout exactly.)
+		const double Stimp = UEventBusSubsystem::GreenStimpFt;
+		auto PuttCoefs = [Stimp](EGolfLie L) -> FSurfaceRoll
+		{
+			return L == EGolfLie::Green ? GolfBallFlight::PutterSurfaceRoll(Stimp)
+			                            : GolfBallFlight::SurfaceRollFor(L);
+		};
 		const FGroundRollResult Roll = bIsPutt
-			? GolfBallFlight::SimulateGroundRoll(T, LandingLie,
-				GolfBallFlight::PutterSurfaceRoll(UEventBusSubsystem::GreenStimpFt))
+			? GolfBallFlight::SimulateGroundRollCrossSurface(T, SurfaceProvider, PuttCoefs, NormalProv)
 			: GolfBallFlight::SimulateGroundRollCrossSurface(T, SurfaceProvider, &GolfBallFlight::SurfaceRollFor, NormalProv);
 		if (Roll.bValid)
 		{

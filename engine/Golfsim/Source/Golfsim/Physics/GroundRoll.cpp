@@ -15,6 +15,14 @@ namespace
 	constexpr int32  HopSamplesMin    = 4;
 	constexpr int32  HopSamplesMax    = 30;
 	constexpr int32  RollStepsMax     = 4000;     // safety cap on the stepped roll (no infinite loop on ~0 friction)
+	constexpr double RollSlopeAccelCap = GravityMps2;   // GOL-75: defensive cap on fall-line accel (the projection self-limits to ~g/2)
+
+	// GOL-75 fall-line strength. A uniform sphere ROLLING (not sliding) down an incline accelerates at
+	// (5/7)*g*sin(theta) -- the rotational inertia eats 2/7 of the drive vs a frictionless slide. Real
+	// greens break a touch less still (grain + rolling hysteresis), so the remaining 0.5 is a
+	// provisional empirical damping knob (LM-gated, promote alongside FSurfaceRoll in GOL-195).
+	// Combined: slope accel = RollSlopeGain * g * Nz * |(Nx,Ny)|. Tune this one number to taste.
+	constexpr double RollSlopeGain = (5.0 / 7.0) * 0.5;
 
 	// GOL-39 green spin-back tunables. A green ball that arrives with enough backspin and a steep
 	// enough descent checks forward, then rolls BACKWARD. Backward launch speed (m/s) =
@@ -198,27 +206,48 @@ namespace GolfBallFlight
 			++NumBounces;
 		}
 
-		// --- Roll phase: stepped constant-friction slide along the (now possibly deflected) heading --
-		// For a single surface + flat normal this telescopes to RollDist = Vh^2/(2a) exactly; the
-		// stepping lets friction change at a boundary (fairway -> bunker stops fast in sand). Roll
-		// following the fall-line is out of scope (overlaps green break, GOL-75) -- heading stays fixed.
+		// --- Roll phase: stepped friction slide that now FOLLOWS THE FALL LINE (GOL-75) -------------
+		// At each step gravity's horizontal component along the slope curves the heading (break) and
+		// modulates speed (uphill slows + stops short, downhill runs on). The heading is carried as a 2D
+		// velocity so it can rotate. On a FLAT normal (0,0,1) the slope accel is zero and this reduces
+		// EXACTLY to the old fixed-heading roll -- the trapezoidal step equals Vh*dt - 0.5*a*dt^2
+		// term-for-term, so Vh^2/(2a) telescoping and all (guarded by the cross-surface-equals-single
+		// equivalence test). Friction still re-samples per step so it changes at a boundary (fairway ->
+		// bunker stops fast in sand); a putt running off the green onto the fringe slows there too.
 		{
+			FVector2D Vel = Dir * Vh;   // carry heading + speed out of the bounce phase
 			int32 Steps = 0;
-			while (Vh > Tiny && Steps < RollStepsMax)
+			while (Vel.Size() > Tiny && Steps < RollStepsMax)
 			{
 				C = CoefAt(Pos);
+				const double Speed  = Vel.Size();
 				const double Accel  = FMath::Max(C.RollFriction, Tiny) * GravityMps2;
-				const double DtStep = FMath::Min(RollSampleDt, Vh / Accel);   // clip the final step to stop exactly
-				const double S      = Vh * DtStep - 0.5 * Accel * DtStep * DtStep;
+				const double DtStep = FMath::Min(RollSampleDt, Speed / Accel);   // clip toward a clean friction stop
 
-				Pos += Dir * S;
+				// Fall-line (downhill) acceleration: horizontal projection of gravity on the slope. For a
+				// unit normal N (Nz > 0) the downhill horizontal direction is (Nx, Ny) and the horizontal
+				// accel magnitude is g * Nz * |(Nx, Ny)| (self-limits to ~g/2 near 45 deg). Flat -> zero.
+				FVector N = NormalAt(FVector(Pos.X, Pos.Y, 0.0));
+				if (!N.Normalize() || N.Z <= 0.0) { N = FVector::UpVector; }
+				const FVector2D Down(N.X, N.Y);
+				const double    DownMag   = Down.Size();
+				const double    SlopeAccel = FMath::Min(RollSlopeGain * GravityMps2 * N.Z * DownMag, RollSlopeAccelCap);
+				const FVector2D SlopeDir   = DownMag > Tiny ? Down / DownMag : FVector2D::ZeroVector;
+
+				// Semi-implicit step: friction first (opposes motion, never reverses it), then add slope.
+				const FVector2D VHat   = Vel / Speed;
+				const double    NewSpd = FMath::Max(Speed - Accel * DtStep, 0.0);
+				const FVector2D NewVel = VHat * NewSpd + SlopeDir * (SlopeAccel * DtStep);
+
+				Pos += (Vel + NewVel) * 0.5 * DtStep;   // trapezoidal; on flat == Vh*dt - 0.5*a*dt^2 exactly
 				TimeAccum += DtStep;
-				Vh = FMath::Max(Vh - Accel * DtStep, 0.0);
+				Vel = NewVel;
+				if (Vel.Size() > Tiny) { Dir = Vel / Vel.Size(); }   // keep the last heading for the spin-back leg
 
 				FTrajectorySample Sample;
 				Sample.TimeSeconds    = Flight.FlightTimeS + TimeAccum;
 				Sample.PositionMeters = FVector(Pos.X, Pos.Y, 0.0);
-				Sample.VelocityMps    = FVector(Dir.X * Vh, Dir.Y * Vh, 0.0);
+				Sample.VelocityMps    = FVector(Vel.X, Vel.Y, 0.0);
 				R.RollSamples.Add(Sample);
 				++Steps;
 			}

@@ -87,8 +87,10 @@ namespace GolfBallFlight
 	 *
 	 * GOL-196: each bounce reflects the incoming velocity about the terrain NORMAL (down-slope kicks
 	 * forward + long, up-slope pops + short, side-slope throws lateral), so the outgoing heading now
-	 * depends on the slope. `NormalAt` returns the surface unit normal at a launch-local position; a
-	 * flat normal (0,0,1) reproduces the pre-GOL-196 straight-bounce behavior exactly.
+	 * depends on the slope. GOL-75: the ROLL phase then follows the fall line -- the slope's downhill
+	 * gravity component curves the heading (break) and modulates speed (uphill dies short, downhill
+	 * runs), so a putt on a sloped green breaks. `NormalAt` returns the surface unit normal at a
+	 * launch-local position; a flat normal (0,0,1) reproduces the pre-GOL-196/75 behavior exactly.
 	 *
 	 * @param Flight     a valid, landed flight trajectory
 	 * @param SurfaceAt  launch-local position (meters, the same frame as Flight) -> EGolfLie

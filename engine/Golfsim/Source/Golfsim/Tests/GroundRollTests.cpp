@@ -452,6 +452,41 @@ bool FGolfsimGroundRollSlopeBounceTest::RunTest(const FString& /*Parameters*/)
 	return true;
 }
 
+// --- GOL-75 fall-line roll: the roll phase breaks along the slope (putting break + fairway run) -----
+// A pure-roll landing (zero descent, low speed -> no hops) on a green with a constant slope: a SIDE
+// slope curves the putt laterally, an UP slope stops it short, a DOWN slope runs it past flat, and a
+// FLAT normal holds a dead-straight line. Putter (stimp 11) green friction -> putt-scale numbers.
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FGolfsimGroundRollFallLineTest, "Golfsim.GroundRoll.RollFollowsFallLine",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FGolfsimGroundRollFallLineTest::RunTest(const FString& /*Parameters*/)
+{
+	auto Green     = [](const FVector&) { return EGolfLie::Green; };
+	auto PuttCoefs = [](EGolfLie) { return GolfBallFlight::PutterSurfaceRoll(11.0); };
+
+	auto SideN = [](const FVector&) { return FVector(0.0,  0.04, 1.0).GetSafeNormal(); };   // descends toward +Y
+	auto UpN   = [](const FVector&) { return FVector(-0.04, 0.0, 1.0).GetSafeNormal(); };   // rises toward +X
+	auto DownN = [](const FVector&) { return FVector(0.04,  0.0, 1.0).GetSafeNormal(); };   // descends toward +X
+
+	const FBallTrajectory Putt = MakeLanding(/*speed*/3.0, /*descent*/0.0, /*spin*/100.0);   // travels +X
+
+	const FGroundRollResult Flat = GolfBallFlight::SimulateGroundRollCrossSurface(Putt, Green, PuttCoefs, &FlatNormal);
+	const FGroundRollResult Side = GolfBallFlight::SimulateGroundRollCrossSurface(Putt, Green, PuttCoefs, SideN);
+	const FGroundRollResult Up   = GolfBallFlight::SimulateGroundRollCrossSurface(Putt, Green, PuttCoefs, UpN);
+	const FGroundRollResult Down = GolfBallFlight::SimulateGroundRollCrossSurface(Putt, Green, PuttCoefs, DownN);
+
+	TestTrue(TEXT("all valid"), Flat.bValid && Side.bValid && Up.bValid && Down.bValid);
+	TestTrue(TEXT("flat putt holds its line (no lateral break)"), FMath::Abs(Flat.RestPositionM.Y) < 1e-6);
+	TestTrue(TEXT("side slope breaks the putt downhill (+Y)"), Side.RestPositionM.Y > 0.05);
+	TestTrue(TEXT("up slope stops the putt shorter than flat"), Up.RestPositionM.X < Flat.RestPositionM.X);
+	TestTrue(TEXT("down slope runs the putt past flat"), Down.RestPositionM.X > Flat.RestPositionM.X);
+
+	AddInfo(FString::Printf(TEXT("fall-line: flat X %.2f, up X %.2f, down X %.2f | side Y %.3f"),
+		Flat.RestPositionM.X, Up.RestPositionM.X, Down.RestPositionM.X, Side.RestPositionM.Y));
+	return true;
+}
+
 // --- Lie <-> protocol string round-trips -------------------------------------------------------
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FGolfsimGroundRollLieStringTest, "Golfsim.GroundRoll.LieStringRoundTrip",

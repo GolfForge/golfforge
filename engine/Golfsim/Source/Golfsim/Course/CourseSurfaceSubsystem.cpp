@@ -76,23 +76,44 @@ void UCourseSurfaceSubsystem::OnWorldBeginPlay(UWorld& InWorld)
 	};
 	UE_LOG(LogTemp, Display, TEXT("CourseSurfaceSubsystem: SurfaceProvider wired for the course."));
 
-	// GOL-196: terrain-normal source for the bounce reflection. Same launch-local == world-meters
-	// treatment as the lie source above; trace the landscape at the XY and hand back its ImpactNormal.
+	// GOL-196 + GOL-75: terrain-normal source for the bounce reflection AND the roll fall-line break.
+	// A single landscape-triangle normal is jittery on LIDAR-derived terrain, which would make a
+	// rolling/putting ball wiggle; sample a small cross around the point and average so the normal
+	// reflects the green's MACRO slope (the break) rather than per-triangle micro-relief. Same
+	// launch-local == world-meters treatment as the lie source above.
 	Bus->GroundNormalProvider = [WeakSelf](const FVector& LandingLocalSIm) -> FVector
 	{
 		const UCourseSurfaceSubsystem* Self = WeakSelf.Get();
 		UWorld* World = Self ? Self->GetWorld() : nullptr;
 		if (!World) { return FVector::UpVector; }
+
+		auto TraceNormalAt = [World](double Xcm, double Ycm, FVector& OutN) -> bool
+		{
+			FCollisionQueryParams Params(SCENE_QUERY_STAT(GolfsimCourseNormalTrace), /*bTraceComplex=*/true);
+			FHitResult Hit;
+			if (World->LineTraceSingleByChannel(Hit, FVector(Xcm, Ycm, 100000.0), FVector(Xcm, Ycm, -100000.0),
+				ECC_WorldStatic, Params))
+			{
+				OutN = Hit.ImpactNormal;   // world normal; on a course the launch-local frame == world here
+				return true;
+			}
+			return false;
+		};
+
 		const double Xcm = LandingLocalSIm.X * 100.0;
 		const double Ycm = LandingLocalSIm.Y * 100.0;
-		FCollisionQueryParams Params(SCENE_QUERY_STAT(GolfsimCourseNormalTrace), /*bTraceComplex=*/true);
-		FHitResult Hit;
-		if (World->LineTraceSingleByChannel(Hit, FVector(Xcm, Ycm, 100000.0), FVector(Xcm, Ycm, -100000.0),
-			ECC_WorldStatic, Params))
+		constexpr double Rcm = 75.0;   // ~0.75 m kernel radius: above triangle size, below green scale
+		const double Offsets[5][2] = { {0.0, 0.0}, {Rcm, 0.0}, {-Rcm, 0.0}, {0.0, Rcm}, {0.0, -Rcm} };
+		FVector Sum = FVector::ZeroVector;
+		int32 Hits = 0;
+		for (int32 i = 0; i < 5; ++i)
 		{
-			return Hit.ImpactNormal;   // world normal; on a course the launch-local frame == world here
+			FVector N;
+			if (TraceNormalAt(Xcm + Offsets[i][0], Ycm + Offsets[i][1], N)) { Sum += N; ++Hits; }
 		}
-		return FVector::UpVector;
+		if (Hits == 0) { return FVector::UpVector; }
+		const FVector Avg = Sum.GetSafeNormal();
+		return Avg.IsNearlyZero() ? FVector::UpVector : Avg;
 	};
 }
 

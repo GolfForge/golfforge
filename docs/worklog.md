@@ -2,6 +2,24 @@
 
 > Dated milestone summaries, newest on top. The durable outcome + the committed artifact, not the blow-by-blow — process detail lives in git history, `docs/ue5-cookbook.md`, and the scripts themselves.
 
+## 2026-06-10 — GOL-196: terrain-aware bounce deflection (Windows)
+
+Balls now bounce off the **slope**, not as if the ground were flat: down-slope kicks forward and runs
+out long, up-slope pops up and stops short, side-slope throws laterally.
+
+- **Reflection model.** `GroundRoll.cpp::SimulateGroundRollCrossSurface` reflects each touchdown's 3D
+  velocity about the surface **normal** (normal component × `Restitution`, tangential ×
+  `BounceHorizontalKeep`) and tracks a running **2D position** since the heading now deflects per hop.
+  A **flat normal (0,0,1) reproduces the pre-GOL-196 straight bounce exactly** (guarded by the existing
+  constant-equals-single equivalence test; driver fairway total unchanged).
+- **Normal seam.** New `UEventBusSubsystem::GroundNormalProvider` (mirrors `SurfaceProvider`), passed
+  to the cross-surface roll; flat fallback when unset. The range HUD + course subsystem trace the
+  landscape `ImpactNormal` — range **unrotates by the shot's aim** into launch-local; the course uses
+  its `local == world` frame (same approximation as the lie source, GOL-69 will tighten both).
+- New `Golfsim.GroundRoll.SlopeBounceDeflection` test (down 20.8 m vs flat 4.4 m vs up 4.1 m; up apex
+  0.72 m vs flat 0.14 m; side Y 1.4 m). Full suite **89/89**. Coefficient magnitudes stay code-seeded
+  (calibration is GOL-195). Roll following the fall-line is out of scope (overlaps green break, GOL-75).
+
 ## 2026-06-10 — GOL-191/192: pin-position system (Static/Random/Tournament) + gimme-ring polish (Windows)
 
 Turned static course pins into a configurable **pin-position system** — the headline being **Tournament**

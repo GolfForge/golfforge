@@ -42,6 +42,29 @@ Two time-sinks worth remembering when authoring assets/actors via MCP `execute_u
 
 ---
 
+## Generalizing an analytical bounce to a sloped one without breaking the flat baseline (GOL-196)
+
+When you upgrade a fixed-direction analytical model (here: `GroundRoll.cpp`'s bounce, which kept a
+constant horizontal `Dir` and only scaled `Vh`/`Vv`) to one that **reflects off a surface normal**, the
+trap is regressing the flat-ground numbers everyone already tuned against. Two rules kept it exact:
+
+- **Reduce-to-old on a flat normal.** Reflect the incoming 3D velocity about `n`: `vN = (v·n) n`,
+  `vT = v - vN`, `vOut = vT*Keep - vN*Restitution`. Derive the outgoing vertical `VvOut = max(vOut.Z,0)`
+  and branch settle-vs-hop on it **before** touching the horizontal. On `n = (0,0,1)` this is identically
+  `VvOut = Restitution*VvDown`, `Vh *= Keep`, heading unchanged — i.e. the pre-refactor model. Guard it
+  with a "flat normal == the old single-surface result" equivalence test (we already had a
+  constant-surface-equals-wrapper test; reuse that shape).
+- **Track a running 2D position once the heading can change.** The old code accumulated a scalar
+  distance along a fixed `Dir` (`PointAt(s)`); once each bounce deflects `Dir`, that breaks. Switch to a
+  running `FVector2D Pos` advanced by `Dir * segment`, and keep the signed "roll distance" readout as
+  `(Pos - Land)·Dir0` (projection on the *landing* heading) so flat cases still report the old number.
+- **Inject the normal in the model's frame.** The physics runs in launch-local SI; a world
+  `LineTraceSingleByChannel(... bTraceComplex=true).ImpactNormal` is **world**-frame. Mirror whatever the
+  paired `SurfaceProvider` does: the range HUD applies a tee+aim transform local→world for the position,
+  so the normal goes world→local with `Aim.UnrotateVector(...)` (aim is yaw-only); the course's
+  provisional `local == world` lie source passes the normal through unrotated. A `TFunction` seam on the
+  bus (nullable → flat fallback) keeps the pure model headless-testable with synthetic normals.
+
 ## UMG procedural layout: full-width bottom bar (GOL-145)
 
 Mixed canvas anchors (stretch one axis, point the other) are fiddly to get right for a full-bleed bottom bar. The robust recipe: a **full-screen `UVerticalBox`** as the root canvas's only child (`SetAnchors(FAnchors(0,0,1,1))` + `SetOffsets(FMargin(0))`), then:

@@ -2440,19 +2440,39 @@ void AGolfRangeHUD::UpdateFollowCam(float DeltaSeconds)
 			if (FollowIdleSeconds >= FollowIdleReturnSeconds)
 			{
 				FollowIdleSeconds = 0.f;
-				bFollowParked = false;   // reframed -> stop counting until the next shot parks
-				if (Cam)
+				bFollowParked = false;   // reset -> stop counting until the next shot parks
+
+				APlayerController* PC = GetOwningPlayerController();
+				APawn* Pawn = PC ? PC->GetPawn() : nullptr;
+				if (Pawn)
 				{
-					APlayerController* PC = GetOwningPlayerController();
-					APawn* Pawn = PC ? PC->GetPawn() : nullptr;
-					if (Pawn)
+					// Bring the ball back to the tee (floor-traced launch spot) so the camera AND the orbit
+					// pivot on the ready ball -- otherwise we'd circle the ball still resting ~200 yd downrange.
+					FVector TeeBall = Pawn->GetActorLocation();
+					if (UWorld* W = GetWorld())
 					{
-						FRotator Aim = PC->GetControlRotation();
-						Aim.Pitch = 0.f; Aim.Roll = 0.f;
-						FVector TeeLoc;
-						FRotator TeeRot;
-						ComputeFollowPose(Pawn->GetActorLocation(), Aim.Vector(), TeeLoc, TeeRot);
-						Cam->SetActorLocationAndRotation(TeeLoc, TeeRot);
+						FCollisionQueryParams P(SCENE_QUERY_STAT(GolfRangeIdleReset), /*bTraceComplex=*/true);
+						P.AddIgnoredActor(Pawn);
+						if (Ball) { P.AddIgnoredActor(Ball); }
+						FHitResult Ground;
+						if (W->LineTraceSingleByChannel(Ground, TeeBall, TeeBall - FVector(0.f, 0.f, 100000.f),
+							ECC_WorldStatic, P))
+						{
+							TeeBall.Z = Ground.ImpactPoint.Z + BallRestHeightUU;
+						}
+					}
+					if (Ball) { Ball->SetActorLocation(TeeBall); }
+
+					// Re-frame the follow cam onto the tee ball, keeping the chosen camera mode.
+					FRotator Aim = PC->GetControlRotation();
+					Aim.Pitch = 0.f; Aim.Roll = 0.f;
+					FollowDownrangeDir = Aim.Vector();
+					if (Cam)
+					{
+						FVector CamLoc;
+						FRotator CamRot;
+						ComputeFollowPose(TeeBall, FollowDownrangeDir, CamLoc, CamRot);
+						Cam->SetActorLocationAndRotation(CamLoc, CamRot);
 					}
 				}
 			}

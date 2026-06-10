@@ -8,6 +8,9 @@
 #include "Materials/MaterialInterface.h"
 #include "ProceduralMeshComponent.h"
 #include "UObject/ConstructorHelpers.h"
+#include "Engine/World.h"               // GOL-123: gimme-ring terrain trace
+#include "CollisionQueryParams.h"
+#include "Components/TextRenderComponent.h"   // GOL-123: flat "GIMME" label in the ring gap
 
 namespace
 {
@@ -132,14 +135,26 @@ AGolfPinActor::AGolfPinActor()
 	FlagMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	FlagMesh->SetMobility(EComponentMobility::Movable);
 
-	// GOL-123 gimme ring: same Plane mesh + M_GolfGreen material idiom as the green disc, just
-	// a different colour. Hidden by default (SetGimmeRadiusFt(0) on construction); the round
-	// subsystem reveals + sizes it after the player picks a difficulty.
-	GimmeRingMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("GimmeRingMesh"));
+	// GOL-123 gimme ring: a thin procedural annulus built + terrain-conformed by SetGimmeRadiusFt.
+	// Hidden by default; the round subsystem reveals + sizes it after the player picks a difficulty.
+	GimmeRingMesh = CreateDefaultSubobject<UProceduralMeshComponent>(TEXT("GimmeRingMesh"));
 	GimmeRingMesh->SetupAttachment(Root);
 	GimmeRingMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	GimmeRingMesh->SetMobility(EComponentMobility::Movable);
 	GimmeRingMesh->SetVisibility(false);
+
+	// Flat "GIMME" label that fills one gap of the dashed ring. Unlit default TextRender material =
+	// full-bright in every Time preset; warm-yellow to match the ring. Centered, no collision, hidden
+	// until the active hole sizes the ring. SetGimmeRadiusFt positions + orients it.
+	GimmeText = CreateDefaultSubobject<UTextRenderComponent>(TEXT("GimmeText"));
+	GimmeText->SetupAttachment(Root);
+	GimmeText->SetMobility(EComponentMobility::Movable);
+	GimmeText->SetText(FText::FromString(TEXT("GIMME")));
+	GimmeText->SetHorizontalAlignment(EHorizTextAligment::EHTA_Center);
+	GimmeText->SetVerticalAlignment(EVerticalTextAligment::EVRTA_TextCenter);
+	GimmeText->SetWorldSize(22.f);
+	GimmeText->SetTextRenderColor(FColor(250, 242, 102));   // warm yellow, matches the ring
+	GimmeText->SetVisibility(false);
 
 	static ConstructorHelpers::FObjectFinder<UStaticMesh> CylinderMesh(TEXT("/Engine/BasicShapes/Cylinder.Cylinder"));
 	static ConstructorHelpers::FObjectFinder<UStaticMesh> PlaneMesh(TEXT("/Engine/BasicShapes/Plane.Plane"));
@@ -159,8 +174,7 @@ AGolfPinActor::AGolfPinActor()
 	{
 		DiscMesh->SetStaticMesh(PlaneMesh.Object);   // flat ground decal -- no thickness, no side wall
 		CollarMesh->SetStaticMesh(PlaneMesh.Object);
-		HoleCupMesh->SetStaticMesh(PlaneMesh.Object);
-		GimmeRingMesh->SetStaticMesh(PlaneMesh.Object);   // FlagMesh is a procedural grid, built below
+		HoleCupMesh->SetStaticMesh(PlaneMesh.Object);   // FlagMesh + GimmeRingMesh are procedural, built later
 	}
 	if (CylinderMesh.Succeeded())
 	{
@@ -243,14 +257,8 @@ AGolfPinActor::AGolfPinActor()
 		FlagMesh->SetMaterial(0, FlagMID);
 	}
 
-	// Gimme ring: same M_GolfGreen masked disc, white tint so it reads as a halo against the
-	// green. Square placeholder via BasicMat for fresh clones (same fallback as DiscMesh).
-	UMaterialInterface* GimmeSrc = GolfGreenMat.Succeeded() ? GolfGreenMat.Object
-	                              : (BasicMat.Succeeded() ? BasicMat.Object : nullptr);
-	if (UMaterialInstanceDynamic* GimmeMID = MakeColorMID(GimmeSrc, this, FLinearColor(0.98f, 0.95f, 0.40f)))
-	{
-		GimmeRingMesh->SetMaterial(0, GimmeMID);
-	}
+	// Gimme ring material is the translucent M_GimmeRing, loaded + applied lazily in BuildGimmeRing
+	// (so it picks up a freshly-authored asset at runtime without an editor restart).
 }
 
 void AGolfPinActor::SetGreenDiameterMeters(double DiameterM)
@@ -274,14 +282,131 @@ void AGolfPinActor::SetGimmeRadiusFt(double RadiusFt)
 	if (RadiusFt <= 0.0)
 	{
 		GimmeRingMesh->SetVisibility(false);
+		if (GimmeText) { GimmeText->SetVisibility(false); }
 		return;
 	}
-	// Plane mesh is 100 cm in its local XY; scale = diameter in cm / 100. Diameter = 2 * radius.
-	const float DiameterCm = static_cast<float>(2.0 * RadiusFt * CmPerFt);
-	const float XY = DiameterCm / PlaneSizeUU;
-	GimmeRingMesh->SetRelativeScale3D(FVector(XY, XY, 1.f));
-	GimmeRingMesh->SetRelativeLocation(FVector(0.f, 0.f, GimmeRingLiftUU));
+	BuildGimmeRing(RadiusFt * CmPerFt);   // outer radius in cm; also places the GIMME label
 	GimmeRingMesh->SetVisibility(true);
+}
+
+void AGolfPinActor::SetGimmeApproachDir(const FVector& TeeToPinWorld)
+{
+	FVector D = TeeToPinWorld;
+	D.Z = 0.0;
+	GimmeApproachDirWorld = D.IsNearlyZero() ? FVector::ForwardVector : D.GetSafeNormal();
+}
+
+void AGolfPinActor::BuildGimmeRing(double OuterRadiusUU)
+{
+	if (!GimmeRingMesh) { return; }
+
+	// Lazy-load the translucent halo material so a freshly-authored M_GimmeRing is picked up at
+	// runtime (no editor restart). Missing on a fresh clone -> the ring draws with the engine default
+	// until engine/scripts/build_gimme_ring_material.py has run.
+	if (!GimmeRingMID)
+	{
+		if (UMaterialInterface* Mat = LoadObject<UMaterialInterface>(nullptr, TEXT("/Game/Materials/M_GimmeRing.M_GimmeRing")))
+		{
+			GimmeRingMID = UMaterialInstanceDynamic::Create(Mat, this);
+			if (GimmeRingMID)
+			{
+				GimmeRingMID->SetVectorParameterValue(TEXT("Color"), FLinearColor(0.98f, 0.95f, 0.40f));
+				GimmeRingMID->SetScalarParameterValue(TEXT("Opacity"), 0.38f);
+			}
+		}
+	}
+
+	// A thin DASHED annulus (BandUU wide) at OuterRadiusUU, draped over the terrain: each rim vertex is
+	// traced down to the landscape so the band follows green undulation instead of floating/clipping flat.
+	constexpr double BandUU = 22.0;   // ring thickness (cm)
+	const double InnerRadius = FMath::Max(OuterRadiusUU - BandUU, 1.0);
+
+	// Dashes: a few long arcs with gaps (target-reticle look). Fixed count regardless of gimme size.
+	// Duty = fraction of each period that's solid (0.55 -> dash slightly longer than gap).
+	constexpr int32 NumDashes = 8;
+	constexpr double Duty = 0.55;
+	constexpr int32 SubSegs = 4;   // arc segments per dash (keeps the longer arcs curved + terrain-followed)
+	const double Period = (2.0 * PI) / NumDashes;
+	const double DashArc = Period * Duty;
+
+	UWorld* World = GetWorld();
+	const FVector ActorLoc = GetActorLocation();
+	FCollisionQueryParams TraceParams(SCENE_QUERY_STAT(GolfsimGimmeRingTrace), /*bTraceComplex=*/true);
+	TraceParams.AddIgnoredActor(this);
+
+	auto LocalZAt = [&](double LocalX, double LocalY) -> double
+	{
+		if (!World) { return GimmeRingLiftUU; }
+		const double Wx = ActorLoc.X + LocalX, Wy = ActorLoc.Y + LocalY;
+		FHitResult Hit;
+		if (World->LineTraceSingleByChannel(Hit, FVector(Wx, Wy, ActorLoc.Z + 5000.0),
+			FVector(Wx, Wy, ActorLoc.Z - 5000.0), ECC_WorldStatic, TraceParams))
+		{
+			return (Hit.ImpactPoint.Z - ActorLoc.Z) + GimmeRingLiftUU;   // local Z (actor origin = ground)
+		}
+		return GimmeRingLiftUU;   // flat fallback
+	};
+
+	// The flat GIMME label fills one gap on the near (tee) side of the ring. Phase the whole dash
+	// pattern so dash 0 is centered exactly on the label angle; skipping it then leaves a gap
+	// perfectly centered on the text (vs. skipping the "nearest" dash, which left it lopsided).
+	const FVector Dir = GimmeApproachDirWorld;                  // tee -> pin (XY)
+	const double GapAngle = FMath::Atan2(-Dir.Y, -Dir.X);      // near side = toward the tee
+	const double Phase = GapAngle - DashArc * 0.5;
+
+	TArray<FVector> Verts;
+	TArray<int32> Tris;
+	TArray<FVector> Normals;
+	TArray<FVector2D> UVs;
+	TArray<FProcMeshTangent> Tangents;
+	const TArray<FLinearColor> NoColors;
+	Verts.Reserve(NumDashes * (SubSegs + 1) * 2);
+
+	for (int32 d = 0; d < NumDashes; ++d)
+	{
+		if (d == 0) { continue; }   // leave the (phased) gap centered on the GIMME label
+		const double Start = d * Period + Phase;
+		const int32 Base = Verts.Num();
+		for (int32 s = 0; s <= SubSegs; ++s)
+		{
+			const double A = Start + DashArc * ((double)s / SubSegs);
+			const double Cos = FMath::Cos(A), Sin = FMath::Sin(A);
+			const double IX = Cos * InnerRadius, IY = Sin * InnerRadius;
+			const double OX = Cos * OuterRadiusUU, OY = Sin * OuterRadiusUU;
+			Verts.Add(FVector(IX, IY, LocalZAt(IX, IY)));   // inner rim
+			Verts.Add(FVector(OX, OY, LocalZAt(OX, OY)));   // outer rim
+			Normals.Add(FVector::UpVector);
+			Normals.Add(FVector::UpVector);
+			UVs.Add(FVector2D(0.f, (float)s / SubSegs));
+			UVs.Add(FVector2D(1.f, (float)s / SubSegs));
+			Tangents.Add(FProcMeshTangent(1, 0, 0));
+			Tangents.Add(FProcMeshTangent(1, 0, 0));
+		}
+		for (int32 s = 0; s < SubSegs; ++s)
+		{
+			const int32 I0 = Base + s * 2, O0 = Base + s * 2 + 1, I1 = Base + (s + 1) * 2, O1 = Base + (s + 1) * 2 + 1;
+			Tris.Add(I0); Tris.Add(O0); Tris.Add(I1);
+			Tris.Add(O0); Tris.Add(O1); Tris.Add(I1);
+		}
+	}
+
+	GimmeRingMesh->ClearAllMeshSections();
+	GimmeRingMesh->CreateMeshSection_LinearColor(0, Verts, Tris, Normals, UVs, NoColors, Tangents, /*bCreateCollision=*/false);
+	if (GimmeRingMID) { GimmeRingMesh->SetMaterial(0, GimmeRingMID); }
+
+	// Lay the GIMME label flat in the skipped gap, on the near (tee) side, oriented to read upright as
+	// the player approaches: face up (+Z), glyph-top toward the pin (+Dir). (If it reads mirrored or
+	// upside-down on a hole, flip the glyph-up axis -- this is the finicky flat-text bit.)
+	if (GimmeText)
+	{
+		const double MidRadius = (InnerRadius + OuterRadiusUU) * 0.5;
+		const double Lx = -Dir.X * MidRadius, Ly = -Dir.Y * MidRadius;
+		GimmeText->SetRelativeLocation(FVector(Lx, Ly, LocalZAt(Lx, Ly) + 1.0));
+		GimmeText->SetRelativeRotation(
+			FRotationMatrix::MakeFromXZ(FVector::UpVector, FVector(Dir.X, Dir.Y, 0.0)).Rotator());
+		GimmeText->SetWorldSize((float)FMath::Clamp(MidRadius * 0.20, 12.0, 36.0));   // scale to ring size
+		GimmeText->SetVisibility(true);
+	}
 }
 
 void AGolfPinActor::SetGreenSurfaceVisible(bool bVisible)

@@ -88,10 +88,10 @@ void URoundPinSubsystem::OnHoleStart(const FGolfEvent& Event)
 	if (Event.Kind != EEventKind::HoleStart) { return; }
 	const FHoleStartEvent& HS = static_cast<const FHoleStartEvent&>(Event);
 	// PinWorldLoc was already ground-snapped by URoundSubsystem::SnapToGround before publish.
-	SetActiveHole(HS.HoleRef, HS.PinWorldLoc);
+	SetActiveHole(HS.HoleRef, HS.PinWorldLoc, HS.TeeWorldLoc);
 }
 
-void URoundPinSubsystem::SetActiveHole(int32 HoleRef, const FVector& SnappedPinLoc)
+void URoundPinSubsystem::SetActiveHole(int32 HoleRef, const FVector& SnappedPinLoc, const FVector& TeeWorldLoc)
 {
 	UWorld* World = GetWorld();
 	if (!World) { return; }
@@ -122,8 +122,10 @@ void URoundPinSubsystem::SetActiveHole(int32 HoleRef, const FVector& SnappedPinL
 	if (!Pin) { return; }
 
 	// The event's PinWorldLoc is the authoritative snap -- keep the active pin exactly there (it should
-	// already match SpawnAllHolePins' own trace) and size its gimme ring to the round difficulty.
+	// already match SpawnAllHolePins' own trace), tell it the approach direction (so the GIMME label
+	// reads upright on the walk-up), then size its gimme ring to the round difficulty.
 	Pin->SetActorLocationAndRotation(SnappedPinLoc, FRotator::ZeroRotator);
+	Pin->SetGimmeApproachDir(SnappedPinLoc - TeeWorldLoc);
 	Pin->SetGimmeRadiusFt(ActiveGimmeRadiusFt());
 
 	UE_LOG(LogTemp, Display, TEXT("RoundPinSubsystem: active hole %d at (%.0f, %.0f, %.0f)"),

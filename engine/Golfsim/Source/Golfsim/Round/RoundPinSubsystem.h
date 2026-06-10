@@ -51,7 +51,7 @@ private:
 	/** Make HoleRef active: move its pin to the authoritative snapped PinWorldLoc and show its gimme
 	 *  ring (sized to the round difficulty); collapse the previously-active pin's ring. Find-or-spawns
 	 *  the pin if SpawnAllHolePins didn't (fallback / single-hole handoff). */
-	void SetActiveHole(int32 HoleRef, const FVector& SnappedPinLoc);
+	void SetActiveHole(int32 HoleRef, const FVector& SnappedPinLoc, const FVector& TeeWorldLoc);
 
 	/** Gimme-ring radius (ft) for the active round difficulty; 0 when no round is active. */
 	double ActiveGimmeRadiusFt() const;

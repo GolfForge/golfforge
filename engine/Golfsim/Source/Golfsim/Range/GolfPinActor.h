@@ -12,6 +12,7 @@
 class UStaticMeshComponent;
 class UProceduralMeshComponent;
 class UMaterialInstanceDynamic;
+class UTextRenderComponent;
 
 UCLASS()
 class GOLFSIM_API AGolfPinActor : public AActor
@@ -37,6 +38,10 @@ public:
 	// is the range's target green). Pole/flag/hole-cup/gimme-ring are unaffected.
 	void SetGreenSurfaceVisible(bool bVisible);
 
+	// Direction of play for this hole (tee -> pin, world, XY). Orients the flat "GIMME" label in the
+	// gimme ring so it reads upright as the player approaches. Call before SetGimmeRadiusFt.
+	void SetGimmeApproachDir(const FVector& TeeToPinWorld);
+
 private:
 	UPROPERTY(VisibleAnywhere, Category = "Golfsim") TObjectPtr<UStaticMeshComponent> DiscMesh;
 	// Collar/fringe: a darker, duller textured disc UNDER the green, slightly larger, so a ring of it
@@ -48,5 +53,15 @@ private:
 	// GOL-165: a subdivided procedural grid (not the 2-tri engine Plane) so the M_FlagWind material's
 	// World Position Offset can ripple it like cloth.
 	UPROPERTY(VisibleAnywhere, Category = "Golfsim") TObjectPtr<UProceduralMeshComponent> FlagMesh;
-	UPROPERTY(VisibleAnywhere, Category = "Golfsim") TObjectPtr<UStaticMeshComponent> GimmeRingMesh;   // GOL-123
+	// GOL-123 gimme ring: a thin procedural annulus (not a filled disc) that drapes over the terrain
+	// via per-vertex ground traces, with a translucent unlit M_GimmeRing halo. Rebuilt by SetGimmeRadiusFt.
+	UPROPERTY(VisibleAnywhere, Category = "Golfsim") TObjectPtr<UProceduralMeshComponent> GimmeRingMesh;
+	UPROPERTY(Transient) TObjectPtr<UMaterialInstanceDynamic> GimmeRingMID;
+	// Flat "GIMME" label laid in the ring gap (GOL-123 polish); oriented toward the approach.
+	UPROPERTY(VisibleAnywhere, Category = "Golfsim") TObjectPtr<UTextRenderComponent> GimmeText;
+	FVector GimmeApproachDirWorld = FVector::ForwardVector;   // tee->pin (XY, normalized)
+
+	// Build/refresh the gimme-ring annulus at OuterRadiusUU (cm), terrain-conformed (+ the GIMME label).
+	// Hidden if <= 0.
+	void BuildGimmeRing(double OuterRadiusUU);
 };

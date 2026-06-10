@@ -135,15 +135,37 @@ void UEventBusSubsystem::OnShotTaken(const FGolfEvent& Event)
 		{
 			return GroundNormalProvider ? GroundNormalProvider(P) : FVector::UpVector;
 		};
-		// GOL-75: putts roll cross-surface too, so a putt breaks along the green's fall line (the slope
-		// curves the heading) and slows correctly if it runs off the green. Stimp-aware green friction
-		// overrides the green coefficients; off-green it falls back to the per-surface defaults. (On a
-		// flat green this telescopes to the old single-surface PutterSurfaceRoll rollout exactly.)
+		// GOL-75: a putt scrapes at stimp (green) friction on any MOWN/SMOOTH surface (green, fairway,
+		// tee) and grabs with the surface's own friction on PENAL surfaces (rough, bunker, etc.). A
+		// putter stroke is a putt, so it must roll at stimp on the putting surface even though the lie
+		// classifier doesn't reliably mark it Green (the range analytic classifier never returns Green,
+		// so the green/fairway/tee bucket is what keeps range putts rolling instead of dying in ~1 yd).
+		// The cross-surface roll re-samples per step, so a putt that runs OFF the green into rough/sand
+		// slows/stops there (no more rocketing through the rough into a bunker). On a uniformly smooth
+		// surface this telescopes to the old single-surface PutterSurfaceRoll rollout exactly; the
+		// fall-line break still applies (the slope curves the heading).
 		const double Stimp = UEventBusSubsystem::GreenStimpFt;
 		auto PuttCoefs = [Stimp](EGolfLie L) -> FSurfaceRoll
 		{
-			return L == EGolfLie::Green ? GolfBallFlight::PutterSurfaceRoll(Stimp)
-			                            : GolfBallFlight::SurfaceRollFor(L);
+			switch (L)
+			{
+			case EGolfLie::Green:
+			case EGolfLie::Fairway:
+			case EGolfLie::Tee:
+				return GolfBallFlight::PutterSurfaceRoll(Stimp);   // mown + smooth -> putt rolls
+			case EGolfLie::Rough:
+			{
+				// A putt trickling off the green into the fringe/first cut should slow over a meter or
+				// two, not a centimeter. Use a moderate friction -- NOT the full-shot rough grab (~0.65,
+				// tuned for a ball plugging on a landing), which stops a putt almost instantly at the
+				// boundary. Keep it a clean scrape (no bounce/spin) like a putt, just higher drag.
+				FSurfaceRoll Fringe = GolfBallFlight::PutterSurfaceRoll(Stimp);
+				Fringe.RollFriction = 0.25;   // ~4x green; tune to taste (a fast putt runs ~1-2 m into rough)
+				return Fringe;
+			}
+			default:
+				return GolfBallFlight::SurfaceRollFor(L);          // bunker/cartpath/etc grab/stop the putt
+			}
 		};
 		const FGroundRollResult Roll = bIsPutt
 			? GolfBallFlight::SimulateGroundRollCrossSurface(T, SurfaceProvider, PuttCoefs, NormalProv)

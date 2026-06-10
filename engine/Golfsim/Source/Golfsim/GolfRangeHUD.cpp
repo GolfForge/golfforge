@@ -22,6 +22,7 @@
 #include "Sound/SoundBase.h"               // ball-strike one-shot SFX
 #include "Physics/BallFlightTypes.h"       // FBallTrajectory (carried on the outcome event)
 #include "Physics/RangeSurface.h"          // ClassifyRangeLie -> the integrator's surface provider (GOL-9)
+#include "Course/CourseSurfaceSubsystem.h" // GOL-75: classify via the course splat sampler during a round
 #include "Round/RoundSubsystem.h"          // IsActive() guard for the range pin (GOL-117)
 #include "Round/RoundState.h"              // GolfsimRound::IsWithinGimme (CTP putt-out hole-out, GOL-73)
 #include "Practice/PracticeModeSubsystem.h"// GOL-73: CTP config/session/scoring + practice.shot_scored
@@ -497,6 +498,20 @@ void AGolfRangeHUD::EnsureInputBound()
 				Aim.Pitch = 0.f;
 				Aim.Roll = 0.f;
 				const FVector WorldCm = Pawn->GetActorLocation() + Aim.RotateVector(LandingLocalSIm * 100.0);
+				// GOL-75: on a course round the world position is far off-origin, where the analytic range
+				// classifier (an origin-centered practice lane) reads rough everywhere. When the course
+				// splat sampler is loaded (course levels), classify the real painted surface instead;
+				// fall back to the range lane classifier on the actual practice range (no sampler).
+				if (UWorld* World = HUD->GetWorld())
+				{
+					if (UCourseSurfaceSubsystem* Course = World->GetSubsystem<UCourseSurfaceSubsystem>())
+					{
+						if (Course->IsValid())
+						{
+							return Course->ClassifyAt(WorldCm.X / 100.0, WorldCm.Y / 100.0);
+						}
+					}
+				}
 				return GolfRangeSurface::ClassifyLie(WorldCm.X / 100.0, WorldCm.Y / 100.0);
 			};
 
@@ -517,13 +532,27 @@ void AGolfRangeHUD::EnsureInputBound()
 				const FVector WorldCm = Pawn->GetActorLocation() + Aim.RotateVector(LandingLocalSIm * 100.0);
 				FCollisionQueryParams Params(SCENE_QUERY_STAT(GolfsimRangeNormalTrace), /*bTraceComplex=*/true);
 				Params.AddIgnoredActor(Pawn);
-				FHitResult Hit;
-				if (World->LineTraceSingleByChannel(Hit, FVector(WorldCm.X, WorldCm.Y, WorldCm.Z + 50000.0),
-					FVector(WorldCm.X, WorldCm.Y, WorldCm.Z - 50000.0), ECC_WorldStatic, Params))
+				// GOL-75: average a small cross of traces so the fall-line break follows the green's macro
+				// slope, not per-triangle LIDAR jitter (mirrors CourseSurfaceSubsystem). ~0.75 m radius.
+				constexpr double Rcm = 75.0;
+				const double Offsets[5][2] = { {0.0, 0.0}, {Rcm, 0.0}, {-Rcm, 0.0}, {0.0, Rcm}, {0.0, -Rcm} };
+				FVector Sum = FVector::ZeroVector;
+				int32 Hits = 0;
+				for (int32 i = 0; i < 5; ++i)
 				{
-					return Aim.UnrotateVector(Hit.ImpactNormal);   // world -> launch-local (aim is yaw-only)
+					const double Xcm = WorldCm.X + Offsets[i][0];
+					const double Ycm = WorldCm.Y + Offsets[i][1];
+					FHitResult Hit;
+					if (World->LineTraceSingleByChannel(Hit, FVector(Xcm, Ycm, WorldCm.Z + 50000.0),
+						FVector(Xcm, Ycm, WorldCm.Z - 50000.0), ECC_WorldStatic, Params))
+					{
+						Sum += Hit.ImpactNormal; ++Hits;
+					}
 				}
-				return FVector::UpVector;
+				if (Hits == 0) { return FVector::UpVector; }
+				const FVector Avg = Sum.GetSafeNormal();
+				if (Avg.IsNearlyZero()) { return FVector::UpVector; }
+				return Aim.UnrotateVector(Avg);   // world -> launch-local (aim is yaw-only)
 			};
 
 			// GOL-145: launch-monitor §6 gating. The LM dropdown's status drives the input mode (a

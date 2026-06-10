@@ -1,5 +1,6 @@
 // Golf ball-flight aerodynamics solver: drag + gravity + Magnus lift + spin decay.
-// Pure SI, UE-agnostic. Flight-only (carry); ground bounce/roll is later Chaos work.
+// Pure SI, UE-agnostic. Flight-only (carry); ground bounce/roll is a separate analytical model
+// (Physics/GroundRoll) -- also our own, not Chaos.
 
 #pragma once
 

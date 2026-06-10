@@ -55,7 +55,7 @@ Steps 1–3 fully scriptable. Step 4 mostly scriptable. Steps 5 + 8 are where hu
 
 ### 2. Sim engine
 
-Unreal Engine 5 (5.7+). Chaos physics for ground interaction; custom C++ aerodynamics solver for ball flight (lift/drag/spin decay). ~500 lines of careful C++ plus a lot of tuning data.
+Unreal Engine 5 (5.7+). **Our own** physics, not Chaos: a custom C++ aerodynamics solver for ball flight (lift/drag/Magnus/spin decay) AND a custom analytical ground model for bounce + roll (per-surface restitution/friction, landing spin-check, green spin-back, slope-normal bounce deflection). Both pure-SI, UE-agnostic, deterministic and headless-unit-tested (the early "Chaos for ground" plan was dropped — analytical buys determinism, testability, tunable-to-LM-data coefficients, and portability). ~500+ lines of careful C++ plus tuning data.
 
 **MCP tooling (revised 2026-05-14):**
 - Primary: **NAJEMWEHBE/UnrealClaudeMCP** (free, MIT, v0.9.1+) — 96 tools including `inspect_landscape`, `import_texture`, `execute_unreal_python`, `spawn_actor`, viewport screenshots. Covers Milestone 0 / 0.5 and keeps the OSS contribution surface clean.

@@ -58,7 +58,8 @@ struct FTrajectorySample
 /**
  * A complete ball flight: the sampled path plus summary metrics. The common output type for both
  * producers (Simulate, TraceFromResolved), so the visualizer is agnostic to where it came from.
- * Flight-only: CarryM is carry, not post-bounce total (ground roll is later Chaos work).
+ * Flight-only: CarryM is carry, not post-bounce total (ground roll is the separate analytical
+ * Physics/GroundRoll model).
  */
 struct FBallTrajectory
 {

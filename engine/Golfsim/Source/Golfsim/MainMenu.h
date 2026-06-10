@@ -4,9 +4,9 @@
 // Sessions link + Exit). Hover lifts + accent-glows tiles; keys 1-4 select, Enter confirms, Esc
 // quits. Reuses GolfUITheme atoms. Dumb view: reports intent via TFunction; the HUD owns the flow.
 //
-// Seams (per the epic's "build everything, disable what we don't have"): Practice tile is disabled
-// ("Coming soon"); the hero Resume pill is hidden (no resume backing yet); the env cluster's weather
-// + handicap are static placeholders (clock + player name are real). See TODO(GOL-144/143).
+// Seams (per the epic's "build everything, disable what we don't have"): the Practice tile opens the
+// drill picker (GOL-73); the hero Resume pill is hidden (no resume backing yet); the env cluster's
+// weather + handicap are static placeholders (clock + player name are real). See TODO(GOL-144/143).
 
 #pragma once
 
@@ -26,6 +26,7 @@ class GOLFSIM_API UMainMenu : public UUserWidget
 public:
 	TFunction<void()> OnPlayRange;          // dismiss the menu, hand control to the live range
 	TFunction<void()> OnPlayCourse;         // overlay the pre-round picker (GOL-121)
+	TFunction<void()> OnPlayPractice;       // GOL-73: overlay the practice-drill picker
 	TFunction<void()> OnPreviousSessions;   // overlay the shot-history list (GOL-65) -- footer link
 	TFunction<void()> OnSettings;           // open settings over the menu (GOL-139 -> OpenSettingsOverMenu)
 

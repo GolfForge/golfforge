@@ -51,10 +51,6 @@ public:
 	// (a real LM owns the stream). The HUD sets it alongside SetLaunchMonitorStatus.
 	void SetPrimaryActionLabel(const FString& Label);
 
-	// GOL-73: practice-mode dropdown ("Free Play" / "Closest to Pin"). The HUD owns the option list.
-	void SetModeOptions(const TArray<FString>& Names);
-	void SetSelectedModeIndex(int32 Index);
-
 	// GOL-73: push the CTP settings into the spinboxes/checkboxes (defaults at startup, or after a
 	// console change). Values are in display units (yards). Suppress-guarded so it won't re-emit.
 	void SetCtpConfigValues(double MinYd, double MaxYd, bool bSideOffset, bool bPuttOut, double WithinYd);
@@ -110,10 +106,10 @@ public:
 	TFunction<void(double)> OnPinChanged;       // user dragged/edited the Pin spinner
 	TFunction<void(bool)>   OnPuttModeChanged;  // user toggled "Putt from green"
 
-	// GOL-73: user picked a practice mode (0 = Free Play, 1 = Closest to Pin).
-	TFunction<void(int32)> OnModeChosen;
 	// GOL-73: user changed any CTP setting; all values reported together (display units = yards).
 	TFunction<void(double /*MinYd*/, double /*MaxYd*/, bool /*bSideOffset*/, bool /*bPuttOut*/, double /*WithinYd*/)> OnCtpConfigChanged;
+	// GOL-73: user clicked "End drill" in the CTP cluster -> HUD returns to plain free-fire range.
+	TFunction<void()> OnEndPractice;
 
 	// The telemetry readout's primary button (Swing / Sim shot). The HUD routes it by mode: game ->
 	// advance the swing meter; a connected LM -> ask the active driver to emit a shot.
@@ -137,12 +133,12 @@ protected:
 
 	// GOL-73 CTP control handlers. The spin/check handlers all funnel through EmitCtpConfig so a single
 	// OnCtpConfigChanged carries the whole config every time.
-	UFUNCTION() void HandleModeSelectionChanged(FString SelectedItem, ESelectInfo::Type SelectionType);
 	UFUNCTION() void HandleCtpMinChanged(float Value);
 	UFUNCTION() void HandleCtpMaxChanged(float Value);
 	UFUNCTION() void HandleCtpSideChanged(bool bChecked);
 	UFUNCTION() void HandleCtpPuttOutChanged(bool bChecked);
 	UFUNCTION() void HandleCtpWithinChanged(float Value);
+	UFUNCTION() void HandleEndPracticeClicked();
 
 private:
 	void BuildTree();
@@ -158,7 +154,6 @@ private:
 	void SetComboIndexGuarded(UComboBoxString* Combo, int32 Index);
 
 	// Control-bar dropdowns.
-	UPROPERTY(Transient) TObjectPtr<UComboBoxString> ModeCombo;   // GOL-73 Free Play / Closest to Pin
 	UPROPERTY(Transient) TObjectPtr<UComboBoxString> ClubCombo;
 	UPROPERTY(Transient) TObjectPtr<UComboBoxString> TimeCombo;
 	UPROPERTY(Transient) TObjectPtr<UComboBoxString> SkyCombo;
@@ -205,6 +200,7 @@ private:
 	UPROPERTY(Transient) TObjectPtr<UTextBlock> CtpValBest;
 	UPROPERTY(Transient) TObjectPtr<UTextBlock> CtpValAvg;
 	UPROPERTY(Transient) TObjectPtr<UTextBlock> CtpValShots;
+	UPROPERTY(Transient) TObjectPtr<UButton> EndPracticeBtn;   // GOL-73 "End drill" -> back to free range
 
 	// True while we programmatically set a ComboBox selection, so the resulting OnSelectionChanged
 	// broadcast doesn't loop back into gameplay.

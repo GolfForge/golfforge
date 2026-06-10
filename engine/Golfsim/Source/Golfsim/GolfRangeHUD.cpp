@@ -8,6 +8,7 @@
 #include "ShotHistoryPanel.h"
 #include "PreviousSessionsList.h"
 #include "UI/RoundSetupWizard.h"            // GOL-141: round-setup wizard over main menu
+#include "UI/PracticeSetup.h"               // GOL-73: practice-drill picker over main menu
 #include "Game/CourseRegistry.h"            // GOL-141: course-card seed list
 #include "UI/RoundHud.h"                    // GOL-144: in-round glass top HUD
 #include "UI/LeaveConfirmDialog.h"          // GOL-147: leave/quit confirmation modal
@@ -401,18 +402,15 @@ void AGolfRangeHUD::EnsureInputBound()
 			Panel->SetPinValue(CurrentPinYd);
 			ApplyPinDistance(CurrentPinYd);
 
-			// GOL-73: practice-mode picker + CTP settings cluster. Free Play = the legacy range;
-			// Closest to Pin enters the CTP drill. Defaults mirror FCtpConfig (50-250 yd, no side, no putt-out).
-			Panel->SetModeOptions({ TEXT("Free Play"), TEXT("Closest to Pin") });
-			Panel->SetSelectedModeIndex(0);
+			// GOL-73: CTP settings cluster lives on the range readout but is hidden until the player
+			// enters Closest-to-Pin via the Practice menu (no mode dropdown on the range -- the range is
+			// plain free-fire). Defaults mirror FCtpConfig (50-250 yd, no side, no putt-out).
 			Panel->SetCtpConfigValues(50.0, 250.0, false, false, 10.0);
-			Panel->OnModeChosen = [WeakThis](int32 Idx)
+			Panel->OnEndPractice = [WeakThis]()
 			{
 				if (AGolfRangeHUD* HUD = WeakThis.Get())
 				{
-					HUD->SetPracticeMode(Idx == 1
-						? GolfsimPractice::EPracticeMode::ClosestToPin
-						: GolfsimPractice::EPracticeMode::Free);
+					HUD->SetPracticeMode(GolfsimPractice::EPracticeMode::Free);
 					HUD->ReturnFocusToGame();
 				}
 			};
@@ -1281,10 +1279,6 @@ void AGolfRangeHUD::SetPracticeMode(GolfsimPractice::EPracticeMode Mode)
 	if (bCtpPutting) { EndCtpPuttSequence(); }   // restore the tee pose if we were mid-putt-out
 
 	CtpMode = Mode;
-	if (Panel)
-	{
-		Panel->SetSelectedModeIndex(Mode == EPracticeMode::ClosestToPin ? 1 : 0);
-	}
 
 	if (Mode == EPracticeMode::ClosestToPin)
 	{
@@ -1736,6 +1730,56 @@ void AGolfRangeHUD::CloseRoundSetup()
 	}
 }
 
+// --- GOL-73: practice-drill picker (mirrors the round-setup trio above) -------------------------
+
+void AGolfRangeHUD::EnsurePracticeSetup()
+{
+	if (PracticeSetup) { return; }
+	APlayerController* PC = GetOwningPlayerController();
+	if (!PC) { return; }
+
+	PracticeSetup = CreateWidget<UPracticeSetup>(PC, UPracticeSetup::StaticClass());
+	if (!PracticeSetup) { return; }
+
+	TWeakObjectPtr<AGolfRangeHUD> WeakThis(this);
+	PracticeSetup->OnStartCtp = [WeakThis]()
+	{
+		AGolfRangeHUD* HUD = WeakThis.Get();
+		if (!HUD) { return; }
+		HUD->ClosePracticeSetup();
+		HUD->DismissMainMenu();
+		HUD->SetPracticeMode(GolfsimPractice::EPracticeMode::ClosestToPin);
+	};
+	PracticeSetup->OnClose = [WeakThis]()
+	{
+		if (AGolfRangeHUD* HUD = WeakThis.Get()) { HUD->ClosePracticeSetup(); }
+	};
+
+	PracticeSetup->AddToViewport(35);   // above the main menu (30), same layer as the round wizard
+	PracticeSetup->SetVisibility(ESlateVisibility::Collapsed);
+}
+
+void AGolfRangeHUD::OpenPracticeSetup()
+{
+	EnsurePracticeSetup();
+	if (!PracticeSetup) { return; }
+	PracticeSetup->ResetSelection();
+	bPracticeSetupOpen = true;
+	PracticeSetup->SetVisibility(ESlateVisibility::Visible);
+	PracticeSetup->SetKeyboardFocus();   // owns Enter/Esc while open; ClosePracticeSetup hands focus back
+}
+
+void AGolfRangeHUD::ClosePracticeSetup()
+{
+	if (!PracticeSetup || !bPracticeSetupOpen) { return; }
+	bPracticeSetupOpen = false;
+	PracticeSetup->SetVisibility(ESlateVisibility::Collapsed);
+	if (FSlateApplication::IsInitialized())
+	{
+		FSlateApplication::Get().SetAllUserFocusToGameViewport();
+	}
+}
+
 void AGolfRangeHUD::EnsureScorecardPanel()
 {
 	if (Scorecard) { return; }
@@ -2056,7 +2100,12 @@ void AGolfRangeHUD::EnsureMainMenu()
 	TWeakObjectPtr<AGolfRangeHUD> WeakThis(this);
 	MainMenu->OnPlayRange = [WeakThis]()
 	{
-		if (AGolfRangeHUD* HUD = WeakThis.Get()) { HUD->DismissMainMenu(); }
+		if (AGolfRangeHUD* HUD = WeakThis.Get())
+		{
+			// GOL-73: "Range" is plain free-fire -- leave any active CTP drill first.
+			HUD->SetPracticeMode(GolfsimPractice::EPracticeMode::Free);
+			HUD->DismissMainMenu();
+		}
 	};
 	// GOL-65: "Previous Sessions" opens the session-picker list over the main menu. Picking a
 	// session opens the full history table; closing the table returns to the list; closing the
@@ -2070,6 +2119,11 @@ void AGolfRangeHUD::EnsureMainMenu()
 	MainMenu->OnPlayCourse = [WeakThis]()
 	{
 		if (AGolfRangeHUD* HUD = WeakThis.Get()) { HUD->OpenRoundSetup(); }
+	};
+	// GOL-73: the Practice tile opens the drill picker over the menu.
+	MainMenu->OnPlayPractice = [WeakThis]()
+	{
+		if (AGolfRangeHUD* HUD = WeakThis.Get()) { HUD->OpenPracticeSetup(); }
 	};
 	// GOL-139: the bento Settings tile opens settings above the menu; the player chip shows the real name.
 	MainMenu->OnSettings = [WeakThis]()

@@ -332,6 +332,23 @@ void UGolfRangePanel::BuildTree()
 	CtpValBest  = BuildTile(WidgetTree, CtpScoreRow, TEXT("BEST"),  false, false);
 	CtpValAvg   = BuildTile(WidgetTree, CtpScoreRow, TEXT("AVG"),   false, false);
 	CtpValShots = BuildTile(WidgetTree, CtpScoreRow, TEXT("SHOTS"), false, false);
+	{
+		// "End drill" -> back to the plain free-fire range (no mode dropdown anymore).
+		EndPracticeBtn = WidgetTree->ConstructWidget<UButton>();
+		StyleButton(EndPracticeBtn, Color::Surface2(), Radius::Sm, Color::Border(), 1.f);
+		UTextBlock* EndLbl = WidgetTree->ConstructWidget<UTextBlock>();
+		EndLbl->SetText(FText::FromString(TEXT("End drill")));
+		EndLbl->SetFont(Body(13, FName(TEXT("SemiBold"))));
+		EndLbl->SetColorAndOpacity(FSlateColor(Color::TextDim()));
+		EndLbl->SetJustification(ETextJustify::Center);
+		EndPracticeBtn->SetContent(EndLbl);
+		EndPracticeBtn->OnClicked.AddDynamic(this, &UGolfRangePanel::HandleEndPracticeClicked);
+		if (UHorizontalBoxSlot* ES = CtpScoreRow->AddChildToHorizontalBox(EndPracticeBtn))
+		{
+			ES->SetVerticalAlignment(VAlign_Center);
+			ES->SetPadding(FMargin(8.f, 0.f, 0.f, 0.f));
+		}
+	}
 
 	// Hidden until the player switches into Closest-to-Pin mode.
 	SetCtpControlsVisible(false);
@@ -367,10 +384,6 @@ void UGolfRangePanel::BuildTree()
 		}
 		return Combo;
 	};
-
-	// GOL-73: practice-mode picker leads the bar (it gates the CTP cluster below the readout).
-	ModeCombo = AddBarCombo(TEXT("MODE"), 160.f);
-	ModeCombo->OnSelectionChanged.AddDynamic(this, &UGolfRangePanel::HandleModeSelectionChanged);
 
 	ClubCombo = AddBarCombo(TEXT("CLUB"), 150.f);
 	ClubCombo->OnSelectionChanged.AddDynamic(this, &UGolfRangePanel::HandleClubSelectionChanged);
@@ -435,8 +448,6 @@ void UGolfRangePanel::SetTimeOptions(const TArray<FString>& Names) { FillCombo(T
 void UGolfRangePanel::SetSkyOptions(const TArray<FString>& Names)  { FillCombo(SkyCombo, Names); }
 void UGolfRangePanel::SetCameraOptions(const TArray<FString>& Names) { FillCombo(CameraCombo, Names); }
 void UGolfRangePanel::SetLaunchMonitorOptions(const TArray<FString>& Names) { FillCombo(LMCombo, Names); }
-void UGolfRangePanel::SetModeOptions(const TArray<FString>& Names) { FillCombo(ModeCombo, Names); }
-void UGolfRangePanel::SetSelectedModeIndex(int32 Index) { SetComboIndexGuarded(ModeCombo, Index); }
 
 void UGolfRangePanel::SetComboIndexGuarded(UComboBoxString* Combo, int32 Index)
 {
@@ -504,16 +515,17 @@ void UGolfRangePanel::EmitCtpConfig()
 	ReturnFocusToGameViewport();
 }
 
-void UGolfRangePanel::HandleModeSelectionChanged(FString, ESelectInfo::Type SelectionType)
-{
-	HandleComboPick(ModeCombo, OnModeChosen, SelectionType);
-}
-
 void UGolfRangePanel::HandleCtpMinChanged(float)     { EmitCtpConfig(); }
 void UGolfRangePanel::HandleCtpMaxChanged(float)     { EmitCtpConfig(); }
 void UGolfRangePanel::HandleCtpSideChanged(bool)     { EmitCtpConfig(); }
 void UGolfRangePanel::HandleCtpPuttOutChanged(bool)  { EmitCtpConfig(); }
 void UGolfRangePanel::HandleCtpWithinChanged(float)  { EmitCtpConfig(); }
+
+void UGolfRangePanel::HandleEndPracticeClicked()
+{
+	if (OnEndPractice) { OnEndPractice(); }
+	ReturnFocusToGameViewport();
+}
 
 void UGolfRangePanel::HandleClubSelectionChanged(FString, ESelectInfo::Type SelectionType)
 {

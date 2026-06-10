@@ -233,8 +233,8 @@ void UMainMenu::BuildTree()
 
 	PracticeTile = CreateWidget<UMenuTile>(this);
 	PracticeTile->Configure(TEXT("03"), TEXT("Drills"), TEXT("Practice"),
-		TEXT("Short game, putting & target play."), TEXT("Start drills"));
-	PracticeTile->SetDisabled(true);   // no practice mode backing yet (seam)
+		TEXT("Closest-to-pin & target drills — pick a mode and play."), TEXT("Start drills"));
+	PracticeTile->OnActivated = [WeakThis]() { if (UMainMenu* M = WeakThis.Get()) { if (M->OnPlayPractice) M->OnPlayPractice(); } };
 	PlaceTile(PracticeTile, 0.420f, 0.5f, 0.710f, 1.f);
 
 	SettingsTile = CreateWidget<UMenuTile>(this);

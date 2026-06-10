@@ -2,6 +2,31 @@
 
 > Dated milestone summaries, newest on top. The durable outcome + the committed artifact, not the blow-by-blow — process detail lives in git history, `docs/ue5-cookbook.md`, and the scripts themselves.
 
+## 2026-06-10 — GOL-75: green break (roll follows the fall line) + round surface classification (Windows)
+
+Putts (and any rolling ball) now **break along the slope**, and a round classifies the **real painted
+course surface** instead of treating everything as rough.
+
+- **Fall-line roll.** `GroundRoll.cpp` roll phase carries a 2D velocity and adds the slope's downhill
+  gravity component each step (`SlopeAccel = RollSlopeGain · g · Nz · |(Nx,Ny)|`), so the heading curves
+  (break) and speed modulates (uphill dies short, downhill runs). **Flat normal reduces EXACTLY to the
+  old fixed-heading friction roll** (trapezoidal step == `v·dt − ½a·dt²` term-for-term; equivalence test
+  still 1e-6). `RollSlopeGain = (5/7)·0.5` — the 5/7 is the rolling-sphere rotational-inertia factor,
+  the 0.5 a provisional empirical knob (LM-gated, GOL-195). New `Golfsim.GroundRoll.RollFollowsFallLine`
+  test. Firm 25-ft putt on ~4% breaks ~0.9 m, runs ~30% longer downhill, ~20% shorter uphill.
+- **Round surface classification (the real fix that made putting playable).** During a round the range
+  HUD owns the EventBus `SurfaceProvider`, and it had classified launch-local landings via the analytic
+  **range lane** (origin-centered) — so every course-world position read `rough`, which only became
+  visible once putt friction depended on the lie (putts died in ~1 yard). Now the HUD's provider
+  classifies the **course splat sampler** (`UCourseSurfaceSubsystem::ClassifyAt`) at the tee+aim→world
+  position when a sampler is loaded; the practice range still uses the lane classifier. This corrects
+  **all** round shots, not just putts. The HUD's `GroundNormalProvider` also averages a **5-tap cross**
+  (mirrors `CourseSurfaceSubsystem`) so the break stays smooth, not per-triangle LIDAR jitter.
+- **Putt coefficients.** Stimp friction on mown/smooth lies (green/fairway/tee); a moderate **fringe
+  friction** (0.25, ~4× green) on rough so a putt trickling off the green slows over ~1–2 m instead of
+  stopping at the boundary; full per-surface grab on bunker/etc. Commits `831e823` (break core) +
+  `4c9dced` (round classification + fringe). Full suite **90/90**.
+
 ## 2026-06-10 — GOL-196: terrain-aware bounce deflection (Windows)
 
 Balls now bounce off the **slope**, not as if the ground were flat: down-slope kicks forward and runs

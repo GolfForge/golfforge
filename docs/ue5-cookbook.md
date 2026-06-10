@@ -270,6 +270,36 @@ A cloth-flutter flag needs three things; the static engine `Plane` (2 tris) give
 
 **Composing a branded texture off-engine.** `KismetRenderingLibrary` is NOT exposed to editor Python (no render-target/canvas text), so compose brand art outside UE: PowerShell `System.Drawing` (red bg + `DrawImage` the tee art + `DrawString` with a `PrivateFontCollection.AddFontFile` of the repo's Barlow TTF), save PNG, `import_texture`. Use the alpha source (`main_cursor_full_alpha.png`), not the white-matte one.
 
+## Terrain-conforming ground ring + flat label, decal-free (GOL-123 gimme ring)
+
+A ground marker that **drapes over terrain** + is **semi-transparent** doesn't need a deferred decal
+(decal-domain materials are gotcha-prone to author blind). A cheaper, decal-free recipe that fit a
+gameplay actor (`AGolfPinActor`):
+
+- **Geometry = the shape.** Build the ring as a `UProceduralMeshComponent` **annulus** (inner/outer
+  rim vert pairs around the circle, triangulated as a strip), rebuilt in `SetGimmeRadiusFt`. Drawing
+  it as **dashes** is just skipping some arc segments. Making it *thin* is a small `Band` width.
+- **Conform = per-vertex traces.** Line-trace each rim vertex down to the landscape (`ECC_WorldStatic`,
+  `bTraceComplex=true`, ignore self) and set its local Z to `Hit.Z - ActorZ + lift`. The band follows
+  green undulation instead of floating/clipping flat. Only the active pin builds a ring, so the ~tens
+  of traces per rebuild (once per hole.start) are free.
+- **Translucent = the simplest material.** `M_GimmeRing` is `MD_SURFACE` + `BLEND_TRANSLUCENT` +
+  `MSM_UNLIT` + two-sided, with just `Color`→Emissive and an `Opacity` scalar param (authored by
+  `engine/scripts/build_gimme_ring_material.py`). Far less to get wrong than a decal material. Load it
+  with a **runtime `LoadObject`** (lazy, in the build fn) — not a constructor `FObjectFinder` — so a
+  freshly-authored asset is picked up **without an editor restart** (the FObjectFinder-resolves-once
+  trap below).
+
+**Flat ground text (a `UTextRenderComponent` lying on the turf) — two non-obvious bits:**
+- **Orientation:** to read upright when viewed along a direction `ReadDir`, lay it face-up with the
+  glyph-top pointing along `ReadDir`: `FRotationMatrix::MakeFromXZ(FVector::UpVector, ReadDir).Rotator()`
+  (local +X = face normal → up; local +Z = glyph up → ReadDir). For a per-hole label, feed `ReadDir` =
+  tee→pin so it reads on the walk-up. (Caveat from GOL-28: flat 3D text still reads marginally on turf;
+  it's fine for a small close-up label, was disabled for the big range yardage numbers.)
+- **Centering in a dashed gap:** don't skip the dash *nearest* the label angle — the skipped dash's
+  centre is offset by up to ±half-period, so the gap looks lopsided. Instead **phase the whole dash
+  pattern** by `labelAngle - dashArc/2` and skip dash 0, so the gap is centred exactly on the label.
+
 ## Megaplant trees don't sway: PCG skinned instances ignore the PVE WPO + WindDirectionalSource (GOL-165 tree follow-up, deferred)
 
 The course trees are Megaplant `SK_Silver_Birch_01_D` (a 739-bone Nanite **skeletal** mesh) scattered by PCG's **`SkinnedMeshSpawner`** (`build_pcg_treescatter.py`) — so there's no AnimBlueprint on the instances and any wind must come from the material's WPO. Their PVE master `MA_Foliage_Trees` (`/ProceduralVegetationEditor/...`) exposes `Displacement Power` (=1.0, i.e. its WPO/displacement system is ON) + `Reduce Branch Displacement` but **no** "Wind" params, and (5.7) its expression graph can't be enumerated from Python (`Expressions` is protected — same as any `Material`). Empirically: adding an `AWindDirectionalSource` (strength 0.4) produced **no** sway in a realtime viewport → the PVE displacement isn't SpeedTree-style global-wind-driven, and/or the instanced-skinned-mesh path doesn't tick its WPO. Tree sway therefore needs a different approach (reparent the tree MIs to a custom MPC-driven master that adds WPO, or a pivot-painter/vertex-anim foliage path) and is deferred to a later epic — the shared `MPC_GolfWind` is the wind source whichever way it goes. Don't edit the plugin master in `/ProceduralVegetationEditor/` directly (gitignored, re-downloaded per machine). **(GOL-167 recon)** The `Birch_WindSettings_01` asset shipped beside the mesh is a **`PVWindSettings`** data asset — a wind *parameter container* the PVE material reads, NOT a force that animates instances; it does not bypass this blocker. The Megaplant scatter is now 2 species x 4 variants (GOL-167) but the sway story is unchanged for all of them.

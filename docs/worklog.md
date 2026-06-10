@@ -2,6 +2,32 @@
 
 > Dated milestone summaries, newest on top. The durable outcome + the committed artifact, not the blow-by-blow — process detail lives in git history, `docs/ue5-cookbook.md`, and the scripts themselves.
 
+## 2026-06-10 — GOL-191/192: pin-position system (Static/Random/Tournament) + gimme-ring polish (Windows)
+
+Turned static course pins into a configurable **pin-position system** — the headline being **Tournament**
+pins (play a real published hole-location set, e.g. a PGA event at Bethpage Black, which
+`golfforge-demo-black` is) — and dropped the placeholder green visuals.
+
+- **Drop the course disc (GOL-191):** course pins hide the synthetic green disc + fringe collar
+  (`AGolfPinActor::SetGreenSurfaceVisible(false)` from `URoundPinSubsystem`); the painted `splat_green`
+  landscape is the green now. Range keeps the disc.
+- **Pin modes (GOL-192 + new):** `EPinMode {Static, Random, Tournament}` on `FRoundConfig` + a
+  "Pin positions" picker in the round-setup Format step. Pure `GolfsimRound::` resolver (parse
+  `green.geojson` polygons + pin sheets, point-in-polygon, random-in-green, green↔hole match,
+  `ResolvePinPositions`) wired into `URoundSubsystem::StartRound` — pins baked into the schedule once.
+  Static = today's endpoint; Random = a fresh on-green spot each round; Tournament =
+  `courses/<id>/pins/<id>.json` with green-centroid → static fallbacks. **5 new headless tests; full
+  suite 88/88.**
+- **Authoring:** `pipeline/build_pin_sheet.py` seeds a baseline sheet from green centroids (track-aware);
+  sample `courses/golfforge-demo-black/pins/default.json` (18 pins). Format in `pipeline-data-contract.md`.
+- **Gimme-ring polish (GOL-123):** the flat filled gimme disc → a thin (22 cm) **procedural annulus**
+  that drapes over the green via per-vertex ground traces, drawn as **8 dashes** with a translucent
+  unlit `M_GimmeRing` material (38% opacity, authored by `build_gimme_ring_material.py`). One dash gap
+  (phased to centre on the approach) holds a flat **"GIMME"** `TextRenderComponent` oriented tee→pin so
+  it reads on the walk-up.
+- **Follow-up (filed):** real event pin sheets are content (hand-authored from published pin sheets);
+  per-course pin-set dropdown when courses have multiple sheets; Static-pin centroid (GOL-192 proper).
+
 ## 2026-06-09 — v0.0.6-alpha — Windows cook + release (Windows)
 
 Cooked and zipped the Windows build of v0.0.6-alpha. `GolfForge-windows-x64-v0.0.6-alpha.zip`

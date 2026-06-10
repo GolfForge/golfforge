@@ -20,6 +20,7 @@
 #include "Course/CourseSurfaceSubsystem.h"
 #include "Session/ShotHistorySubsystem.h"
 #include "Round/RoundSubsystem.h"
+#include "Practice/PracticeModeSubsystem.h"   // GOL-73: CTP practice config/session/stats
 
 namespace
 {
@@ -720,6 +721,83 @@ namespace
 		UE_LOG(LogTemp, Display, TEXT("golfsim.SetStimp: %.1f ft  -> putter friction %.3f"),
 			V, 0.67 / FMath::Max(V, 1.0));
 	}
+
+	// --- GOL-73: closest-to-pin practice mode (headless / PIE validation) ----------------------
+	//
+	// Practice.CTP <minYd> <maxYd> [side 0/1] [puttout 0/1] [withinYd]  -- enter CTP, set config, spawn pin
+	// Practice.Free                                                     -- back to free play
+	// Practice.End                                                      -- log session summary, then free
+	// Practice.Status                                                   -- log current config + session stats
+	//
+	// CTP is a range drill, so these resolve the AGolfRangeHUD (range only) for the world side and the
+	// UPracticeModeSubsystem for the stats.
+
+	AGolfRangeHUD* RangeHud(UWorld* World)
+	{
+		APlayerController* PC = World ? World->GetFirstPlayerController() : nullptr;
+		return PC ? Cast<AGolfRangeHUD>(PC->GetHUD()) : nullptr;
+	}
+
+	void PracticeCtpCmd(const TArray<FString>& Args, UWorld* World)
+	{
+		AGolfRangeHUD* HUD = RangeHud(World);
+		if (!HUD)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("golfsim.Practice.CTP: no AGolfRangeHUD (range only)"));
+			return;
+		}
+		if (Args.Num() < 2)
+		{
+			UE_LOG(LogTemp, Warning,
+				TEXT("Usage: golfsim.Practice.CTP <minYd> <maxYd> [side 0/1] [puttout 0/1] [withinYd]"));
+			return;
+		}
+		const double MinYd    = FCString::Atod(*Args[0]);
+		const double MaxYd    = FCString::Atod(*Args[1]);
+		const bool   bSide    = Args.Num() > 2 ? FCString::Atoi(*Args[2]) != 0 : false;
+		const bool   bPuttOut = Args.Num() > 3 ? FCString::Atoi(*Args[3]) != 0 : false;
+		const double WithinYd = Args.Num() > 4 ? FCString::Atod(*Args[4]) : 10.0;
+
+		HUD->ApplyCtpConfig(MinYd, MaxYd, bSide, bPuttOut, WithinYd);   // sets config before the first pin
+		HUD->SetPracticeMode(GolfsimPractice::EPracticeMode::ClosestToPin);
+		UE_LOG(LogTemp, Display,
+			TEXT("golfsim.Practice.CTP: min=%.0f max=%.0f yd side=%d puttout=%d within=%.0f yd"),
+			MinYd, MaxYd, bSide ? 1 : 0, bPuttOut ? 1 : 0, WithinYd);
+	}
+
+	void PracticeFreeCmd(const TArray<FString>& /*Args*/, UWorld* World)
+	{
+		AGolfRangeHUD* HUD = RangeHud(World);
+		if (!HUD) { UE_LOG(LogTemp, Warning, TEXT("golfsim.Practice.Free: no AGolfRangeHUD (range only)")); return; }
+		HUD->SetPracticeMode(GolfsimPractice::EPracticeMode::Free);
+		UE_LOG(LogTemp, Display, TEXT("golfsim.Practice.Free: back to free play"));
+	}
+
+	void PracticeStatusCmd(const TArray<FString>& /*Args*/, UWorld* World)
+	{
+		UPracticeModeSubsystem* Sub = UPracticeModeSubsystem::Get(World);
+		if (!Sub) { UE_LOG(LogTemp, Warning, TEXT("golfsim.Practice.Status: no UPracticeModeSubsystem")); return; }
+		const GolfsimPractice::FCtpConfig& C = Sub->GetConfig();
+		const GolfsimPractice::FCtpSession& S = Sub->GetSession();
+		const double Y = GolfsimPractice::MetersPerYard;
+		UE_LOG(LogTemp, Display,
+			TEXT("golfsim.Practice.Status: active=%d ctp=%d | min=%.0f max=%.0f side=%d puttout=%d within=%.0f yd | shots=%d best=%.1f yd avg=%.1f yd bestStrokes=%d"),
+			Sub->IsCtpActive() ? 1 : 0, (int32)Sub->GetMode(),
+			C.MinM / Y, C.MaxM / Y, C.bSideOffset ? 1 : 0, C.bPuttOut ? 1 : 0, C.PuttWithinM / Y,
+			GolfsimPractice::AttemptCount(S),
+			GolfsimPractice::BestDistanceM(S) / Y, GolfsimPractice::AvgDistanceM(S) / Y,
+			GolfsimPractice::BestStrokes(S));
+	}
+
+	void PracticeEndCmd(const TArray<FString>& Args, UWorld* World)
+	{
+		PracticeStatusCmd(Args, World);   // log the summary first (safe on a zero-shot session)
+		if (AGolfRangeHUD* HUD = RangeHud(World))
+		{
+			HUD->SetPracticeMode(GolfsimPractice::EPracticeMode::Free);
+		}
+		UE_LOG(LogTemp, Display, TEXT("golfsim.Practice.End: session ended"));
+	}
 }
 
 static FAutoConsoleCommandWithWorldAndArgs GFireShotCmd(
@@ -868,3 +946,23 @@ static FAutoConsoleCommandWithWorldAndArgs GCreditsCmd(
 	TEXT("golfsim.Credits"),
 	TEXT("Open the settings menu to the Credits/Attributions section."),
 	FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&CreditsCmd));
+
+static FAutoConsoleCommandWithWorldAndArgs GPracticeCtpCmd(
+	TEXT("golfsim.Practice.CTP"),
+	TEXT("Enter closest-to-pin practice: golfsim.Practice.CTP <minYd> <maxYd> [side 0/1] [puttout 0/1] [withinYd]. Range only."),
+	FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&PracticeCtpCmd));
+
+static FAutoConsoleCommandWithWorldAndArgs GPracticeFreeCmd(
+	TEXT("golfsim.Practice.Free"),
+	TEXT("Leave practice mode, back to free play. Range only."),
+	FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&PracticeFreeCmd));
+
+static FAutoConsoleCommandWithWorldAndArgs GPracticeEndCmd(
+	TEXT("golfsim.Practice.End"),
+	TEXT("Log the CTP session summary, then return to free play. Safe on a zero-shot session."),
+	FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&PracticeEndCmd));
+
+static FAutoConsoleCommandWithWorldAndArgs GPracticeStatusCmd(
+	TEXT("golfsim.Practice.Status"),
+	TEXT("Log the current CTP config + session stats (shots, best, avg)."),
+	FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&PracticeStatusCmd));

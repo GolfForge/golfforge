@@ -37,6 +37,7 @@ struct GOLFSIM_API FShotHistoryEntry
 	UPROPERTY() double TotalM = 0.0;
 	UPROPERTY() double LateralOffsetM = 0.0;
 	UPROPERTY() FString FinalLie;
+	UPROPERTY() FString Mode;              // GOL-73: practice mode the shot was fired under ("free" / "ctp")
 };
 
 /**
@@ -99,6 +100,10 @@ public:
 	/** Empty the in-memory list AND truncate the current session's JSONL on disk to 0 bytes. */
 	void Clear();
 
+	/** GOL-73: tag subsequent shots with the active practice mode ("free" / "ctp"). The HUD calls
+	 *  this when the player switches modes; logged entries carry it for later session review. */
+	void SetCurrentMode(const FString& InMode) { CurrentMode = InMode; }
+
 	/** Broadcast on every Append and on Clear. Readers connect/disconnect in their lifetime. */
 	FOnShotHistoryChanged OnEntriesChanged;
 
@@ -109,6 +114,7 @@ private:
 	UPROPERTY(Transient) TArray<FShotHistoryEntry> Entries;
 	FString SessionId;
 	FString SessionJsonlPath;
+	FString CurrentMode = TEXT("free");   // GOL-73: stamped onto each entry; flipped by SetCurrentMode
 	int32 NextShotId = 1;
 
 	TWeakObjectPtr<UEventBusSubsystem> EventBusWeak;

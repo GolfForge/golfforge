@@ -2,6 +2,34 @@
 
 > Dated milestone summaries, newest on top. The durable outcome + the committed artifact, not the blow-by-blow — process detail lives in git history, `docs/ue5-cookbook.md`, and the scripts themselves.
 
+## 2026-06-09 — GOL-73: closest-to-pin practice mode (carry + flat-green putt-out) (Windows)
+
+Layered the CTP drill on top of the range: a pin spawns at a random distance, the player hits, the
+system scores by distance-from-pin, the cycle repeats. First slice of the GOL-73 epic — carry-only
+**and** flat-green putt-out; realistic green break (needs GOL-75/GOL-191) is deferred.
+
+- **Pure core** `GolfsimPractice::` (`Practice/PracticeMode.{h,cpp}`, mirrors `GolfsimRound::`):
+  `FCtpConfig`/`FCtpSession`/`FCtpAttempt`, `NextPin(cfg, FRandomStream&)` (lane-clamped random
+  distance + optional side offset), `ScoreDistanceM` (XY, cm->m), and best/avg/last stat accessors
+  that guard the empty session. SI throughout; yards live only at the UI/console seam. 6 headless
+  tests (`Tests/PracticeTests.cpp`), `Golfsim.Practice` 6/6 green.
+- **Subsystem** `UPracticeModeSubsystem` (GameInstance): owns the active mode/config/session + a
+  seeded RNG, publishes `practice.shot_scored` (new `EEventKind` + `FPracticeShotScoredEvent`,
+  documented in `docs/event-protocol.md`). Doesn't subscribe to shot.outcome — the HUD feeds it the
+  settled world distance (the launch-frame outcome can't give it).
+- **HUD orchestration** (`GolfRangeHUD`): mode entry/exit, side-offset pin placement (extended
+  `ApplyPinDistance` off the hard-zeroed Y), score-on-settle off the existing `Tick` ball-settle
+  hook, the putt-out loop (reuses the putter + `GolfsimRound::IsWithinGimme`: within N yd -> putt
+  from the lie until holed, score = strokes), a 2 s next-pin gap that gates fires, and a ball->pin
+  result line.
+- **UI** (`GolfRangePanel`): a Mode dropdown (Free Play / Closest to Pin) reveals a settings cluster
+  (Min/Max at 5-yd steps, side-offset + putt-out toggles, within-N) plus a This/Best/Avg/Shots
+  scoreboard. **History**: `FShotHistoryEntry.Mode` tag ("free"/"ctp"). **Console**:
+  `golfsim.Practice.CTP/Free/End/Status` for headless validation.
+- Full project suite 83/83 green. **Deferred (sub-issues):** realistic putt-out break (GOL-75/191),
+  Islands (GOL-74), multiplayer/leaderboards; the ball->pin line uses `DrawDebugLine` (stripped in
+  Shipping — fine for alpha/Development, swap to a persistent primitive before ship).
+
 ## 2026-06-09 — GOL-39: cross-surface ground roll + green spin-back (Windows)
 
 Did the two structural items of GOL-39 that need no launch-monitor data (GOL-38 multi-bounce and

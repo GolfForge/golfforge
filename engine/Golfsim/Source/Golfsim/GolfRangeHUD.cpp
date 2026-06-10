@@ -22,7 +22,10 @@
 #include "Physics/BallFlightTypes.h"       // FBallTrajectory (carried on the outcome event)
 #include "Physics/RangeSurface.h"          // ClassifyRangeLie -> the integrator's surface provider (GOL-9)
 #include "Round/RoundSubsystem.h"          // IsActive() guard for the range pin (GOL-117)
+#include "Round/RoundState.h"              // GolfsimRound::IsWithinGimme (CTP putt-out hole-out, GOL-73)
+#include "Practice/PracticeModeSubsystem.h"// GOL-73: CTP config/session/scoring + practice.shot_scored
 
+#include "DrawDebugHelpers.h"              // GOL-73: ball->pin result line
 #include "EngineUtils.h"
 #include "Camera/CameraActor.h"     // follow camera (Camera dropdown: Tee / Follow)
 #include "Camera/CameraComponent.h" // disable the follow cam's aspect-ratio constraint
@@ -248,6 +251,14 @@ void AGolfRangeHUD::Tick(float DeltaSeconds)
 			Panel->UpdateMetrics(AnimClub, AnimSpeedMph, AnimLaunchDeg, AnimSpinRpm,
 				AnimTargetCarryYd, AnimTargetTotalYd, AnimOfflineYd, bAnimSpinEstimated);   // landed + rolled: exact finals
 			bCarryAnimating = false;
+
+			// GOL-73: the ball has settled -- if this was a CTP shot, score it now (the settled world
+			// position handles aim + side-offset pins; the launch-frame outcome can't).
+			if (bCtpScorePending)
+			{
+				bCtpScorePending = false;
+				OnCtpShotSettled(Ball);
+			}
 		}
 	}
 
@@ -389,6 +400,30 @@ void AGolfRangeHUD::EnsureInputBound()
 			};
 			Panel->SetPinValue(CurrentPinYd);
 			ApplyPinDistance(CurrentPinYd);
+
+			// GOL-73: practice-mode picker + CTP settings cluster. Free Play = the legacy range;
+			// Closest to Pin enters the CTP drill. Defaults mirror FCtpConfig (50-250 yd, no side, no putt-out).
+			Panel->SetModeOptions({ TEXT("Free Play"), TEXT("Closest to Pin") });
+			Panel->SetSelectedModeIndex(0);
+			Panel->SetCtpConfigValues(50.0, 250.0, false, false, 10.0);
+			Panel->OnModeChosen = [WeakThis](int32 Idx)
+			{
+				if (AGolfRangeHUD* HUD = WeakThis.Get())
+				{
+					HUD->SetPracticeMode(Idx == 1
+						? GolfsimPractice::EPracticeMode::ClosestToPin
+						: GolfsimPractice::EPracticeMode::Free);
+					HUD->ReturnFocusToGame();
+				}
+			};
+			Panel->OnCtpConfigChanged = [WeakThis](double Mn, double Mx, bool bSide, bool bPutt, double Within)
+			{
+				if (AGolfRangeHUD* HUD = WeakThis.Get())
+				{
+					HUD->ApplyCtpConfig(Mn, Mx, bSide, bPutt, Within);
+					HUD->ReturnFocusToGame();
+				}
+			};
 
 			// Environment director: find-or-spawn the range's time-of-day/weather actor and wire the
 			// Time + Sky dropdowns to it. Names come from the director (single source of truth, like
@@ -1096,8 +1131,12 @@ void AGolfRangeHUD::ApplyPinDistance(double Yards)
 	// collision is a coarser mip a few cm above the heightfield).
 	const FVector TeeLoc = bTeeCached ? TeeOriginalLoc : Pawn->GetActorLocation();
 	const double PinWorldXcm = TeeLoc.X + ClampedYd * CmPerYd;
-	const FVector ProbeStart(PinWorldXcm, 0.0, TeeLoc.Z + 5000.0);
-	const FVector ProbeEnd(PinWorldXcm, 0.0, TeeLoc.Z - 5000.0);
+	// GOL-73: CTP pins may sit off the centerline. Clamp the lateral offset to the lane's +/-35 yd tree
+	// wall; free-play keeps CurrentPinSideYd = 0, so the pin stays on Y = 0 exactly as before.
+	const double SideYd = FMath::Clamp(CurrentPinSideYd, -35.0, 35.0);
+	const double PinWorldYcm = SideYd * CmPerYd;
+	const FVector ProbeStart(PinWorldXcm, PinWorldYcm, TeeLoc.Z + 5000.0);
+	const FVector ProbeEnd(PinWorldXcm, PinWorldYcm, TeeLoc.Z - 5000.0);
 
 	FCollisionQueryParams Params(SCENE_QUERY_STAT(GolfsimPinFloorTrace), /*bTraceComplex=*/true);
 	Params.AddIgnoredActor(Pawn);
@@ -1120,12 +1159,12 @@ void AGolfRangeHUD::ApplyPinDistance(double Yards)
 		FActorSpawnParameters Sp;
 		Sp.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
 		PinActor = World->SpawnActor<AGolfPinActor>(AGolfPinActor::StaticClass(),
-			FVector(PinWorldXcm, 0.0, GroundZ), FRotator::ZeroRotator, Sp);
+			FVector(PinWorldXcm, PinWorldYcm, GroundZ), FRotator::ZeroRotator, Sp);
 		Pin = PinActor;
 	}
 	else
 	{
-		PinActor->SetActorLocationAndRotation(FVector(PinWorldXcm, 0.0, GroundZ), FRotator::ZeroRotator);
+		PinActor->SetActorLocationAndRotation(FVector(PinWorldXcm, PinWorldYcm, GroundZ), FRotator::ZeroRotator);
 	}
 
 	if (Panel)
@@ -1214,6 +1253,252 @@ void AGolfRangeHUD::SetPuttMode(bool bEnabled)
 			Panel->SetPuttMode(false);
 		}
 	}
+}
+
+// --- GOL-73: closest-to-pin practice mode ------------------------------------------------------
+
+void AGolfRangeHUD::SetPracticeMode(GolfsimPractice::EPracticeMode Mode)
+{
+	using namespace GolfsimPractice;
+
+	if (RoundIsActive())
+	{
+		// CTP is a range drill; a round owns the pin + flow. Ignore mode switches mid-round.
+		return;
+	}
+	if (Mode == CtpMode)
+	{
+		return;
+	}
+
+	UPracticeModeSubsystem* Sub = UPracticeModeSubsystem::Get(this);
+	UShotHistorySubsystem* History = UShotHistorySubsystem::Get(this);
+
+	// Always clear any in-flight CTP transients on a mode change.
+	if (UWorld* World = GetWorld()) { World->GetTimerManager().ClearTimer(CtpRespawnTimer); }
+	bCtpAwaitingRespawn = false;
+	bCtpScorePending = false;
+	if (bCtpPutting) { EndCtpPuttSequence(); }   // restore the tee pose if we were mid-putt-out
+
+	CtpMode = Mode;
+	if (Panel)
+	{
+		Panel->SetSelectedModeIndex(Mode == EPracticeMode::ClosestToPin ? 1 : 0);
+	}
+
+	if (Mode == EPracticeMode::ClosestToPin)
+	{
+		if (Sub)
+		{
+			// Seed the session from the subsystem's current config (panel defaults, or a prior console set).
+			Sub->StartCtpSession(Sub->GetConfig());
+		}
+		if (History) { History->SetCurrentMode(TEXT("ctp")); }
+		if (Panel)
+		{
+			Panel->SetCtpControlsVisible(true);
+			Panel->SetRangeControlsVisible(false);   // the free-play pin spinner is CTP's job now
+		}
+		RefreshCtpScoreboard();
+		SpawnNextCtpPin();   // first pin
+	}
+	else
+	{
+		if (Sub) { Sub->EndSession(); }
+		if (History) { History->SetCurrentMode(TEXT("free")); }
+		if (Panel)
+		{
+			Panel->SetCtpControlsVisible(false);
+			Panel->SetRangeControlsVisible(true);
+		}
+		// Restore the free-play pin: back on the centerline at the spinner's distance.
+		CurrentPinSideYd = 0.0;
+		ApplyPinDistance(CurrentPinYd);
+	}
+}
+
+void AGolfRangeHUD::ApplyCtpConfig(double MinYd, double MaxYd, bool bSideOffset, bool bPuttOut, double WithinYd)
+{
+	using namespace GolfsimPractice;
+	UPracticeModeSubsystem* Sub = UPracticeModeSubsystem::Get(this);
+	if (!Sub) { return; }
+
+	// Convert the panel's yards into the subsystem's SI config. Keep the rest of the config (gimme).
+	FCtpConfig Cfg = Sub->GetConfig();
+	Cfg.MinM        = FMath::Min(MinYd, MaxYd) * MetersPerYard;
+	Cfg.MaxM        = FMath::Max(MinYd, MaxYd) * MetersPerYard;
+	Cfg.bSideOffset = bSideOffset;
+	Cfg.bPuttOut    = bPuttOut;
+	Cfg.PuttWithinM = WithinYd * MetersPerYard;
+	Sub->SetConfig(Cfg);
+
+	// Reflect the (possibly reordered) min/max back to the panel so the spinboxes don't drift.
+	if (Panel)
+	{
+		Panel->SetCtpConfigValues(Cfg.MinM / MetersPerYard, Cfg.MaxM / MetersPerYard,
+			bSideOffset, bPuttOut, WithinYd);
+	}
+}
+
+void AGolfRangeHUD::SpawnNextCtpPin()
+{
+	using namespace GolfsimPractice;
+	UPracticeModeSubsystem* Sub = UPracticeModeSubsystem::Get(this);
+	if (!Sub) { return; }
+
+	const FCtpPin NextPin = Sub->NextPin();
+	CurrentPinYd     = NextPin.DistanceM   / MetersPerYard;
+	CurrentPinSideYd = NextPin.SideOffsetM / MetersPerYard;
+	ApplyPinDistance(CurrentPinYd);   // uses CurrentPinSideYd for the lateral placement
+	bCtpAwaitingRespawn = false;
+}
+
+void AGolfRangeHUD::OnCtpShotSettled(AGolfBallActor* Ball)
+{
+	using namespace GolfsimPractice;
+	AGolfPinActor* PinActor = Pin.Get();
+	if (!Ball || !PinActor)
+	{
+		return;
+	}
+	UPracticeModeSubsystem* Sub = UPracticeModeSubsystem::Get(this);
+	if (!Sub) { return; }
+
+	const FVector BallWorld = Ball->GetActorLocation();
+	const FVector PinWorld  = PinActor->GetActorLocation();
+	const double DistM = ScoreDistanceM(BallWorld, PinWorld);
+
+	// Result line: ball-rest -> pin, held ~2 s so it's readable before the next pin spawns.
+	if (UWorld* World = GetWorld())
+	{
+		DrawDebugLine(World, BallWorld, PinWorld, FColor(111, 226, 118), /*persistent=*/false,
+			/*life=*/2.0f, /*depthPriority=*/0, /*thickness=*/3.0f);
+	}
+
+	const FCtpConfig& Cfg = Sub->GetConfig();
+
+	if (bCtpPutting)
+	{
+		// This settle was a putt; it counts.
+		++CtpStrokes;
+		if (GolfsimRound::IsWithinGimme(BallWorld, PinWorld, Cfg.GimmeRadiusFt))
+		{
+			Sub->RecordPuttOut(CtpStrokes, DistM);
+			EndCtpPuttSequence();
+			RefreshCtpScoreboard();
+			StartCtpRespawnTimer();
+		}
+		else
+		{
+			TeleportPawnForPutt(BallWorld, PinWorld);   // putt again from the new lie
+		}
+		return;
+	}
+
+	// Approach shot. Putt-out enabled + finished close enough -> start a putt sequence (this shot is
+	// stroke 1); otherwise score the carry-only attempt and queue the next pin.
+	if (Cfg.bPuttOut && DistM <= Cfg.PuttWithinM)
+	{
+		CtpStrokes = 1;
+		TeleportPawnForPutt(BallWorld, PinWorld);
+		bCtpPutting = true;
+		return;
+	}
+
+	Sub->RecordCarry(DistM);
+	RefreshCtpScoreboard();
+	StartCtpRespawnTimer();
+}
+
+void AGolfRangeHUD::TeleportPawnForPutt(const FVector& BallWorld, const FVector& PinWorld)
+{
+	APlayerController* PC = GetOwningPlayerController();
+	APawn* Pawn = PC ? PC->GetPawn() : nullptr;
+	if (!PC || !Pawn)
+	{
+		return;
+	}
+
+	// Cache the tee pose once so EndCtpPuttSequence can restore it (shared with SetPuttMode's members;
+	// the manual putt checkbox is hidden in CTP, so there's no contention).
+	if (!bTeeCached)
+	{
+		TeeOriginalLoc = Pawn->GetActorLocation();
+		TeeOriginalRot = PC->GetControlRotation();
+		TeeOriginalClub = ActiveClub;
+		bTeeCached = true;
+	}
+
+	// Stand a short standoff behind the ball along the ball->pin line, facing the pin. Flat range, so
+	// the pawn's capsule Z carries over from the tee (same simplification as SetPuttMode).
+	FVector ToPin = PinWorld - BallWorld;
+	ToPin.Z = 0.0;
+	const FVector Dir = ToPin.IsNearlyZero() ? FVector::ForwardVector : ToPin.GetSafeNormal();
+	constexpr double PuttStandoffCm = 1.5 * 91.44;   // ~1.5 yd behind the lie
+	const FVector Stand = BallWorld - Dir * PuttStandoffCm;
+	Pawn->SetActorLocation(FVector(Stand.X, Stand.Y, TeeOriginalLoc.Z));
+	PC->SetControlRotation(Dir.Rotation());
+
+	SelectPutterIfAvailable();
+}
+
+void AGolfRangeHUD::EndCtpPuttSequence()
+{
+	bCtpPutting = false;
+	CtpStrokes = 0;
+
+	APlayerController* PC = GetOwningPlayerController();
+	APawn* Pawn = PC ? PC->GetPawn() : nullptr;
+	if (PC && Pawn && bTeeCached)
+	{
+		Pawn->SetActorLocation(TeeOriginalLoc);
+		PC->SetControlRotation(TeeOriginalRot);
+		SelectClub(TeeOriginalClub);
+		bTeeCached = false;
+	}
+}
+
+void AGolfRangeHUD::StartCtpRespawnTimer()
+{
+	bCtpAwaitingRespawn = true;   // gate fires until the next pin appears
+	if (UWorld* World = GetWorld())
+	{
+		// WeakLambda auto-invalidates if the HUD is torn down before the 2 s fires.
+		World->GetTimerManager().SetTimer(CtpRespawnTimer,
+			FTimerDelegate::CreateWeakLambda(this, [this]() { SpawnNextCtpPin(); }),
+			2.0f, /*loop=*/false);
+	}
+}
+
+void AGolfRangeHUD::RefreshCtpScoreboard()
+{
+	using namespace GolfsimPractice;
+	UPracticeModeSubsystem* Sub = UPracticeModeSubsystem::Get(this);
+	if (!Sub || !Panel) { return; }
+
+	const FCtpSession& S = Sub->GetSession();
+	const int32 Count = AttemptCount(S);
+	const bool bPuttOut = Sub->GetConfig().bPuttOut;
+
+	auto YdStr = [](double M) { return FString::Printf(TEXT("%.1f yd"), M / MetersPerYard); };
+
+	FString ThisStr = TEXT("-"), BestStr = TEXT("-"), AvgStr = TEXT("-");
+	if (Count > 0)
+	{
+		if (bPuttOut)
+		{
+			ThisStr = FString::Printf(TEXT("%d"), LastStrokes(S));
+			BestStr = FString::Printf(TEXT("%d"), BestStrokes(S));
+			AvgStr  = FString::Printf(TEXT("%.1f"), AvgStrokes(S));
+		}
+		else
+		{
+			ThisStr = YdStr(LastDistanceM(S));
+			BestStr = YdStr(BestDistanceM(S));
+			AvgStr  = YdStr(AvgDistanceM(S));
+		}
+	}
+	Panel->SetCtpScore(ThisStr, BestStr, AvgStr, Count);
 }
 
 // --- GOL-65: shot-history table + previous-sessions list ---------------------------------------
@@ -1600,6 +1885,9 @@ void AGolfRangeHUD::SetSwingDifficulty(EGolfDifficulty D)
 void AGolfRangeHUD::OnSpaceForCurrentMode()
 {
 	if (InputGated()) { return; }
+	// GOL-73: swallow fires during the ~2 s read-the-result gap after a CTP attempt, until the next
+	// pin spawns. Putt-out fires are NOT gated (bCtpAwaitingRespawn is false mid-putt-sequence).
+	if (bCtpAwaitingRespawn) { return; }
 	// GOL-120: no turbo-firing -- block Space while a ball is mid-flight. Without this you can
 	// rapid-fire the swing meter and the visualizer's previous trajectory gets cut short by the
 	// next shot's PlayTrajectory. Also implicitly waits for URoundTeeUpSubsystem's between-shot
@@ -1906,6 +2194,13 @@ void AGolfRangeHUD::OnShotOutcome(const FGolfEvent& Event)
 	AnimTargetCarryYd  = CarryYd;
 	AnimTargetTotalYd  = TotalYd;
 	bCarryAnimating    = true;
+
+	// GOL-73: in CTP every shot (approach or putt) scores once it settles; Tick resolves it. Never
+	// during a round -- a round owns the pin via URoundPinSubsystem, not the range CTP pin.
+	if (IsCtpActive() && !RoundIsActive())
+	{
+		bCtpScorePending = true;
+	}
 
 	// Follow cam: a new shot re-chases from the tee (even if we were parked on the last ball). Snap the
 	// cam to the tee framing first so the view blends from there, not in a long pan across the range.

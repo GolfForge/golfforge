@@ -254,6 +254,88 @@ void UGolfRangePanel::BuildTree()
 		}
 	}
 
+	// ── GOL-73 CTP settings cluster (hidden unless Closest-to-Pin mode) ──────────────────────────
+	// A small label-maker for the cluster (mono faint, matches the PIN label above).
+	auto MakeFaintLabel = [&](const TCHAR* Text) -> UTextBlock*
+	{
+		UTextBlock* L = WidgetTree->ConstructWidget<UTextBlock>();
+		L->SetText(FText::FromString(Text));
+		L->SetFont(Mono(11));
+		L->SetColorAndOpacity(FSlateColor(Color::TextFaint()));
+		return L;
+	};
+	auto MakeYdSpin = [&](float Min, float Max, float Delta, float Width) -> USpinBox*
+	{
+		USpinBox* S = WidgetTree->ConstructWidget<USpinBox>();
+		S->SetMinValue(Min);   S->SetMaxValue(Max);
+		S->SetMinSliderValue(Min); S->SetMaxSliderValue(Max);
+		S->SetDelta(Delta);
+		S->SetMinDesiredWidth(Width);
+		S->SetMinFractionalDigits(0);
+		S->SetMaxFractionalDigits(0);
+		return S;
+	};
+
+	CtpControlsRow = WidgetTree->ConstructWidget<UHorizontalBox>();
+	if (UVerticalBoxSlot* CCS = RCol->AddChildToVerticalBox(CtpControlsRow)) { CCS->SetPadding(FMargin(0.f, 10.f, 0.f, 0.f)); }
+	{
+		auto AddCell = [&](UWidget* W, float RightPad)
+		{
+			if (UHorizontalBoxSlot* S = CtpControlsRow->AddChildToHorizontalBox(W))
+			{
+				S->SetVerticalAlignment(VAlign_Center);
+				S->SetPadding(FMargin(0.f, 0.f, RightPad, 0.f));
+			}
+		};
+
+		AddCell(MakeFaintLabel(TEXT("MIN")), 6.f);
+		CtpMinBox = MakeYdSpin(0.f, 400.f, 5.f, 70.f);
+		CtpMinBox->OnValueChanged.AddDynamic(this, &UGolfRangePanel::HandleCtpMinChanged);
+		AddCell(CtpMinBox, 14.f);
+
+		AddCell(MakeFaintLabel(TEXT("MAX")), 6.f);
+		CtpMaxBox = MakeYdSpin(0.f, 400.f, 5.f, 70.f);
+		CtpMaxBox->OnValueChanged.AddDynamic(this, &UGolfRangePanel::HandleCtpMaxChanged);
+		AddCell(CtpMaxBox, 18.f);
+
+		CtpSideBox = WidgetTree->ConstructWidget<UCheckBox>();
+		CtpSideBox->OnCheckStateChanged.AddDynamic(this, &UGolfRangePanel::HandleCtpSideChanged);
+		AddCell(CtpSideBox, 6.f);
+		{
+			UTextBlock* L = WidgetTree->ConstructWidget<UTextBlock>();
+			L->SetText(FText::FromString(TEXT("Side offset")));
+			L->SetFont(Body(12));
+			L->SetColorAndOpacity(FSlateColor(Color::TextDim()));
+			AddCell(L, 18.f);
+		}
+
+		CtpPuttOutBox = WidgetTree->ConstructWidget<UCheckBox>();
+		CtpPuttOutBox->OnCheckStateChanged.AddDynamic(this, &UGolfRangePanel::HandleCtpPuttOutChanged);
+		AddCell(CtpPuttOutBox, 6.f);
+		{
+			UTextBlock* L = WidgetTree->ConstructWidget<UTextBlock>();
+			L->SetText(FText::FromString(TEXT("Putt out within")));
+			L->SetFont(Body(12));
+			L->SetColorAndOpacity(FSlateColor(Color::TextDim()));
+			AddCell(L, 6.f);
+		}
+		CtpWithinBox = MakeYdSpin(1.f, 50.f, 1.f, 56.f);
+		CtpWithinBox->OnValueChanged.AddDynamic(this, &UGolfRangePanel::HandleCtpWithinChanged);
+		AddCell(CtpWithinBox, 6.f);
+		AddCell(MakeFaintLabel(TEXT("YD")), 0.f);
+	}
+
+	// CTP scoreboard: This / Best / Avg / Shots (reuses the telemetry tile look).
+	CtpScoreRow = WidgetTree->ConstructWidget<UHorizontalBox>();
+	if (UVerticalBoxSlot* CSS = RCol->AddChildToVerticalBox(CtpScoreRow)) { CSS->SetPadding(FMargin(0.f, 10.f, 0.f, 0.f)); }
+	CtpValThis  = BuildTile(WidgetTree, CtpScoreRow, TEXT("THIS"),  true,  false);
+	CtpValBest  = BuildTile(WidgetTree, CtpScoreRow, TEXT("BEST"),  false, false);
+	CtpValAvg   = BuildTile(WidgetTree, CtpScoreRow, TEXT("AVG"),   false, false);
+	CtpValShots = BuildTile(WidgetTree, CtpScoreRow, TEXT("SHOTS"), false, false);
+
+	// Hidden until the player switches into Closest-to-Pin mode.
+	SetCtpControlsVisible(false);
+
 	// ── Control bar (full-width bottom glass bar) ────────────────────────────────────────────────
 	// Flat edge-to-edge strip (no rounded corners / border) for a slicker look -- it spans the full
 	// width at the very bottom, so a rounded card outline read as fussy.
@@ -285,6 +367,10 @@ void UGolfRangePanel::BuildTree()
 		}
 		return Combo;
 	};
+
+	// GOL-73: practice-mode picker leads the bar (it gates the CTP cluster below the readout).
+	ModeCombo = AddBarCombo(TEXT("MODE"), 160.f);
+	ModeCombo->OnSelectionChanged.AddDynamic(this, &UGolfRangePanel::HandleModeSelectionChanged);
 
 	ClubCombo = AddBarCombo(TEXT("CLUB"), 150.f);
 	ClubCombo->OnSelectionChanged.AddDynamic(this, &UGolfRangePanel::HandleClubSelectionChanged);
@@ -349,6 +435,8 @@ void UGolfRangePanel::SetTimeOptions(const TArray<FString>& Names) { FillCombo(T
 void UGolfRangePanel::SetSkyOptions(const TArray<FString>& Names)  { FillCombo(SkyCombo, Names); }
 void UGolfRangePanel::SetCameraOptions(const TArray<FString>& Names) { FillCombo(CameraCombo, Names); }
 void UGolfRangePanel::SetLaunchMonitorOptions(const TArray<FString>& Names) { FillCombo(LMCombo, Names); }
+void UGolfRangePanel::SetModeOptions(const TArray<FString>& Names) { FillCombo(ModeCombo, Names); }
+void UGolfRangePanel::SetSelectedModeIndex(int32 Index) { SetComboIndexGuarded(ModeCombo, Index); }
 
 void UGolfRangePanel::SetComboIndexGuarded(UComboBoxString* Combo, int32 Index)
 {
@@ -377,6 +465,55 @@ void UGolfRangePanel::SetRangeControlsVisible(bool bVisible)
 		RangeControlsRow->SetVisibility(bVisible ? ESlateVisibility::Visible : ESlateVisibility::Collapsed);
 	}
 }
+
+void UGolfRangePanel::SetCtpControlsVisible(bool bVisible)
+{
+	const ESlateVisibility V = bVisible ? ESlateVisibility::Visible : ESlateVisibility::Collapsed;
+	if (CtpControlsRow) { CtpControlsRow->SetVisibility(V); }
+	if (CtpScoreRow)    { CtpScoreRow->SetVisibility(V); }
+}
+
+void UGolfRangePanel::SetCtpConfigValues(double MinYd, double MaxYd, bool bSideOffset, bool bPuttOut, double WithinYd)
+{
+	bSuppressCtpCallback = true;
+	if (CtpMinBox)     { CtpMinBox->SetValue((float)MinYd); }
+	if (CtpMaxBox)     { CtpMaxBox->SetValue((float)MaxYd); }
+	if (CtpSideBox)    { CtpSideBox->SetIsChecked(bSideOffset); }
+	if (CtpPuttOutBox) { CtpPuttOutBox->SetIsChecked(bPuttOut); }
+	if (CtpWithinBox)  { CtpWithinBox->SetValue((float)WithinYd); }
+	bSuppressCtpCallback = false;
+}
+
+void UGolfRangePanel::SetCtpScore(const FString& ThisStr, const FString& BestStr, const FString& AvgStr, int32 Shots)
+{
+	if (CtpValThis)  { CtpValThis->SetText(FText::FromString(ThisStr)); }
+	if (CtpValBest)  { CtpValBest->SetText(FText::FromString(BestStr)); }
+	if (CtpValAvg)   { CtpValAvg->SetText(FText::FromString(AvgStr)); }
+	if (CtpValShots) { CtpValShots->SetText(FText::FromString(FString::Printf(TEXT("%d"), Shots))); }
+}
+
+void UGolfRangePanel::EmitCtpConfig()
+{
+	if (bSuppressCtpCallback || !OnCtpConfigChanged) { return; }
+	const double MinYd    = CtpMinBox    ? CtpMinBox->GetValue()    : 50.0;
+	const double MaxYd    = CtpMaxBox    ? CtpMaxBox->GetValue()    : 250.0;
+	const bool   bSide    = CtpSideBox   ? CtpSideBox->IsChecked()  : false;
+	const bool   bPuttOut = CtpPuttOutBox? CtpPuttOutBox->IsChecked() : false;
+	const double WithinYd = CtpWithinBox ? CtpWithinBox->GetValue() : 10.0;
+	OnCtpConfigChanged(MinYd, MaxYd, bSide, bPuttOut, WithinYd);
+	ReturnFocusToGameViewport();
+}
+
+void UGolfRangePanel::HandleModeSelectionChanged(FString, ESelectInfo::Type SelectionType)
+{
+	HandleComboPick(ModeCombo, OnModeChosen, SelectionType);
+}
+
+void UGolfRangePanel::HandleCtpMinChanged(float)     { EmitCtpConfig(); }
+void UGolfRangePanel::HandleCtpMaxChanged(float)     { EmitCtpConfig(); }
+void UGolfRangePanel::HandleCtpSideChanged(bool)     { EmitCtpConfig(); }
+void UGolfRangePanel::HandleCtpPuttOutChanged(bool)  { EmitCtpConfig(); }
+void UGolfRangePanel::HandleCtpWithinChanged(float)  { EmitCtpConfig(); }
 
 void UGolfRangePanel::HandleClubSelectionChanged(FString, ESelectInfo::Type SelectionType)
 {

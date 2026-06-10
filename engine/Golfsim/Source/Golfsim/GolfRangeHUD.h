@@ -8,11 +8,13 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/HUD.h"
+#include "Engine/TimerHandle.h"             // GOL-73: FTimerHandle member (CTP pin respawn)
 #include "GolfRangePanel.h"
 #include "GolfDisplaySettings.h"   // FGolfDisplaySettings (ApplyDisplaySettings param)
 #include "Events/EventBusSubsystem.h"   // FGolfEventSubscription member + EventBus access
 #include "Input/KeyboardSwingComponent.h"   // GOL-67: Game-mode swing state
 #include "Game/GolfDifficulty.h"
+#include "Practice/PracticeMode.h"          // GOL-73: EPracticeMode + FCtpConfig (CTP practice)
 #include "GolfRangeHUD.generated.h"
 
 class UManualShotDialog;
@@ -132,6 +134,13 @@ public:
 	// restores the tee + previous club on off. Console + checkbox both call into these.
 	void ApplyPinDistance(double Yards);
 	void SetPuttMode(bool bEnabled);
+
+	// GOL-73: closest-to-pin practice. SetPracticeMode enters/leaves CTP (no-op in a round).
+	// ApplyCtpConfig pushes the panel/console settings (display units = yards) into the subsystem;
+	// the next pin uses them. Both are public so GolfsimConsole can drive headless validation.
+	void SetPracticeMode(GolfsimPractice::EPracticeMode Mode);
+	void ApplyCtpConfig(double MinYd, double MaxYd, bool bSideOffset, bool bPuttOut, double WithinYd);
+	bool IsCtpActive() const { return CtpMode == GolfsimPractice::EPracticeMode::ClosestToPin; }
 
 	// GOL-117: true while URoundSubsystem reports an active single-player round. Range HUD uses
 	// this to (a) skip the Tick respawn of its own pin, (b) early-return from ApplyPinDistance so
@@ -314,5 +323,25 @@ private:
 	FVector TeeOriginalLoc = FVector::ZeroVector;
 	FRotator TeeOriginalRot = FRotator::ZeroRotator;
 	int32 TeeOriginalClub = 0;
-	double CurrentPinYd = 150.0;   // last applied; survives spinner -> SetPuttMode round-trips
+	double CurrentPinYd = 150.0;     // last applied; survives spinner -> SetPuttMode round-trips
+	double CurrentPinSideYd = 0.0;   // GOL-73: active pin's lateral offset (yd, + = right); 0 = centerline
+
+	// --- GOL-73 closest-to-pin practice mode -------------------------------------------------------
+	// CtpMode is the active drill. A CTP shot pends scoring until the ball settles (bCtpScorePending,
+	// resolved in Tick). After a scored attempt the pin holds ~2s (bCtpAwaitingRespawn gates fires)
+	// then respawns. bCtpPutting marks an in-progress putt-out sequence (fires stay allowed); CtpStrokes
+	// counts approach + putts for the putt-out score. The pin RNG + scoring live in UPracticeModeSubsystem.
+	GolfsimPractice::EPracticeMode CtpMode = GolfsimPractice::EPracticeMode::Free;
+	bool bCtpScorePending = false;
+	bool bCtpAwaitingRespawn = false;
+	bool bCtpPutting = false;
+	int32 CtpStrokes = 0;
+	FTimerHandle CtpRespawnTimer;
+
+	void SpawnNextCtpPin();                                  // pick + place the next pin via the subsystem
+	void OnCtpShotSettled(AGolfBallActor* Ball);            // score the settled shot / drive the putt-out loop
+	void TeleportPawnForPutt(const FVector& BallWorld, const FVector& PinWorld);   // stand behind the lie, face the pin
+	void EndCtpPuttSequence();                              // restore the tee pose after holing out
+	void StartCtpRespawnTimer();                            // 2 s gap, then SpawnNextCtpPin
+	void RefreshCtpScoreboard();                            // push session stats to the panel
 };

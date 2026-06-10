@@ -227,6 +227,7 @@ void UShotHistorySubsystem::OnShotOutcome(const FGolfEvent& Event)
 	Entry.TotalM          = Out.TotalM;
 	Entry.LateralOffsetM  = Out.LateralOffsetM;
 	Entry.FinalLie        = Out.FinalLie;
+	Entry.Mode            = CurrentMode;
 
 	AppendOne(Entry);
 }

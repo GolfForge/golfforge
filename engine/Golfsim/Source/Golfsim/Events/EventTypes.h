@@ -35,6 +35,7 @@ enum class EEventKind : uint8
 	RoundComplete,      // round.complete       -- GOL-115 -- a single-player round ends (all 18 played)
 	HoleStart,          // hole.start           -- GOL-115 -- pawn teed up on a new hole
 	HoleComplete,       // hole.complete        -- GOL-115 -- a hole was holed out (or abandoned at stroke cap)
+	PracticeShotScored, // practice.shot_scored -- GOL-73 -- a CTP attempt was scored (distance / strokes)
 };
 
 /**
@@ -204,6 +205,32 @@ struct FRoundCompleteEvent : public FGolfEvent
 	UPROPERTY() TArray<int32> PerHoleStrokes;   // length == TotalHoles from the round.start
 
 	FRoundCompleteEvent() { Kind = EEventKind::RoundComplete; }
+};
+
+/**
+ * practice.shot_scored -- a closest-to-the-pin attempt was scored (GOL-73). Published by
+ * UPracticeModeSubsystem when the HUD reports a settled carry-only shot or a completed putt-out
+ * sequence. Local, non-replicated (like shot.outcome). Distance fields are the carry-only metric;
+ * Strokes/bPuttedOut carry the putt-out metric. Best/Avg are the running session stats AFTER this
+ * attempt, so a readout can repaint from the event alone. Decoupled from GolfsimPractice's enum --
+ * the consumer needs the numbers, not the mode type.
+ */
+USTRUCT()
+struct FPracticeShotScoredEvent : public FGolfEvent
+{
+	GENERATED_BODY()
+
+	UPROPERTY() double DistanceToPinM = 0.0;   // final lie -> pin, XY (the carry-only score)
+	UPROPERTY() int32  Strokes = 1;            // 1 for carry-only; n (approach + putts) for putt-out
+	UPROPERTY() bool   bPuttedOut = false;     // true if the attempt was holed out with the putter
+	UPROPERTY() int32  AttemptIndex = 0;       // 1-based position in the session
+
+	UPROPERTY() double BestDistanceM = 0.0;    // session best (closest) after this attempt
+	UPROPERTY() double AvgDistanceM = 0.0;     // session mean distance
+	UPROPERTY() int32  BestStrokes = 0;        // session fewest strokes (putt-out)
+	UPROPERTY() double AvgStrokes = 0.0;       // session mean strokes (putt-out)
+
+	FPracticeShotScoredEvent() { Kind = EEventKind::PracticeShotScored; }
 };
 
 namespace GolfsimEvents

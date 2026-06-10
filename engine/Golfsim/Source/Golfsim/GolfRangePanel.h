@@ -51,6 +51,22 @@ public:
 	// (a real LM owns the stream). The HUD sets it alongside SetLaunchMonitorStatus.
 	void SetPrimaryActionLabel(const FString& Label);
 
+	// GOL-73: practice-mode dropdown ("Free Play" / "Closest to Pin"). The HUD owns the option list.
+	void SetModeOptions(const TArray<FString>& Names);
+	void SetSelectedModeIndex(int32 Index);
+
+	// GOL-73: push the CTP settings into the spinboxes/checkboxes (defaults at startup, or after a
+	// console change). Values are in display units (yards). Suppress-guarded so it won't re-emit.
+	void SetCtpConfigValues(double MinYd, double MaxYd, bool bSideOffset, bool bPuttOut, double WithinYd);
+
+	// GOL-73: repaint the CTP scoreboard. The HUD formats per mode (yards for carry-only, strokes for
+	// putt-out), so the panel just displays the strings + the shot count.
+	void SetCtpScore(const FString& ThisStr, const FString& BestStr, const FString& AvgStr, int32 Shots);
+
+	// GOL-73: show/hide the CTP settings cluster + scoreboard (visible only in Closest-to-Pin mode,
+	// and never in a round). Mirrors SetRangeControlsVisible.
+	void SetCtpControlsVisible(bool bVisible);
+
 	// Populate the Time-of-day / Sky / Camera / Launch-monitor dropdowns. The HUD owns the option lists.
 	void SetTimeOptions(const TArray<FString>& Names);
 	void SetSkyOptions(const TArray<FString>& Names);
@@ -94,6 +110,11 @@ public:
 	TFunction<void(double)> OnPinChanged;       // user dragged/edited the Pin spinner
 	TFunction<void(bool)>   OnPuttModeChanged;  // user toggled "Putt from green"
 
+	// GOL-73: user picked a practice mode (0 = Free Play, 1 = Closest to Pin).
+	TFunction<void(int32)> OnModeChosen;
+	// GOL-73: user changed any CTP setting; all values reported together (display units = yards).
+	TFunction<void(double /*MinYd*/, double /*MaxYd*/, bool /*bSideOffset*/, bool /*bPuttOut*/, double /*WithinYd*/)> OnCtpConfigChanged;
+
 	// The telemetry readout's primary button (Swing / Sim shot). The HUD routes it by mode: game ->
 	// advance the swing meter; a connected LM -> ask the active driver to emit a shot.
 	TFunction<void()> OnPrimaryAction;
@@ -114,8 +135,18 @@ protected:
 	UFUNCTION() void HandlePinValueChanged(float Value);
 	UFUNCTION() void HandlePuttModeChanged(bool bChecked);
 
+	// GOL-73 CTP control handlers. The spin/check handlers all funnel through EmitCtpConfig so a single
+	// OnCtpConfigChanged carries the whole config every time.
+	UFUNCTION() void HandleModeSelectionChanged(FString SelectedItem, ESelectInfo::Type SelectionType);
+	UFUNCTION() void HandleCtpMinChanged(float Value);
+	UFUNCTION() void HandleCtpMaxChanged(float Value);
+	UFUNCTION() void HandleCtpSideChanged(bool bChecked);
+	UFUNCTION() void HandleCtpPuttOutChanged(bool bChecked);
+	UFUNCTION() void HandleCtpWithinChanged(float Value);
+
 private:
 	void BuildTree();
+	void EmitCtpConfig();   // read all CTP controls -> OnCtpConfigChanged (no-op while suppressed)
 
 	// Shared body for the dropdowns: ignore programmatic re-broadcasts, report genuine picks via
 	// OnChosen, then hand keyboard focus back to the game so Space/1-6/arrows still reach gameplay.
@@ -127,6 +158,7 @@ private:
 	void SetComboIndexGuarded(UComboBoxString* Combo, int32 Index);
 
 	// Control-bar dropdowns.
+	UPROPERTY(Transient) TObjectPtr<UComboBoxString> ModeCombo;   // GOL-73 Free Play / Closest to Pin
 	UPROPERTY(Transient) TObjectPtr<UComboBoxString> ClubCombo;
 	UPROPERTY(Transient) TObjectPtr<UComboBoxString> TimeCombo;
 	UPROPERTY(Transient) TObjectPtr<UComboBoxString> SkyCombo;
@@ -160,9 +192,24 @@ private:
 	UPROPERTY(Transient) TObjectPtr<UTextBlock> PinActualText;
 	UPROPERTY(Transient) TObjectPtr<UCheckBox> PuttModeBox;
 
+	// GOL-73 CTP settings cluster (hidden unless Closest-to-Pin mode is active).
+	UPROPERTY(Transient) TObjectPtr<UHorizontalBox> CtpControlsRow;
+	UPROPERTY(Transient) TObjectPtr<USpinBox> CtpMinBox;
+	UPROPERTY(Transient) TObjectPtr<USpinBox> CtpMaxBox;
+	UPROPERTY(Transient) TObjectPtr<UCheckBox> CtpSideBox;
+	UPROPERTY(Transient) TObjectPtr<UCheckBox> CtpPuttOutBox;
+	UPROPERTY(Transient) TObjectPtr<USpinBox> CtpWithinBox;
+	// GOL-73 CTP scoreboard (This / Best / Avg / Shots).
+	UPROPERTY(Transient) TObjectPtr<UHorizontalBox> CtpScoreRow;
+	UPROPERTY(Transient) TObjectPtr<UTextBlock> CtpValThis;
+	UPROPERTY(Transient) TObjectPtr<UTextBlock> CtpValBest;
+	UPROPERTY(Transient) TObjectPtr<UTextBlock> CtpValAvg;
+	UPROPERTY(Transient) TObjectPtr<UTextBlock> CtpValShots;
+
 	// True while we programmatically set a ComboBox selection, so the resulting OnSelectionChanged
 	// broadcast doesn't loop back into gameplay.
 	bool bSuppressSelectionCallback = false;
 	bool bSuppressPinCallback = false;     // same guard for the Pin spinner
 	bool bSuppressPuttCallback = false;    // same guard for the Putt-mode checkbox
+	bool bSuppressCtpCallback = false;     // GOL-73: guard for programmatic CTP control writes
 };

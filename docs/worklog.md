@@ -2,6 +2,23 @@
 
 > Dated milestone summaries, newest on top. The durable outcome + the committed artifact, not the blow-by-blow — process detail lives in git history, `docs/ue5-cookbook.md`, and the scripts themselves.
 
+## 2026-06-09 — v0.0.6-alpha — Windows cook + release (Windows)
+
+Cooked and zipped the Windows build of v0.0.6-alpha. `GolfForge-windows-x64-v0.0.6-alpha.zip`
+(~1.37 GB / 1,401 MB) is staged at `C:\Users\pucho\golfforge-build-0.0.6\` for the GitHub Release.
+
+- **Headline since v0.0.5:** GOL-73 **closest-to-pin practice mode** (entered from the Practice
+  main-menu tile), on top of GOL-39 cross-surface ground roll + green spin-back and GOL-34 bunkers.
+- `ProjectVersion` → 0.0.6-alpha. Win64 Development cook via `RunUAT BuildCookRun` (documented flag
+  set: `-build -cook -unversionedcookedcontent -pak -prereqs -nodebuginfo -manifests -stage -package
+  -archive`), all 6 `MapsToCook` (PracticeRange + 5 demo tracks). **4m31s, exit 0.**
+- Post-cook: staged all 6 `courses/<id>/` dirs into `<stage>/courses/` (excluded QA overlays +
+  `_tilecache` raw aerial tiles + gitignored intermediates), renamed `Golfsim.exe` → `GolfForge.exe`,
+  `Compress-Archive`. Zip is ~2× v0.0.5's Windows zip — 5 cooked tracks (vs 1) + the alpha-3 facelift
+  assets. No `Saved/` in the stage (clean).
+- **User-driven (in parallel):** GitHub Release `v0.0.6-alpha` — tag, upload the zip, mark pre-release;
+  README/screenshot refresh optional. macOS arm64 cook follows from the Mac side per prior cadence.
+
 ## 2026-06-09 — GOL-73: closest-to-pin practice mode (carry + flat-green putt-out) (Windows)
 
 Layered the CTP drill on top of the range: a pin spawns at a random distance, the player hits, the

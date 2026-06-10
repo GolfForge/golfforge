@@ -7,6 +7,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Templates/Function.h"
 #include "Physics/BallFlightTypes.h"
 
 /**
@@ -40,6 +41,7 @@ struct FSurfaceRoll
 	double Restitution = 0.35;             // vertical coefficient of restitution (COR) per bounce, 0..1
 	double BounceHorizontalKeep = 0.55;    // horizontal-speed retention per bounce, 0..1 (GOL-38)
 	double SpinCheck = 0.20;               // how strongly landing backspin kills the initial scrape (0 = none, 1 = full at RefSpin)
+	double SpinBackGain = 0.0;             // GOL-39: backward launch speed (m/s) at full spin once checked; >0 only on Green
 };
 
 /** Result of the ground-roll pass. RollSamples is the post-bounce ground polyline for the visualizer. */
@@ -66,12 +68,31 @@ namespace GolfBallFlight
 	FSurfaceRoll PutterSurfaceRoll(double StimpFt);
 
 	/**
-	 * Compute bounce + roll from a flight's landing state.
+	 * Compute bounce + roll from a flight's landing state on a SINGLE surface.
 	 * @param Flight  a valid, landed flight trajectory (reads its landing sample velocity + spin)
-	 * @param Lie     the surface the ball landed on (selects the roll behavior)
+	 * @param Lie     the surface the ball landed on (selects the roll behavior + green spin-back)
 	 * @param C       roll coefficients for that surface (usually SurfaceRollFor(Lie))
+	 *
+	 * Thin wrapper over SimulateGroundRollCrossSurface with a constant surface + coefficients, so the
+	 * result is identical to the pre-GOL-39 single-surface model (within stepped-roll tolerance).
 	 */
 	FGroundRollResult SimulateGroundRoll(const FBallTrajectory& Flight, EGolfLie Lie, const FSurfaceRoll& C);
+
+	/**
+	 * GOL-39 cross-surface bounce + roll: re-samples the surface as the ball rolls/bounces and swaps
+	 * coefficients at boundaries (fairway -> bunker on roll-out, green -> rough on overshoot, etc.),
+	 * and applies green spin-back (a sufficiently spun, steeply-descending ball checks on a green and
+	 * rolls BACKWARD). Pure-SI + headless: the surface is queried through callbacks so tests can feed
+	 * a synthetic field and no world/asset is required.
+	 *
+	 * @param Flight     a valid, landed flight trajectory
+	 * @param SurfaceAt  launch-local position (meters, the same frame as Flight) -> EGolfLie
+	 * @param CoefsFor   lie -> roll coefficients (usually &SurfaceRollFor)
+	 */
+	FGroundRollResult SimulateGroundRollCrossSurface(
+		const FBallTrajectory& Flight,
+		TFunctionRef<EGolfLie(const FVector&)> SurfaceAt,
+		TFunctionRef<FSurfaceRoll(EGolfLie)> CoefsFor);
 }
 
 /** EGolfLie <-> protocol lie string (docs/event-protocol.md): "fairway"/"rough"/"bunker"/... */

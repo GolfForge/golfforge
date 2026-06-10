@@ -2,6 +2,30 @@
 
 > Dated milestone summaries, newest on top. The durable outcome + the committed artifact, not the blow-by-blow — process detail lives in git history, `docs/ue5-cookbook.md`, and the scripts themselves.
 
+## 2026-06-09 — GOL-39: cross-surface ground roll + green spin-back (Windows)
+
+Did the two structural items of GOL-39 that need no launch-monitor data (GOL-38 multi-bounce and
+GOL-40 lie detection were already done). Coefficient *calibration* + a designer-tunable layer are
+deferred to an LM-gated follow-up (GOL-195); coefficients stay code-seeded.
+
+- **Cross-surface roll:** new `GolfBallFlight::SimulateGroundRollCrossSurface(Flight, SurfaceAt,
+  CoefsFor)` re-samples the surface (via callbacks, so it stays pure-SI/headless) at each bounce
+  touchdown and each roll step, swapping `FSurfaceRoll` coefficients at boundaries. A ball rolling
+  fairway -> bunker now drags to a stop in the sand (test: all-fairway rest 16.2 m vs
+  fairway->bunker rest 6.4 m past a 5 m boundary) — the missing gameplay half of GOL-34. The closed-
+  form roll became a stepped integrator that **telescopes to the old `Vh^2/(2a)` exactly**, so the
+  single-surface `SimulateGroundRoll` (now a thin wrapper) is numerically identical — driver total
+  still 279.7 yd.
+- **Green spin-back (real backward travel):** a green ball arriving with enough backspin + steep
+  descent checks forward, then rolls BACKWARD (test: 9000 rpm / 48° lands and ends 4.06 m *behind*
+  its pitch mark; 2000 rpm rolls forward; same spin on fairway rolls forward — green-only). New
+  `FSurfaceRoll.SpinBackGain` knob (green-only); green `SpinCheck` nudged 0.55 -> 0.70 so the forward
+  roll is small enough for the spin-back to dominate.
+- `Events/EventBusSubsystem.cpp`: full shots now take the cross-surface path; putts stay single-
+  surface (stimp-aware green, GOL-109). 3 new tests; `Golfsim.GroundRoll` 12/12 green, full suite green.
+- **Remaining (separate ticket):** per-surface coefficient calibration vs Square Omni LM data +
+  promote the table to a tunable layer (UDataAsset/UDeveloperSettings).
+
 ## 2026-06-09 — GOL-34: bunker depressions — pipeline-side heightmap sculpting (Windows)
 
 Turned flat painted sand polygons into believable traps by sculpting a depressed sand floor +

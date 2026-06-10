@@ -312,6 +312,102 @@ bool FGolfsimGroundRollPutterShortTest::RunTest(const FString& /*Parameters*/)
 	return true;
 }
 
+// --- GOL-39 cross-surface roll: a ball rolling fairway -> bunker grabs in the sand --------------
+// Pure-roll landing (shallow descent, low spin -> no hops) so the boundary crossing happens during
+// the roll phase. With a bunker beyond x=5 m, the ball decelerates hard once it crosses in.
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FGolfsimGroundRollCrossSurfaceTest, "Golfsim.GroundRoll.CrossSurfaceFairwayToBunker",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FGolfsimGroundRollCrossSurfaceTest::RunTest(const FString& /*Parameters*/)
+{
+	const FBallTrajectory Land = MakeLanding(/*speed*/10.0, /*descent*/5.0, /*spin*/500.0);
+	const double Boundary = 5.0;   // meters along the roll: fairway before, bunker after
+
+	auto AllFairway = [](const FVector&) { return EGolfLie::Fairway; };
+	auto Mixed = [Boundary](const FVector& P) { return P.X < Boundary ? EGolfLie::Fairway : EGolfLie::Bunker; };
+
+	const FGroundRollResult Far = GolfBallFlight::SimulateGroundRollCrossSurface(
+		Land, AllFairway, &GolfBallFlight::SurfaceRollFor);
+	const FGroundRollResult Trap = GolfBallFlight::SimulateGroundRollCrossSurface(
+		Land, Mixed, &GolfBallFlight::SurfaceRollFor);
+
+	TestTrue(TEXT("both rolls valid"), Far.bValid && Trap.bValid);
+	TestTrue(TEXT("ball reaches the sand (past the boundary)"), Trap.RestPositionM.X > Boundary);
+	TestTrue(TEXT("sand stops it shortly past the boundary"), Trap.RestPositionM.X < Boundary + 3.0);
+	TestTrue(TEXT("crossing into the bunker shortens the roll vs all-fairway"),
+		Trap.RestPositionM.X < Far.RestPositionM.X - 5.0);
+
+	AddInfo(FString::Printf(TEXT("all-fairway rest %.1f m, fairway->bunker rest %.1f m (boundary %.0f m)"),
+		Far.RestPositionM.X, Trap.RestPositionM.X, Boundary));
+	return true;
+}
+
+// --- GOL-39 single-surface equivalence: a constant surface == the 3-arg wrapper -----------------
+// Guards the refactor: SimulateGroundRollCrossSurface with a constant-fairway field must reproduce
+// the single-surface SimulateGroundRoll exactly (the stepped roll telescopes to the closed form).
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FGolfsimGroundRollEquivalenceTest, "Golfsim.GroundRoll.CrossSurfaceConstantEqualsSingle",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FGolfsimGroundRollEquivalenceTest::RunTest(const FString& /*Parameters*/)
+{
+	FShotInput Drive;
+	Drive.BallSpeedMps = 74.6;
+	Drive.LaunchAngleDeg = 10.9;
+	Drive.BackspinRpm = 2686.0;
+	const FBallTrajectory Flight = GolfBallFlight::Simulate(Drive);
+
+	const FGroundRollResult Single = GolfBallFlight::SimulateGroundRoll(
+		Flight, EGolfLie::Fairway, GolfBallFlight::SurfaceRollFor(EGolfLie::Fairway));
+	auto Fairway = [](const FVector&) { return EGolfLie::Fairway; };
+	const FGroundRollResult Cross = GolfBallFlight::SimulateGroundRollCrossSurface(
+		Flight, Fairway, &GolfBallFlight::SurfaceRollFor);
+
+	TestEqual(TEXT("same sample count"), Cross.RollSamples.Num(), Single.RollSamples.Num());
+	TestTrue(TEXT("same roll distance"), FMath::Abs(Cross.RollDistanceM - Single.RollDistanceM) < 1e-6);
+	TestTrue(TEXT("same rest X"), FMath::Abs(Cross.RestPositionM.X - Single.RestPositionM.X) < 1e-6);
+	return true;
+}
+
+// --- GOL-39 green spin-back: a high-spin, steep wedge checks and rolls BACKWARD on a green -------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FGolfsimGroundRollSpinBackTest, "Golfsim.GroundRoll.GreenSpinBack",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FGolfsimGroundRollSpinBackTest::RunTest(const FString& /*Parameters*/)
+{
+	auto Green   = [](const FVector&) { return EGolfLie::Green; };
+	auto Fairway = [](const FVector&) { return EGolfLie::Fairway; };
+
+	// High backspin + steep descent on a green: lands at origin, ends BEHIND it (negative X).
+	const FGroundRollResult HighSpin = GolfBallFlight::SimulateGroundRollCrossSurface(
+		MakeLanding(/*speed*/18.0, /*descent*/48.0, /*spin*/9000.0), Green, &GolfBallFlight::SurfaceRollFor);
+	// Low backspin on the same green: rolls forward, no spin-back.
+	const FGroundRollResult LowSpin = GolfBallFlight::SimulateGroundRollCrossSurface(
+		MakeLanding(18.0, 48.0, 2000.0), Green, &GolfBallFlight::SurfaceRollFor);
+	// Same high spin on a fairway: spin-back is green-only, so it rolls forward.
+	const FGroundRollResult HighSpinFairway = GolfBallFlight::SimulateGroundRollCrossSurface(
+		MakeLanding(18.0, 48.0, 9000.0), Fairway, &GolfBallFlight::SurfaceRollFor);
+
+	TestTrue(TEXT("high-spin green ball ends behind its landing (X < 0)"), HighSpin.RestPositionM.X < -0.5);
+	TestTrue(TEXT("low-spin green ball rolls forward (X > 0)"), LowSpin.RestPositionM.X > 0.0);
+	TestTrue(TEXT("high spin on fairway rolls forward (green-only spin-back)"), HighSpinFairway.RestPositionM.X > 0.0);
+	TestTrue(TEXT("more spin -> further back than less spin"), HighSpin.RestPositionM.X < LowSpin.RestPositionM.X);
+
+	// A backward leg actually exists (some sample moving toward the tee, velocity.X < 0).
+	bool bSawBackward = false;
+	for (const FTrajectorySample& S : HighSpin.RollSamples)
+	{
+		if (S.VelocityMps.X < -1e-3) { bSawBackward = true; break; }
+	}
+	TestTrue(TEXT("emits a backward-moving sample run"), bSawBackward);
+
+	AddInfo(FString::Printf(TEXT("spin-back: high-spin rest %.2f m, low-spin rest %.2f m, fairway rest %.2f m"),
+		HighSpin.RestPositionM.X, LowSpin.RestPositionM.X, HighSpinFairway.RestPositionM.X));
+	return true;
+}
+
 // --- Lie <-> protocol string round-trips -------------------------------------------------------
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FGolfsimGroundRollLieStringTest, "Golfsim.GroundRoll.LieStringRoundTrip",

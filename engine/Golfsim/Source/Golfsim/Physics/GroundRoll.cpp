@@ -5,7 +5,6 @@ namespace
 	constexpr double GravityMps2 = 9.81;
 	constexpr double Tiny = 1e-6;
 	constexpr double RefSpinRpm = 6000.0;   // landing-spin scale: spin/this -> spin factor in [0,1]
-	constexpr double MinVisibleRollM = 0.05;
 
 	// GOL-38 bounce-phase tunables. Apply ABOVE the per-surface FSurfaceRoll knobs.
 	constexpr int32  MaxBounces       = 6;        // cap so a high-spring surface can't infinite-loop
@@ -15,7 +14,15 @@ namespace
 	constexpr double RollSampleDt     = 0.06;     // matches the GOL-9 rate; preserves caller timing
 	constexpr int32  HopSamplesMin    = 4;
 	constexpr int32  HopSamplesMax    = 30;
-	constexpr int32  RollSamplesMax   = 120;
+	constexpr int32  RollStepsMax     = 4000;     // safety cap on the stepped roll (no infinite loop on ~0 friction)
+
+	// GOL-39 green spin-back tunables. A green ball that arrives with enough backspin and a steep
+	// enough descent checks forward, then rolls BACKWARD. Backward launch speed (m/s) =
+	//   SpinBackGain * clamp((spin - Threshold)/Scale, 0, 1) * clamp(descentDeg/SteepRef, 0, 1)
+	// then a green-friction roll backward to rest. Gated on EGolfLie::Green AND SpinBackGain > 0.
+	constexpr double SpinBackThresholdRpm = 3500.0;   // below this landing spin, no spin-back
+	constexpr double SpinBackSpinScaleRpm = 4000.0;   // spin span (above threshold) over which gain ramps to full
+	constexpr double SpinBackSteepRefDeg  = 40.0;     // descent at/above which spin-back is fully effective
 }
 
 FString LieToProtocol(EGolfLie Lie)
@@ -58,29 +65,35 @@ namespace GolfBallFlight
 		C.Restitution          = 0.0;
 		C.BounceHorizontalKeep = 1.0;
 		C.SpinCheck            = 0.0;
+		C.SpinBackGain         = 0.0;   // a putt scrapes; residual putt spin doesn't bite
 		return C;
 	}
 
 	FSurfaceRoll SurfaceRollFor(EGolfLie Lie)
 	{
-		// { RollFriction, Restitution (V-COR), BounceHorizontalKeep, SpinCheck }.
-		// GOL-38 recalibration: Restitution is now the vertical bounce coefficient and
-		// BounceHorizontalKeep is per-bounce horizontal decay. Hand-checked driver lands
-		// ~280 yd fairway total (carry ~264 + 3 visible hops + a short roll).
+		// { RollFriction, Restitution (V-COR), BounceHorizontalKeep, SpinCheck, SpinBackGain }.
+		// GOL-38: Restitution is the vertical bounce coefficient, BounceHorizontalKeep the per-bounce
+		// horizontal decay. Hand-checked driver lands ~280 yd fairway total (carry ~264 + 3 hops +
+		// short roll). GOL-39: added SpinBackGain (green-only backward roll) and raised Green SpinCheck
+		// 0.55 -> 0.70 so a high-spin wedge's forward roll is small enough for the spin-back to dominate
+		// (real greens check hard). Magnitudes stay provisional until Square Omni LM data lands.
 		switch (Lie)
 		{
-		case EGolfLie::Fairway:  return { 0.30, 0.35, 0.55, 0.20 };  // 3 visible hops then a few m of roll
-		case EGolfLie::Rough:    return { 0.65, 0.20, 0.40, 0.15 };  // grass grabs -> 1-2 small hops, short roll
-		case EGolfLie::Green:    return { 0.22, 0.30, 0.50, 0.55 };  // smooth, but backspin bites the scrape
-		case EGolfLie::Bunker:   return { 3.00, 0.05, 0.10, 0.10 };  // plugs -> essentially no hops, no roll
-		case EGolfLie::Tee:      return { 0.32, 0.35, 0.55, 0.20 };
-		case EGolfLie::CartPath: return { 0.05, 0.65, 0.85, 0.00 };  // hardpan -> high hops and a long run
-		case EGolfLie::OB:       return { 0.65, 0.25, 0.40, 0.10 };
-		default:                 return { 0.30, 0.35, 0.55, 0.20 };  // Unknown -> fairway-like fallback
+		case EGolfLie::Fairway:  return { 0.30, 0.35, 0.55, 0.20, 0.0 };  // 3 visible hops then a few m of roll
+		case EGolfLie::Rough:    return { 0.65, 0.20, 0.40, 0.15, 0.0 };  // grass grabs -> 1-2 small hops, short roll
+		case EGolfLie::Green:    return { 0.22, 0.30, 0.50, 0.70, 4.5 };  // smooth; backspin checks hard + spins back
+		case EGolfLie::Bunker:   return { 3.00, 0.05, 0.10, 0.10, 0.0 };  // plugs -> essentially no hops, no roll
+		case EGolfLie::Tee:      return { 0.32, 0.35, 0.55, 0.20, 0.0 };
+		case EGolfLie::CartPath: return { 0.05, 0.65, 0.85, 0.00, 0.0 };  // hardpan -> high hops and a long run
+		case EGolfLie::OB:       return { 0.65, 0.25, 0.40, 0.10, 0.0 };
+		default:                 return { 0.30, 0.35, 0.55, 0.20, 0.0 };  // Unknown -> fairway-like fallback
 		}
 	}
 
-	FGroundRollResult SimulateGroundRoll(const FBallTrajectory& Flight, EGolfLie /*Lie*/, const FSurfaceRoll& C)
+	FGroundRollResult SimulateGroundRollCrossSurface(
+		const FBallTrajectory& Flight,
+		TFunctionRef<EGolfLie(const FVector&)> SurfaceAt,
+		TFunctionRef<FSurfaceRoll(EGolfLie)> CoefsFor)
 	{
 		FGroundRollResult R;
 		if (!Flight.bValid || !Flight.Samples.IsValidIndex(Flight.LandingSampleIndex))
@@ -105,26 +118,36 @@ namespace GolfBallFlight
 		}
 		const FVector Dir = Horiz / Vh;
 
+		// Launch-local point at signed distance s along Dir (negative s = back toward the tee), height z.
+		auto PointAt = [&](double s, double z) -> FVector
+		{
+			return FVector(LandPos.X + Dir.X * s, LandPos.Y + Dir.Y * s, z);
+		};
+
+		// The landing surface drives the one-time scrape; re-sampled per hop/step below.
+		FSurfaceRoll C = CoefsFor(SurfaceAt(PointAt(0.0, 0.0)));
+
 		// Initial landing scrape: a steep descent digs in more, landing backspin checks the run-out.
-		// Applied ONCE on first contact (no per-bounce re-attenuation; the surface table's
-		// BounceHorizontalKeep handles subsequent bounces). SpinAtten hits BOTH horizontal AND
-		// vertical -- high spin bleeds into ground deformation + rotation on the first contact,
-		// so a high-spin wedge bounces lower (real check-up), not just shorter horizontally.
+		// Applied ONCE on first contact. SpinAtten hits BOTH horizontal AND vertical -- high spin
+		// bleeds into ground deformation + rotation, so a high-spin wedge bounces lower (real
+		// check-up), not just shorter horizontally.
 		const double DescentAtten = FMath::Clamp(FMath::Cos(FMath::DegreesToRadians(Flight.DescentAngleDeg)), 0.0, 1.0);
 		const double SpinFactor   = FMath::Clamp(Flight.LandingSpinRpm / RefSpinRpm, 0.0, 1.0);
 		const double SpinAtten    = FMath::Clamp(1.0 - C.SpinCheck * SpinFactor, 0.0, 1.0);
 		Vh *= DescentAtten * SpinAtten;
 
 		double VvDown      = FMath::Max(0.0, -LandVel.Z) * SpinAtten;   // downward speed at landing (m/s), bled by spin
-		double DistAccum   = 0.0;                           // horizontal distance from landing
+		double DistAccum   = 0.0;                           // signed horizontal distance from landing
 		double TimeAccum   = 0.0;                           // time since landing
 		int32  NumBounces  = 0;
 
-		// --- Bounce phase: emit 0..MaxBounces parabolic hops --------------------------------------
-		// Each iteration: vertical COR launches Vv_out upward; horizontal speed decays by
-		// BounceHorizontalKeep; the parabola lasts t = 2*Vv_out/g and is sampled HopSampleDt-ish.
+		// --- Bounce phase: emit 0..MaxBounces parabolic hops, re-classifying at each touchdown -----
+		// Cross-surface: a hop from fairway into a bunker picks up the bunker's coefficients (tiny
+		// Restitution) at the next touchdown and stops bouncing.
 		while (NumBounces < MaxBounces && Vh > Tiny)
 		{
+			C = CoefsFor(SurfaceAt(PointAt(DistAccum, 0.0)));   // surface at this touchdown
+
 			const double VvOut = FMath::Max(C.Restitution, 0.0) * VvDown;
 			if (VvOut < MinBounceVvMps)
 			{
@@ -157,9 +180,7 @@ namespace GolfBallFlight
 					: FMath::Max(VvOut * T - 0.5 * GravityMps2 * T * T, 0.0);
 				FTrajectorySample Sample;
 				Sample.TimeSeconds   = Flight.FlightTimeS + TimeAccum + T;
-				Sample.PositionMeters = FVector(LandPos.X + Dir.X * (DistAccum + S),
-				                                LandPos.Y + Dir.Y * (DistAccum + S),
-				                                Z);
+				Sample.PositionMeters = PointAt(DistAccum + S, Z);
 				Sample.VelocityMps    = FVector(Dir.X * Vh, Dir.Y * Vh, VvOut - GravityMps2 * T);
 				R.RollSamples.Add(Sample);
 			}
@@ -170,33 +191,77 @@ namespace GolfBallFlight
 			++NumBounces;
 		}
 
-		// --- Roll phase: constant-friction slide from the current state ---------------------------
-		const double Accel   = FMath::Max(C.RollFriction, Tiny) * GravityMps2;
-		const double RollDist = (Vh > Tiny) ? (Vh * Vh) / (2.0 * Accel) : 0.0;
-		if (RollDist >= MinVisibleRollM)
+		// --- Roll phase: stepped constant-friction slide, re-sampling the surface each step --------
+		// For a single surface this telescopes to the closed-form RollDist = Vh^2/(2a) exactly; the
+		// stepping is what lets friction change at a boundary (fairway -> bunker stops fast in sand).
 		{
-			const double TStop = Vh / Accel;
-			const int32 NumRollSteps = FMath::Clamp(FMath::RoundToInt(TStop / RollSampleDt), 1, RollSamplesMax);
-			R.RollSamples.Reserve(R.RollSamples.Num() + NumRollSteps);
-			for (int32 i = 1; i <= NumRollSteps; ++i)
+			int32 Steps = 0;
+			while (Vh > Tiny && Steps < RollStepsMax)
 			{
-				const double T = (i == NumRollSteps) ? TStop : (TStop * i) / NumRollSteps;
-				const double S = FMath::Min(Vh * T - 0.5 * Accel * T * T, RollDist);
-				const double V = FMath::Max(Vh - Accel * T, 0.0);
+				C = CoefsFor(SurfaceAt(PointAt(DistAccum, 0.0)));
+				const double Accel  = FMath::Max(C.RollFriction, Tiny) * GravityMps2;
+				const double DtStep = FMath::Min(RollSampleDt, Vh / Accel);   // clip the final step to stop exactly
+				const double S      = Vh * DtStep - 0.5 * Accel * DtStep * DtStep;
+
+				DistAccum += S;
+				TimeAccum += DtStep;
+				Vh = FMath::Max(Vh - Accel * DtStep, 0.0);
+
 				FTrajectorySample Sample;
-				Sample.TimeSeconds    = Flight.FlightTimeS + TimeAccum + T;
-				Sample.PositionMeters = FVector(LandPos.X + Dir.X * (DistAccum + S),
-				                                LandPos.Y + Dir.Y * (DistAccum + S),
-				                                0.0);
-				Sample.VelocityMps    = Dir * V;
+				Sample.TimeSeconds    = Flight.FlightTimeS + TimeAccum;
+				Sample.PositionMeters = PointAt(DistAccum, 0.0);
+				Sample.VelocityMps    = Dir * Vh;
 				R.RollSamples.Add(Sample);
+				++Steps;
 			}
-			DistAccum += RollDist;
 		}
 
-		R.RestPositionM = FVector(LandPos.X + Dir.X * DistAccum, LandPos.Y + Dir.Y * DistAccum, 0.0);
+		// --- GOL-39 green spin-back: a green ball that arrived with enough backspin + steep descent
+		// checks forward (above), then rolls BACKWARD here. Gated on the rest surface being Green and
+		// that surface's SpinBackGain > 0. The backward leg stays single-surface (green) for v1.
+		{
+			const EGolfLie    RestLie = SurfaceAt(PointAt(DistAccum, 0.0));
+			const FSurfaceRoll GC     = CoefsFor(RestLie);
+			if (RestLie == EGolfLie::Green && GC.SpinBackGain > 0.0
+				&& Flight.LandingSpinRpm > SpinBackThresholdRpm)
+			{
+				const double SpinFrac  = FMath::Clamp((Flight.LandingSpinRpm - SpinBackThresholdRpm) / SpinBackSpinScaleRpm, 0.0, 1.0);
+				const double SteepFrac = FMath::Clamp(Flight.DescentAngleDeg / SpinBackSteepRefDeg, 0.0, 1.0);
+				double Vback = GC.SpinBackGain * SpinFrac * SteepFrac;
+				const double Accel = FMath::Max(GC.RollFriction, Tiny) * GravityMps2;
+				int32 Steps = 0;
+				while (Vback > Tiny && Steps < RollStepsMax)
+				{
+					const double DtStep = FMath::Min(RollSampleDt, Vback / Accel);
+					const double S      = Vback * DtStep - 0.5 * Accel * DtStep * DtStep;
+					DistAccum -= S;                     // backward = toward the tee along Dir
+					TimeAccum += DtStep;
+					Vback = FMath::Max(Vback - Accel * DtStep, 0.0);
+
+					FTrajectorySample Sample;
+					Sample.TimeSeconds    = Flight.FlightTimeS + TimeAccum;
+					Sample.PositionMeters = PointAt(DistAccum, 0.0);
+					Sample.VelocityMps    = -Dir * Vback;
+					R.RollSamples.Add(Sample);
+					++Steps;
+				}
+			}
+		}
+
+		R.RestPositionM = PointAt(DistAccum, 0.0);
 		R.RollDistanceM = DistAccum;
 		R.TotalDistanceM = FMath::Sqrt(R.RestPositionM.X * R.RestPositionM.X + R.RestPositionM.Y * R.RestPositionM.Y);
 		return R;
+	}
+
+	FGroundRollResult SimulateGroundRoll(const FBallTrajectory& Flight, EGolfLie Lie, const FSurfaceRoll& C)
+	{
+		// Single-surface: constant lie + constant coefficients. Identical to the pre-GOL-39 model
+		// (the stepped roll telescopes to the old closed form); green spin-back still fires when
+		// Lie == Green and C.SpinBackGain > 0 (e.g. SurfaceRollFor(Green), but not a putt).
+		return SimulateGroundRollCrossSurface(
+			Flight,
+			[Lie](const FVector&) { return Lie; },
+			[&C](EGolfLie) { return C; });
 	}
 }

@@ -123,14 +123,16 @@ void UEventBusSubsystem::OnShotTaken(const FGolfEvent& Event)
 	if (T.bValid && SurfaceProvider)
 	{
 		const EGolfLie LandingLie = SurfaceProvider(T.LandingPositionM);
-		// GOL-109: putter-tagged shots override the per-surface coefficients with stimp-aware
-		// green friction. The bounce loop self-skips (Vv ~ 0) so the trajectory is roll-only.
-		// Final lie stays whatever the splatmap reports -- only friction is treated as green.
+		// GOL-109: putter-tagged shots override the per-surface coefficients with stimp-aware green
+		// friction and stay single-surface (a putt scrapes on the green). The bounce loop self-skips
+		// (Vv ~ 0) so the trajectory is roll-only.
+		// GOL-39: full shots re-sample the surface as they roll, so coefficients change at boundaries
+		// (fairway -> bunker on roll-out, green -> rough on overshoot) and green spin-back applies.
 		const bool bIsPutt = Shot.Club.Equals(TEXT("Putter"), ESearchCase::IgnoreCase);
-		const FSurfaceRoll Coefs = bIsPutt
-			? GolfBallFlight::PutterSurfaceRoll(UEventBusSubsystem::GreenStimpFt)
-			: GolfBallFlight::SurfaceRollFor(LandingLie);
-		const FGroundRollResult Roll = GolfBallFlight::SimulateGroundRoll(T, LandingLie, Coefs);
+		const FGroundRollResult Roll = bIsPutt
+			? GolfBallFlight::SimulateGroundRoll(T, LandingLie,
+				GolfBallFlight::PutterSurfaceRoll(UEventBusSubsystem::GreenStimpFt))
+			: GolfBallFlight::SimulateGroundRollCrossSurface(T, SurfaceProvider, &GolfBallFlight::SurfaceRollFor);
 		if (Roll.bValid)
 		{
 			Out.TotalM         = Roll.TotalDistanceM;

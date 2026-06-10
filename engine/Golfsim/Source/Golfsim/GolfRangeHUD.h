@@ -148,6 +148,11 @@ public:
 	void ApplyCtpConfig(double MinYd, double MaxYd, bool bSideOffset, bool bPuttOut, double WithinYd);
 	bool IsCtpActive() const { return CtpMode == GolfsimPractice::EPracticeMode::ClosestToPin; }
 
+	// GOL-75: putting drill. Same SetPracticeMode entry point (Mode = Putting). ApplyPuttingConfig
+	// pushes the panel's FEET sliders + scoring toggle into the subsystem; the next pin uses them.
+	void ApplyPuttingConfig(double MinFt, double MaxFt, bool bHoleOut);
+	bool IsPuttingActive() const { return CtpMode == GolfsimPractice::EPracticeMode::Putting; }
+
 	// GOL-117: true while URoundSubsystem reports an active single-player round. Range HUD uses
 	// this to (a) skip the Tick respawn of its own pin, (b) early-return from ApplyPinDistance so
 	// the spinner / console SetPin can't fight the URoundPinSubsystem-owned pin.
@@ -344,18 +349,22 @@ private:
 	double CurrentPinSideYd = 0.0;   // GOL-73: active pin's lateral offset (yd, + = right); 0 = centerline
 
 	// --- GOL-73 closest-to-pin practice mode -------------------------------------------------------
-	// CtpMode is the active drill. A CTP shot pends scoring until the ball settles (bCtpScorePending,
-	// resolved in Tick). After a scored attempt the pin holds ~2s (bCtpAwaitingRespawn gates fires)
-	// then respawns. bCtpPutting marks an in-progress "play it out" putt sequence (fires stay allowed,
-	// putts are NOT scored). The pin RNG + scoring live in UPracticeModeSubsystem.
+	// CtpMode is the active drill (CTP or, GOL-75, Putting). A practice shot pends scoring until the
+	// ball settles (bCtpScorePending, resolved in Tick). After a scored attempt the pin holds ~2s
+	// (bCtpAwaitingRespawn gates fires) then respawns. bCtpPutting marks an in-progress "play it out"
+	// putt sequence (fires stay allowed). In CTP putts are NOT scored; in Putting mode every putt is a
+	// counted stroke (PuttStrokeCount) and the attempt scores at hole-out. RNG + scoring live in
+	// UPracticeModeSubsystem.
 	GolfsimPractice::EPracticeMode CtpMode = GolfsimPractice::EPracticeMode::Free;
 	bool bCtpScorePending = false;
 	bool bCtpAwaitingRespawn = false;
 	bool bCtpPutting = false;
+	int32 PuttStrokeCount = 0;                               // GOL-75: putts taken on the current putting pin
 	FTimerHandle CtpRespawnTimer;
 
 	void SpawnNextCtpPin();                                  // pick + place the next pin via the subsystem
 	void OnCtpShotSettled(AGolfBallActor* Ball);            // score the settled shot / drive the putt-out loop
+	void OnPuttingShotSettled(AGolfBallActor* Ball);       // GOL-75: count the putt / score at hole-out / next pin
 	void TeleportPawnForPutt(const FVector& BallWorld, const FVector& PinWorld);   // stand behind the lie, face the pin
 	void EndCtpPuttSequence();                              // restore the tee pose after holing out
 	void StartCtpRespawnTimer();                            // 2 s gap, then SpawnNextCtpPin

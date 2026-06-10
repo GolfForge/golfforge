@@ -58,6 +58,20 @@ void UPracticeModeSubsystem::StartCtpSession(const FCtpConfig& InConfig)
 		Config.MinM, Config.MaxM, Config.bSideOffset ? 1 : 0, Config.bPuttOut ? 1 : 0);
 }
 
+void UPracticeModeSubsystem::StartPuttingSession(const FCtpConfig& InConfig)
+{
+	Mode = EPracticeMode::Putting;
+	Config = InConfig;
+	Session = FCtpSession{};
+	Session.Mode = EPracticeMode::Putting;
+
+	Stream.Initialize((int32)(FDateTime::Now().GetTicks() & 0x7FFFFFFF));
+
+	UE_LOG(LogTemp, Display, TEXT("golfsim Practice: Putting session started [min=%.1fft max=%.1fft score=%s]"),
+		Config.MinM / MetersPerFoot, Config.MaxM / MetersPerFoot,
+		Config.Score == EScoreMode::HoleOut ? TEXT("hole-out") : TEXT("distance"));
+}
+
 void UPracticeModeSubsystem::EndSession()
 {
 	Mode = EPracticeMode::Free;
@@ -79,6 +93,16 @@ void UPracticeModeSubsystem::RecordCarry(double DistanceM)
 	PublishScored(A);
 }
 
+void UPracticeModeSubsystem::RecordHoleOut(int32 Putts, double FinalDistanceM)
+{
+	FCtpAttempt A;
+	A.DistanceM  = FinalDistanceM;
+	A.Strokes    = FMath::Max(1, Putts);
+	A.bPuttedOut = true;
+	RecordAttempt(Session, A);
+	PublishScored(A);
+}
+
 void UPracticeModeSubsystem::PublishScored(const FCtpAttempt& Attempt)
 {
 	UEventBusSubsystem* EBus = EventBusWeak.Get();
@@ -88,7 +112,7 @@ void UPracticeModeSubsystem::PublishScored(const FCtpAttempt& Attempt)
 	}
 
 	FPracticeShotScoredEvent Ev;
-	Ev.Source         = TEXT("practice-ctp");
+	Ev.Source         = (Mode == EPracticeMode::Putting) ? TEXT("practice-putting") : TEXT("practice-ctp");
 	Ev.PlayerId       = GolfsimEvents::LocalPlayerId();
 	Ev.DistanceToPinM = Attempt.DistanceM;
 	Ev.Strokes        = Attempt.Strokes;

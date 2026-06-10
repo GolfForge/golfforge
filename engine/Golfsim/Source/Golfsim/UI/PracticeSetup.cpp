@@ -31,8 +31,8 @@ namespace
 		  TEXT("Hold shrinking island greens, club by club. Coming soon."),
 		  EIcon::Flag, false },
 		{ TEXT("Putting"),
-		  TEXT("Lag putting and green-reading drills on the practice green. Coming soon."),
-		  EIcon::FlagTriangleRight, false },
+		  TEXT("A pin spawns at a random short distance you set (in feet). Putt it out — score by putts-to-hole or how close you finish."),
+		  EIcon::FlagTriangleRight, true },
 	};
 	constexpr int32 GDrillNum = sizeof(GDrills) / sizeof(GDrills[0]);
 }
@@ -163,8 +163,9 @@ void UPracticeSetup::HandleBackClicked()
 void UPracticeSetup::HandleStartClicked()
 {
 	if (SelectedIndex < 0) { return; }
-	// Only Closest to Pin is wired this milestone (index 0); the others are disabled seam cards.
-	if (SelectedIndex == 0 && OnStartCtp) { OnStartCtp(); }
+	// Closest to Pin (index 0) and Putting (index 2) are wired; Islands (index 1) stays a seam card.
+	if      (SelectedIndex == 0 && OnStartCtp)     { OnStartCtp(); }
+	else if (SelectedIndex == 2 && OnStartPutting) { OnStartPutting(); }
 }
 
 FReply UPracticeSetup::NativeOnKeyDown(const FGeometry& Geo, const FKeyEvent& KeyEvent)

@@ -2,11 +2,11 @@
 // the player straight into a CTP-rigged range. A full-screen GolfForge overlay (dim backdrop + a
 // centered glass panel) that presents the available drills as selectable cards with a one-line "what
 // it does", mirroring the Round Setup wizard's card pattern (reuses UI/OptionCard). Pick a drill +
-// Start -> the HUD enters that practice mode on the live range. Islands / Putting are seam cards
-// ("Coming soon") until GOL-74 / GOL-75 land.
+// Start -> the HUD enters that practice mode on the live range. Closest-to-Pin and Putting (GOL-75)
+// are wired; Islands stays a seam card ("Coming soon") until GOL-74 lands.
 //
-// Dumb view: reports the chosen drill via OnStartCtp (only Closest-to-Pin is wired this milestone);
-// the HUD owns the flow (dismiss the menu, enter CTP). Esc / Back -> OnClose returns to the menu.
+// Dumb view: reports the chosen drill via OnStartCtp / OnStartPutting; the HUD owns the flow (dismiss
+// the menu, enter the mode). Esc / Back -> OnClose returns to the menu.
 
 #pragma once
 
@@ -24,8 +24,9 @@ class GOLFSIM_API UPracticeSetup : public UUserWidget
 	GENERATED_BODY()
 
 public:
-	TFunction<void()> OnStartCtp;   // user chose Closest to Pin + Start
-	TFunction<void()> OnClose;      // Back / Esc -> return to the main menu
+	TFunction<void()> OnStartCtp;       // user chose Closest to Pin + Start
+	TFunction<void()> OnStartPutting;   // GOL-75: user chose Putting + Start
+	TFunction<void()> OnClose;          // Back / Esc -> return to the main menu
 
 	void ResetSelection();          // call on open: clear the highlighted card + disable Start
 

@@ -133,4 +133,58 @@ bool FGolfsimPracticePuttOutStatsTest::RunTest(const FString&)
 	return true;
 }
 
+// GOL-75 putting defaults: a short 5-30 ft range, hole-out scoring, always played out, and every
+// pin draw lands inside that range (well within the lane, so no clamping interferes).
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FGolfsimPracticePuttingDefaultsTest, "Golfsim.Practice.PuttingDefaults",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FGolfsimPracticePuttingDefaultsTest::RunTest(const FString&)
+{
+	const FCtpConfig Cfg = MakePuttingDefaults();
+	TestEqual(TEXT("min = 5 ft"), Cfg.MinM, 5.0 * MetersPerFoot);
+	TestEqual(TEXT("max = 30 ft"), Cfg.MaxM, 30.0 * MetersPerFoot);
+	TestTrue(TEXT("scores by hole-out"), Cfg.Score == EScoreMode::HoleOut);
+	TestTrue(TEXT("always putt out"), Cfg.bPuttOut);
+	TestFalse(TEXT("no side offset"), Cfg.bSideOffset);
+
+	FRandomStream Stream(2024);
+	for (int32 i = 0; i < 500; ++i)
+	{
+		const FCtpPin Pin = NextPin(Cfg, Stream);
+		TestTrue(TEXT("pin >= 5 ft"),  Pin.DistanceM >= 5.0  * MetersPerFoot - KINDA_SMALL_NUMBER);
+		TestTrue(TEXT("pin <= 30 ft"), Pin.DistanceM <= 30.0 * MetersPerFoot + KINDA_SMALL_NUMBER);
+		TestEqual(TEXT("dead ahead"), Pin.SideOffsetM, 0.0);
+	}
+	return true;
+}
+
+// GOL-75 putting scoring: hole-out records putts-to-hole (best = fewest, avg), while a distance-to-pin
+// attempt records a single stroke + the rest distance. Mirrors how the HUD feeds the subsystem.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FGolfsimPracticePuttingScoringTest, "Golfsim.Practice.PuttingScoring",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FGolfsimPracticePuttingScoringTest::RunTest(const FString&)
+{
+	FCtpSession S;
+	S.Mode = EPracticeMode::Putting;
+
+	// Hole-out: three holed putts of 2, 3, 1 strokes (DistanceM ~0 at the cup, bPuttedOut = true).
+	for (int32 Putts : { 2, 3, 1 })
+	{
+		FCtpAttempt A; A.DistanceM = 0.05; A.Strokes = Putts; A.bPuttedOut = true;
+		RecordAttempt(S, A);
+	}
+	TestEqual(TEXT("count 3"), AttemptCount(S), 3);
+	TestEqual(TEXT("best = fewest (1)"), BestStrokes(S), 1);
+	TestEqual(TEXT("avg = 2 putts"), AvgStrokes(S), 2.0);
+	TestEqual(TEXT("last = 1 putt"), LastStrokes(S), 1);
+
+	// Distance-to-pin: a single putt, scored by rest distance (one stroke, not played out).
+	FCtpSession D;
+	D.Mode = EPracticeMode::Putting;
+	FCtpAttempt A; A.DistanceM = 0.6; A.Strokes = 1; A.bPuttedOut = false;
+	RecordAttempt(D, A);
+	TestEqual(TEXT("one stroke"), LastStrokes(D), 1);
+	TestEqual(TEXT("rest distance 0.6 m"), LastDistanceM(D), 0.6);
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

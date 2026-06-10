@@ -2,6 +2,28 @@
 
 > Dated milestone summaries, newest on top. The durable outcome + the committed artifact, not the blow-by-blow — process detail lives in git history, `docs/ue5-cookbook.md`, and the scripts themselves.
 
+## 2026-06-10 — GOL-75: putting practice mode — logic (drill + feet settings + scored hole-out) (Windows)
+
+The putting epic's **game mode** (Phase A of the remainder; the physics was finished earlier today).
+A focused putting drill that **extends the CTP scaffold** rather than forking a new subsystem.
+
+- **Putting drill.** New `EPracticeMode::Putting`: a pin spawns at a random short distance, the player
+  putts from the tee with the putter, and **every putt is a counted stroke**. Holing out within the
+  gimme scores **putts-to-hole**; a `DistanceToPin` toggle instead scores the first putt by rest
+  distance. Reuses the pin RNG, lane clamps, gimme cup check (`IsWithinGimme`), and putt-teleport from
+  CTP — the differences are stroke counting + scoring + feet display.
+- **Pure core (headless).** `EScoreMode { HoleOut, DistanceToPin }` + `FCtpConfig::Score`,
+  `MakePuttingDefaults()` (5–30 ft, hole-out, always played out, tight 1-ft gimme), `MetersPerFoot`.
+  Distances stay SI; feet is a UI-boundary concern. The existing `Strokes`/`BestStrokes`/`AvgStrokes`
+  accessors already modeled scored strokes, so this was mostly wiring.
+- **Subsystem / HUD / panel / picker.** `StartPuttingSession` + `RecordHoleOut`; HUD putt-counting
+  flow + feet/putts scoreboard; panel feet min/max (5-ft steps) + scoring toggle + a disabled
+  line-preview seam (a break-aware ideal path needs an aim solver — deferred); the "Putting" practice
+  card is now live. Reuses `FPracticeShotScoredEvent` (`source = practice-putting`), no schema change.
+- **Tests.** `Golfsim.Practice.PuttingDefaults` + `Golfsim.Practice.PuttingScoring`. Suite **92/92**.
+- **Next (Phase B):** a dedicated `PuttingGreen.umap` built from a real famous contoured green via the
+  LIDAR+OSM pipeline (site gated on data coverage) so the break physics plays on genuine slopes.
+
 ## 2026-06-10 — GOL-75: green break (roll follows the fall line) + round surface classification (Windows)
 
 Putts (and any rolling ball) now **break along the slope**, and a round classifies the **real painted

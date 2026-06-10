@@ -280,7 +280,9 @@ Final scorecard. `per_hole_strokes` is parallel to hole 1..`total_holes` (index 
 
 #### `practice.shot_scored`
 
-A closest-to-the-pin (CTP) practice attempt was scored (GOL-73). Published by `UPracticeModeSubsystem` when the range HUD reports a settled carry-only shot, or a completed putt-out sequence. Local + non-replicated, like `session.shot_outcome`. `distance_to_pin_m` is the carry-only score (lie→pin, XY); `strokes`/`putted_out` carry the putt-out score. `best_*`/`avg_*` are the running session stats *after* this attempt, so a readout can repaint from the event alone.
+A practice attempt was scored. Published by `UPracticeModeSubsystem` when the range HUD reports a settled shot. Local + non-replicated, like `session.shot_outcome`. `distance_to_pin_m` is the distance score (lie→pin, XY); `strokes`/`putted_out` carry the stroke score. `best_*`/`avg_*` are the running session stats *after* this attempt, so a readout can repaint from the event alone.
+
+Both practice drills publish this event (the consumer needs the numbers, not the mode): **closest-to-the-pin** (GOL-73) scores by `distance_to_pin_m` on a settled carry, with `putted_out` putts left unscored; **putting** (GOL-75) reuses the same event rather than adding a `practice.putt_scored` — in hole-out scoring `strokes` is the putts-to-hole count (`putted_out` true), and in distance-to-pin scoring `strokes` is 1 with `distance_to_pin_m` the rest distance. `source` is `practice-ctp` or `practice-putting`.
 
 ```json
 {

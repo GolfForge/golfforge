@@ -2,6 +2,19 @@
 
 namespace GolfsimPractice
 {
+	FCtpConfig MakePuttingDefaults()
+	{
+		FCtpConfig Cfg;
+		Cfg.MinM         = 5.0  * MetersPerFoot;   // 5 ft -- a tap-in drill at the short end
+		Cfg.MaxM         = 30.0 * MetersPerFoot;   // 30 ft -- a long lag at the far end
+		Cfg.bSideOffset  = false;                  // putting pins sit dead ahead; offset is a CTP knob
+		Cfg.bPuttOut     = true;                   // putting is always played out to the cup
+		Cfg.PuttWithinM  = CorridorMaxM;           // no approach gate -- the first shot is already a putt
+		Cfg.GimmeRadiusFt = 1.0;                   // hole it; a tight cup tolerance, not a range gimme
+		Cfg.Score        = EScoreMode::HoleOut;    // the putting headline metric: putts-to-hole
+		return Cfg;
+	}
+
 	FCtpPin NextPin(const FCtpConfig& Config, FRandomStream& Stream)
 	{
 		// Normalize the order so a Min > Max config (e.g. a mis-entered spinner) still yields a sane

@@ -67,6 +67,12 @@ public:
 	// and never in a round). Mirrors SetRangeControlsVisible.
 	void SetCtpControlsVisible(bool bVisible);
 
+	// GOL-75: putting drill. Same scoreboard row as CTP (reused), a separate FEET min/max + scoring
+	// toggle control row, and a feet pin readout. The HUD pushes config in feet; suppress-guarded.
+	void SetPuttingControlsVisible(bool bVisible);
+	void SetPuttingConfigValues(double MinFt, double MaxFt, bool bHoleOut);
+	void SetPuttingPinInfo(double Ft);
+
 	// Populate the Time-of-day / Sky / Camera / Launch-monitor dropdowns. The HUD owns the option lists.
 	void SetTimeOptions(const TArray<FString>& Names);
 	void SetSkyOptions(const TArray<FString>& Names);
@@ -112,6 +118,8 @@ public:
 
 	// GOL-73: user changed any CTP setting; all values reported together (display units = yards).
 	TFunction<void(double /*MinYd*/, double /*MaxYd*/, bool /*bSideOffset*/, bool /*bPuttOut*/, double /*WithinYd*/)> OnCtpConfigChanged;
+	// GOL-75: user changed any putting setting; min/max in FEET + hole-out-vs-distance scoring toggle.
+	TFunction<void(double /*MinFt*/, double /*MaxFt*/, bool /*bHoleOut*/)> OnPuttingConfigChanged;
 	// GOL-73: user clicked "End drill" in the CTP cluster -> HUD returns to plain free-fire range.
 	TFunction<void()> OnEndPractice;
 
@@ -144,9 +152,15 @@ protected:
 	UFUNCTION() void HandleCtpWithinChanged(float Value);
 	UFUNCTION() void HandleEndPracticeClicked();
 
+	// GOL-75 putting control handlers -- all funnel through EmitPuttingConfig (one callback per change).
+	UFUNCTION() void HandlePuttMinChanged(float Value);
+	UFUNCTION() void HandlePuttMaxChanged(float Value);
+	UFUNCTION() void HandlePuttScoreChanged(bool bChecked);
+
 private:
 	void BuildTree();
 	void EmitCtpConfig();   // read all CTP controls -> OnCtpConfigChanged (no-op while suppressed)
+	void EmitPuttingConfig();   // read the putting controls -> OnPuttingConfigChanged (no-op while suppressed)
 
 	// Shared body for the dropdowns: ignore programmatic re-broadcasts, report genuine picks via
 	// OnChosen, then hand keyboard focus back to the game so Space/1-6/arrows still reach gameplay.
@@ -206,6 +220,14 @@ private:
 	UPROPERTY(Transient) TObjectPtr<UTextBlock> CtpValAvg;
 	UPROPERTY(Transient) TObjectPtr<UTextBlock> CtpValShots;
 	UPROPERTY(Transient) TObjectPtr<UButton> EndPracticeBtn;   // GOL-73 "End drill" -> back to free range
+
+	// GOL-75 putting settings cluster (hidden unless Putting mode is active). Reuses CtpScoreRow for
+	// the scoreboard; this is just the distinct input row (feet min/max + scoring + line-preview seam).
+	UPROPERTY(Transient) TObjectPtr<UHorizontalBox> PuttControlsRow;
+	UPROPERTY(Transient) TObjectPtr<USpinBox> PuttMinBox;
+	UPROPERTY(Transient) TObjectPtr<USpinBox> PuttMaxBox;
+	UPROPERTY(Transient) TObjectPtr<UCheckBox> PuttHoleOutBox;        // checked = hole-out; unchecked = distance-to-pin
+	UPROPERTY(Transient) TObjectPtr<UCheckBox> PuttLinePreviewBox;    // disabled seam (GOL-75 follow-up)
 
 	// True while we programmatically set a ComboBox selection, so the resulting OnSelectionChanged
 	// broadcast doesn't loop back into gameplay.

@@ -325,6 +325,52 @@ void UGolfRangePanel::BuildTree()
 		AddCell(MakeFaintLabel(TEXT("YD")), 0.f);
 	}
 
+	// GOL-75 putting controls: FEET min/max (5-ft steps) + scoring toggle + a disabled line-preview
+	// seam. Reuses the CTP scoreboard row below; only the inputs differ. Hidden unless Putting mode.
+	PuttControlsRow = WidgetTree->ConstructWidget<UHorizontalBox>();
+	if (UVerticalBoxSlot* PCS = RCol->AddChildToVerticalBox(PuttControlsRow)) { PCS->SetPadding(FMargin(0.f, 10.f, 0.f, 0.f)); }
+	{
+		auto AddCell = [&](UWidget* W, float RightPad)
+		{
+			if (UHorizontalBoxSlot* S = PuttControlsRow->AddChildToHorizontalBox(W))
+			{
+				S->SetVerticalAlignment(VAlign_Center);
+				S->SetPadding(FMargin(0.f, 0.f, RightPad, 0.f));
+			}
+		};
+		auto AddCheck = [&](UCheckBox* Box, const TCHAR* LabelText, float RightPad)
+		{
+			AddCell(Box, 6.f);
+			UTextBlock* L = WidgetTree->ConstructWidget<UTextBlock>();
+			L->SetText(FText::FromString(LabelText));
+			L->SetFont(Body(12));
+			L->SetColorAndOpacity(FSlateColor(Color::TextDim()));
+			AddCell(L, RightPad);
+		};
+
+		AddCell(MakeFaintLabel(TEXT("MIN")), 6.f);
+		PuttMinBox = MakeYdSpin(5.f, 60.f, 5.f, 70.f);   // feet (5-ft steps); the YdSpin is a generic int spin
+		PuttMinBox->OnValueChanged.AddDynamic(this, &UGolfRangePanel::HandlePuttMinChanged);
+		AddCell(PuttMinBox, 14.f);
+
+		AddCell(MakeFaintLabel(TEXT("MAX")), 6.f);
+		PuttMaxBox = MakeYdSpin(5.f, 60.f, 5.f, 70.f);
+		PuttMaxBox->OnValueChanged.AddDynamic(this, &UGolfRangePanel::HandlePuttMaxChanged);
+		AddCell(PuttMaxBox, 6.f);
+		AddCell(MakeFaintLabel(TEXT("FT")), 18.f);
+
+		PuttHoleOutBox = WidgetTree->ConstructWidget<UCheckBox>();
+		PuttHoleOutBox->OnCheckStateChanged.AddDynamic(this, &UGolfRangePanel::HandlePuttScoreChanged);
+		AddCheck(PuttHoleOutBox, TEXT("Hole-out scoring"), 18.f);
+
+		// Line preview is a GOL-75 follow-up (a break-aware ideal path needs an aim solver) -- show the
+		// control as a disabled seam so the option is discoverable without promising behavior yet.
+		PuttLinePreviewBox = WidgetTree->ConstructWidget<UCheckBox>();
+		PuttLinePreviewBox->SetIsEnabled(false);
+		PuttLinePreviewBox->SetToolTipText(FText::FromString(TEXT("Coming soon")));
+		AddCheck(PuttLinePreviewBox, TEXT("Line preview"), 0.f);
+	}
+
 	// CTP scoreboard: This / Best / Avg / Shots (reuses the telemetry tile look).
 	CtpScoreRow = WidgetTree->ConstructWidget<UHorizontalBox>();
 	if (UVerticalBoxSlot* CSS = RCol->AddChildToVerticalBox(CtpScoreRow)) { CSS->SetPadding(FMargin(0.f, 10.f, 0.f, 0.f)); }
@@ -351,8 +397,9 @@ void UGolfRangePanel::BuildTree()
 		}
 	}
 
-	// Hidden until the player switches into Closest-to-Pin mode.
+	// Hidden until the player switches into a practice drill.
 	SetCtpControlsVisible(false);
+	SetPuttingControlsVisible(false);
 
 	// ── Control bar (full-width bottom glass bar) ────────────────────────────────────────────────
 	// Flat edge-to-edge strip (no rounded corners / border) for a slicker look -- it spans the full
@@ -532,6 +579,43 @@ void UGolfRangePanel::HandleCtpMaxChanged(float)     { EmitCtpConfig(); }
 void UGolfRangePanel::HandleCtpSideChanged(bool)     { EmitCtpConfig(); }
 void UGolfRangePanel::HandleCtpPuttOutChanged(bool)  { EmitCtpConfig(); }
 void UGolfRangePanel::HandleCtpWithinChanged(float)  { EmitCtpConfig(); }
+
+// --- GOL-75 putting controls (feet) -------------------------------------------------------------
+
+void UGolfRangePanel::SetPuttingControlsVisible(bool bVisible)
+{
+	const ESlateVisibility V = bVisible ? ESlateVisibility::Visible : ESlateVisibility::Collapsed;
+	if (PuttControlsRow) { PuttControlsRow->SetVisibility(V); }
+	if (CtpScoreRow)     { CtpScoreRow->SetVisibility(V); }   // shared scoreboard
+}
+
+void UGolfRangePanel::SetPuttingConfigValues(double MinFt, double MaxFt, bool bHoleOut)
+{
+	bSuppressCtpCallback = true;   // same guard family -- CTP + putting are never active at once
+	if (PuttMinBox)     { PuttMinBox->SetValue((float)MinFt); }
+	if (PuttMaxBox)     { PuttMaxBox->SetValue((float)MaxFt); }
+	if (PuttHoleOutBox) { PuttHoleOutBox->SetIsChecked(bHoleOut); }
+	bSuppressCtpCallback = false;
+}
+
+void UGolfRangePanel::SetPuttingPinInfo(double Ft)
+{
+	if (CtpValPin) { CtpValPin->SetText(FText::FromString(FString::Printf(TEXT("%.0f ft"), Ft))); }
+}
+
+void UGolfRangePanel::EmitPuttingConfig()
+{
+	if (bSuppressCtpCallback || !OnPuttingConfigChanged) { return; }
+	const double MinFt    = PuttMinBox     ? PuttMinBox->GetValue()      : 5.0;
+	const double MaxFt    = PuttMaxBox     ? PuttMaxBox->GetValue()      : 30.0;
+	const bool   bHoleOut = PuttHoleOutBox ? PuttHoleOutBox->IsChecked() : true;
+	OnPuttingConfigChanged(MinFt, MaxFt, bHoleOut);
+	ReturnFocusToGameViewport();
+}
+
+void UGolfRangePanel::HandlePuttMinChanged(float)   { EmitPuttingConfig(); }
+void UGolfRangePanel::HandlePuttMaxChanged(float)   { EmitPuttingConfig(); }
+void UGolfRangePanel::HandlePuttScoreChanged(bool)  { EmitPuttingConfig(); }
 
 void UGolfRangePanel::HandleEndPracticeClicked()
 {

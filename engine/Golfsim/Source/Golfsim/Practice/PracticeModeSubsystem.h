@@ -29,6 +29,7 @@ public:
 
 	GolfsimPractice::EPracticeMode GetMode() const { return Mode; }
 	bool IsCtpActive() const { return Mode == GolfsimPractice::EPracticeMode::ClosestToPin; }
+	bool IsPuttingActive() const { return Mode == GolfsimPractice::EPracticeMode::Putting; }
 
 	const GolfsimPractice::FCtpConfig& GetConfig() const { return Config; }
 	void SetConfig(const GolfsimPractice::FCtpConfig& InConfig) { Config = InConfig; }
@@ -38,7 +39,11 @@ public:
 	/** Enter CTP: stamp the mode, reset the session, reseed the RNG. Call before the first NextPin. */
 	void StartCtpSession(const GolfsimPractice::FCtpConfig& InConfig);
 
-	/** Leave CTP back to free play (keeps the finished session readable until the next StartCtpSession). */
+	/** Enter the putting drill (GOL-75): same as StartCtpSession but stamps Mode = Putting. The HUD
+	 *  drives a putt-from-the-tee flow and reports holed attempts via RecordHoleOut. */
+	void StartPuttingSession(const GolfsimPractice::FCtpConfig& InConfig);
+
+	/** Leave the active drill back to free play (keeps the finished session readable until the next Start). */
 	void EndSession();
 
 	/** Pick the next pin via the owned (seeded-at-session-start) RNG. */
@@ -47,6 +52,10 @@ public:
 	/** Record a settled approach attempt (distance lie->pin, meters) + publish practice.shot_scored.
 	 *  This is the closest-to-pin score; putt-out, when enabled, is unscored "play it out". */
 	void RecordCarry(double DistanceM);
+
+	/** Record a holed putting attempt (GOL-75): Putts = strokes taken to hole, FinalDistanceM = the
+	 *  final lie->pin distance (~0 at the cup). Scores by strokes-to-hole + publishes practice.shot_scored. */
+	void RecordHoleOut(int32 Putts, double FinalDistanceM);
 
 private:
 	void PublishScored(const GolfsimPractice::FCtpAttempt& Attempt);

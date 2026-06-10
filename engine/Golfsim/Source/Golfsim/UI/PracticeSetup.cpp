@@ -41,6 +41,7 @@ void UPracticeSetup::NativeOnInitialized()
 {
 	Super::NativeOnInitialized();
 	SetVisibility(ESlateVisibility::Visible);   // absorb input while the picker is up
+	SetIsFocusable(true);   // so SetKeyboardFocus() works -> NativeOnKeyDown (Enter/Esc) fires
 	BuildTree();
 }
 

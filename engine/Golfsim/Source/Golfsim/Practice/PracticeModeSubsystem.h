@@ -44,11 +44,9 @@ public:
 	/** Pick the next pin via the owned (seeded-at-session-start) RNG. */
 	GolfsimPractice::FCtpPin NextPin();
 
-	/** Record a settled carry-only attempt (distance lie->pin, meters) + publish practice.shot_scored. */
+	/** Record a settled approach attempt (distance lie->pin, meters) + publish practice.shot_scored.
+	 *  This is the closest-to-pin score; putt-out, when enabled, is unscored "play it out". */
 	void RecordCarry(double DistanceM);
-
-	/** Record a completed putt-out attempt (total strokes + final lie->pin distance) + publish. */
-	void RecordPuttOut(int32 Strokes, double FinalDistanceM);
 
 private:
 	void PublishScored(const GolfsimPractice::FCtpAttempt& Attempt);

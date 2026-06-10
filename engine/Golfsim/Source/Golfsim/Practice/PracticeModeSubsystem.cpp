@@ -79,16 +79,6 @@ void UPracticeModeSubsystem::RecordCarry(double DistanceM)
 	PublishScored(A);
 }
 
-void UPracticeModeSubsystem::RecordPuttOut(int32 Strokes, double FinalDistanceM)
-{
-	FCtpAttempt A;
-	A.DistanceM = FinalDistanceM;
-	A.Strokes = FMath::Max(1, Strokes);
-	A.bPuttedOut = true;
-	RecordAttempt(Session, A);
-	PublishScored(A);
-}
-
 void UPracticeModeSubsystem::PublishScored(const FCtpAttempt& Attempt)
 {
 	UEventBusSubsystem* EBus = EventBusWeak.Get();

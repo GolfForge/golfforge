@@ -601,6 +601,7 @@ void AGolfRangeHUD::EnsureInputBound()
 	InputComponent->BindKey(EKeys::Right,    IE_Pressed,  this, &AGolfRangeHUD::TurnRightPressed);
 	InputComponent->BindKey(EKeys::Right,    IE_Released, this, &AGolfRangeHUD::TurnRightReleased);
 	InputComponent->BindKey(EKeys::M,        IE_Pressed,  this, &AGolfRangeHUD::ToggleManualDialog);
+	InputComponent->BindKey(EKeys::C,        IE_Pressed,  this, &AGolfRangeHUD::ToggleCameraMode);       // GOL-73 camera flip
 	InputComponent->BindKey(EKeys::H,        IE_Pressed,  this, &AGolfRangeHUD::ToggleHistoryFromKey);   // GOL-65
 	// Settings/credits menu. Escape works in packaged builds + PIE (the editor's Escape-stops-play
 	// only applies when the viewport hasn't captured focus); golfsim.Credits also opens it.
@@ -1374,13 +1375,12 @@ void AGolfRangeHUD::OnCtpShotSettled(AGolfBallActor* Ball)
 
 	if (bCtpPutting)
 	{
-		// This settle was a putt; it counts.
-		++CtpStrokes;
+		// Playing it out -- putts are practice only, never scored. The CTP score is the approach's
+		// distance from the pin (already recorded below when the approach settled). Putting out just
+		// lets the player finish the hole for realism, then the next pin spawns.
 		if (GolfsimRound::IsWithinGimme(BallWorld, PinWorld, Cfg.GimmeRadiusFt))
 		{
-			Sub->RecordPuttOut(CtpStrokes, DistM);
 			EndCtpPuttSequence();
-			RefreshCtpScoreboard();
 			StartCtpRespawnTimer();
 		}
 		else
@@ -1390,19 +1390,19 @@ void AGolfRangeHUD::OnCtpShotSettled(AGolfBallActor* Ball)
 		return;
 	}
 
-	// Approach shot. Putt-out enabled + finished close enough -> start a putt sequence (this shot is
-	// stroke 1); otherwise score the carry-only attempt and queue the next pin.
-	if (Cfg.bPuttOut && DistM <= Cfg.PuttWithinM)
-	{
-		CtpStrokes = 1;
-		TeleportPawnForPutt(BallWorld, PinWorld);
-		bCtpPutting = true;
-		return;
-	}
-
+	// Approach shot -- THIS is the closest-to-pin score (how close the approach finished to the pin).
+	// Always recorded by distance; putt-out, if on, is a separate unscored "play it out" sequence.
 	Sub->RecordCarry(DistM);
 	RefreshCtpScoreboard();
-	StartCtpRespawnTimer();
+	if (Cfg.bPuttOut && DistM <= Cfg.PuttWithinM)
+	{
+		TeleportPawnForPutt(BallWorld, PinWorld);   // close enough to putt -> play it out (not scored)
+		bCtpPutting = true;
+	}
+	else
+	{
+		StartCtpRespawnTimer();
+	}
 }
 
 void AGolfRangeHUD::TeleportPawnForPutt(const FVector& BallWorld, const FVector& PinWorld)
@@ -1440,7 +1440,6 @@ void AGolfRangeHUD::TeleportPawnForPutt(const FVector& BallWorld, const FVector&
 void AGolfRangeHUD::EndCtpPuttSequence()
 {
 	bCtpPutting = false;
-	CtpStrokes = 0;
 
 	APlayerController* PC = GetOwningPlayerController();
 	APawn* Pawn = PC ? PC->GetPawn() : nullptr;
@@ -1473,25 +1472,16 @@ void AGolfRangeHUD::RefreshCtpScoreboard()
 
 	const FCtpSession& S = Sub->GetSession();
 	const int32 Count = AttemptCount(S);
-	const bool bPuttOut = Sub->GetConfig().bPuttOut;
 
+	// CTP score is always distance-from-pin (yards). Putt-out, if on, is unscored play, so it never
+	// turns these into stroke counts.
 	auto YdStr = [](double M) { return FString::Printf(TEXT("%.1f yd"), M / MetersPerYard); };
-
 	FString ThisStr = TEXT("-"), BestStr = TEXT("-"), AvgStr = TEXT("-");
 	if (Count > 0)
 	{
-		if (bPuttOut)
-		{
-			ThisStr = FString::Printf(TEXT("%d"), LastStrokes(S));
-			BestStr = FString::Printf(TEXT("%d"), BestStrokes(S));
-			AvgStr  = FString::Printf(TEXT("%.1f"), AvgStrokes(S));
-		}
-		else
-		{
-			ThisStr = YdStr(LastDistanceM(S));
-			BestStr = YdStr(BestDistanceM(S));
-			AvgStr  = YdStr(AvgDistanceM(S));
-		}
+		ThisStr = YdStr(LastDistanceM(S));
+		BestStr = YdStr(BestDistanceM(S));
+		AvgStr  = YdStr(AvgDistanceM(S));
 	}
 	Panel->SetCtpScore(ThisStr, BestStr, AvgStr, Count);
 }
@@ -2361,6 +2351,14 @@ void AGolfRangeHUD::SetCameraMode(int32 Index)
 	bFollowParked = !Ball->IsPlaying();
 }
 
+void AGolfRangeHUD::ToggleCameraMode()
+{
+	if (InputGated()) { return; }
+	const int32 Next = bFollowCam ? 0 : 1;   // 0 = Tee, 1 = Follow
+	if (Panel) { Panel->SetSelectedCameraIndex(Next); }
+	SetCameraMode(Next);
+}
+
 void AGolfRangeHUD::OrbitPressed()
 {
 	if (!bFollowCam)
@@ -2432,17 +2430,31 @@ void AGolfRangeHUD::UpdateFollowCam(float DeltaSeconds)
 
 	if (!bFollowChasing)
 	{
-		// Parked on a settled ball and not orbiting: after FollowIdleReturnSeconds of inactivity, snap
-		// the view back to the Tee so the player is framed for the next shot (the ball often rests far
-		// downrange -- e.g. a long CTP target -- and watching it forever isn't useful).
+		// Parked on a settled ball and not orbiting: after FollowIdleReturnSeconds, re-frame the follow
+		// cam back onto the tee so the player is set for the next shot (the ball often rests far downrange
+		// -- e.g. a long CTP target). We do NOT switch the camera *mode* (Tee/Follow) -- auto-flipping the
+		// camera type is jarring; the player owns that choice (C key / dropdown). Just reset the framing.
 		if (bFollowParked)
 		{
 			FollowIdleSeconds += DeltaSeconds;
 			if (FollowIdleSeconds >= FollowIdleReturnSeconds)
 			{
 				FollowIdleSeconds = 0.f;
-				if (Panel) { Panel->SetSelectedCameraIndex(0); }
-				SetCameraMode(0);   // Tee view; clears bFollowCam / bFollowParked
+				bFollowParked = false;   // reframed -> stop counting until the next shot parks
+				if (Cam)
+				{
+					APlayerController* PC = GetOwningPlayerController();
+					APawn* Pawn = PC ? PC->GetPawn() : nullptr;
+					if (Pawn)
+					{
+						FRotator Aim = PC->GetControlRotation();
+						Aim.Pitch = 0.f; Aim.Roll = 0.f;
+						FVector TeeLoc;
+						FRotator TeeRot;
+						ComputeFollowPose(Pawn->GetActorLocation(), Aim.Vector(), TeeLoc, TeeRot);
+						Cam->SetActorLocationAndRotation(TeeLoc, TeeRot);
+					}
+				}
 			}
 		}
 		return;   // parked / idle and not orbiting -> leave the camera where it is

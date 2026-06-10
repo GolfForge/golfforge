@@ -228,6 +228,8 @@ private:
 	// SetCameraMode switches the view target; UpdateFollowCam (from Tick) chases the active ball and
 	// parks on the resting ball until the next shot or a switch back to Tee.
 	void SetCameraMode(int32 Index);
+	// GOL-73: C key -> flip Tee <-> Follow (and sync the Camera dropdown). Gated like other gameplay keys.
+	void ToggleCameraMode();
 	void UpdateFollowCam(float DeltaSeconds);
 	ACameraActor* GetOrSpawnFollowCam();
 
@@ -344,13 +346,12 @@ private:
 	// --- GOL-73 closest-to-pin practice mode -------------------------------------------------------
 	// CtpMode is the active drill. A CTP shot pends scoring until the ball settles (bCtpScorePending,
 	// resolved in Tick). After a scored attempt the pin holds ~2s (bCtpAwaitingRespawn gates fires)
-	// then respawns. bCtpPutting marks an in-progress putt-out sequence (fires stay allowed); CtpStrokes
-	// counts approach + putts for the putt-out score. The pin RNG + scoring live in UPracticeModeSubsystem.
+	// then respawns. bCtpPutting marks an in-progress "play it out" putt sequence (fires stay allowed,
+	// putts are NOT scored). The pin RNG + scoring live in UPracticeModeSubsystem.
 	GolfsimPractice::EPracticeMode CtpMode = GolfsimPractice::EPracticeMode::Free;
 	bool bCtpScorePending = false;
 	bool bCtpAwaitingRespawn = false;
 	bool bCtpPutting = false;
-	int32 CtpStrokes = 0;
 	FTimerHandle CtpRespawnTimer;
 
 	void SpawnNextCtpPin();                                  // pick + place the next pin via the subsystem

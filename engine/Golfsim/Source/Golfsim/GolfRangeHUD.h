@@ -298,6 +298,10 @@ private:
 	bool bFollowParked = false;
 	FVector FollowDownrangeDir = FVector::ForwardVector;
 	TWeakObjectPtr<ACameraActor> FollowCam;
+	// Seconds the follow cam has sat parked on a settled ball with no orbit/new-shot. At
+	// FollowIdleReturnSeconds the view snaps back to the Tee so the player is framed for the next shot.
+	float FollowIdleSeconds = 0.0f;
+	static constexpr float FollowIdleReturnSeconds = 3.0f;
 
 	// Orbit state (right-mouse drag around the ball). Angles are spherical about the ball; pending
 	// deltas accumulate from the mouse axes between Tick consumes.

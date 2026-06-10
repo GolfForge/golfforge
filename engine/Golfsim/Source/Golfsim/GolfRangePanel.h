@@ -59,6 +59,10 @@ public:
 	// putt-out), so the panel just displays the strings + the shot count.
 	void SetCtpScore(const FString& ThisStr, const FString& BestStr, const FString& AvgStr, int32 Shots);
 
+	// GOL-73: show the active pin's distance (+ optional side offset) so the player knows the target.
+	// SideYd: + = right of the centerline, - = left; |SideYd| < 1 shows distance only.
+	void SetCtpPinInfo(double Yd, double SideYd);
+
 	// GOL-73: show/hide the CTP settings cluster + scoreboard (visible only in Closest-to-Pin mode,
 	// and never in a round). Mirrors SetRangeControlsVisible.
 	void SetCtpControlsVisible(bool bVisible);
@@ -194,8 +198,9 @@ private:
 	UPROPERTY(Transient) TObjectPtr<UCheckBox> CtpSideBox;
 	UPROPERTY(Transient) TObjectPtr<UCheckBox> CtpPuttOutBox;
 	UPROPERTY(Transient) TObjectPtr<USpinBox> CtpWithinBox;
-	// GOL-73 CTP scoreboard (This / Best / Avg / Shots).
+	// GOL-73 CTP scoreboard (Pin / This / Best / Avg / Shots).
 	UPROPERTY(Transient) TObjectPtr<UHorizontalBox> CtpScoreRow;
+	UPROPERTY(Transient) TObjectPtr<UTextBlock> CtpValPin;
 	UPROPERTY(Transient) TObjectPtr<UTextBlock> CtpValThis;
 	UPROPERTY(Transient) TObjectPtr<UTextBlock> CtpValBest;
 	UPROPERTY(Transient) TObjectPtr<UTextBlock> CtpValAvg;

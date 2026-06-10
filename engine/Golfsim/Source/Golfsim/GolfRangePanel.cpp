@@ -328,6 +328,7 @@ void UGolfRangePanel::BuildTree()
 	// CTP scoreboard: This / Best / Avg / Shots (reuses the telemetry tile look).
 	CtpScoreRow = WidgetTree->ConstructWidget<UHorizontalBox>();
 	if (UVerticalBoxSlot* CSS = RCol->AddChildToVerticalBox(CtpScoreRow)) { CSS->SetPadding(FMargin(0.f, 10.f, 0.f, 0.f)); }
+	CtpValPin   = BuildTile(WidgetTree, CtpScoreRow, TEXT("PIN"),   false, false);
 	CtpValThis  = BuildTile(WidgetTree, CtpScoreRow, TEXT("THIS"),  true,  false);
 	CtpValBest  = BuildTile(WidgetTree, CtpScoreRow, TEXT("BEST"),  false, false);
 	CtpValAvg   = BuildTile(WidgetTree, CtpScoreRow, TEXT("AVG"),   false, false);
@@ -501,6 +502,17 @@ void UGolfRangePanel::SetCtpScore(const FString& ThisStr, const FString& BestStr
 	if (CtpValBest)  { CtpValBest->SetText(FText::FromString(BestStr)); }
 	if (CtpValAvg)   { CtpValAvg->SetText(FText::FromString(AvgStr)); }
 	if (CtpValShots) { CtpValShots->SetText(FText::FromString(FString::Printf(TEXT("%d"), Shots))); }
+}
+
+void UGolfRangePanel::SetCtpPinInfo(double Yd, double SideYd)
+{
+	if (!CtpValPin) { return; }
+	FString Text = FString::Printf(TEXT("%.0f yd"), Yd);
+	if (FMath::Abs(SideYd) >= 1.0)
+	{
+		Text += FString::Printf(TEXT("  %.0f%s"), FMath::Abs(SideYd), (SideYd >= 0.0) ? TEXT("R") : TEXT("L"));
+	}
+	CtpValPin->SetText(FText::FromString(Text));
 }
 
 void UGolfRangePanel::EmitCtpConfig()

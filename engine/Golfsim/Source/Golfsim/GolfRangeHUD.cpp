@@ -1344,6 +1344,7 @@ void AGolfRangeHUD::SpawnNextCtpPin()
 	CurrentPinYd     = NextPin.DistanceM   / MetersPerYard;
 	CurrentPinSideYd = NextPin.SideOffsetM / MetersPerYard;
 	ApplyPinDistance(CurrentPinYd);   // uses CurrentPinSideYd for the lateral placement
+	if (Panel) { Panel->SetCtpPinInfo(CurrentPinYd, CurrentPinSideYd); }   // tell the player the target
 	bCtpAwaitingRespawn = false;
 }
 
@@ -2273,6 +2274,7 @@ void AGolfRangeHUD::OnShotOutcome(const FGolfEvent& Event)
 		}
 		bFollowChasing = true;
 		bFollowParked = false;
+		FollowIdleSeconds = 0.f;   // new shot -> restart the idle-return countdown
 	}
 
 	if (Panel)
@@ -2411,6 +2413,7 @@ void AGolfRangeHUD::UpdateFollowCam(float DeltaSeconds)
 	// mid-flight. Overrides the chase framing for this frame.
 	if (bOrbiting && Cam && Ball)
 	{
+		FollowIdleSeconds = 0.f;   // the player is actively framing -> don't auto-return to the tee
 		constexpr float OrbitSens = 0.4f;   // deg per mouse unit
 		OrbitYawDeg += PendingOrbitDX * OrbitSens;
 		OrbitPitchDeg = FMath::Clamp(OrbitPitchDeg - PendingOrbitDY * OrbitSens, 3.f, 85.f);
@@ -2429,6 +2432,19 @@ void AGolfRangeHUD::UpdateFollowCam(float DeltaSeconds)
 
 	if (!bFollowChasing)
 	{
+		// Parked on a settled ball and not orbiting: after FollowIdleReturnSeconds of inactivity, snap
+		// the view back to the Tee so the player is framed for the next shot (the ball often rests far
+		// downrange -- e.g. a long CTP target -- and watching it forever isn't useful).
+		if (bFollowParked)
+		{
+			FollowIdleSeconds += DeltaSeconds;
+			if (FollowIdleSeconds >= FollowIdleReturnSeconds)
+			{
+				FollowIdleSeconds = 0.f;
+				if (Panel) { Panel->SetSelectedCameraIndex(0); }
+				SetCameraMode(0);   // Tee view; clears bFollowCam / bFollowParked
+			}
+		}
 		return;   // parked / idle and not orbiting -> leave the camera where it is
 	}
 	if (!Cam || !Ball)

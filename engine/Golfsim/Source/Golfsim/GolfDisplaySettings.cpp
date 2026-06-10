@@ -280,8 +280,8 @@ namespace GolfDisplay
 			TEXT("Elevation: USGS 3DEP / SRTM (public domain), via OpenTopography."),
 			TEXT("Unreal® Engine, Copyright 1998 - 2026, Epic Games, Inc. All rights reserved."),
 			TEXT(""),
-			TEXT("GolfForge is licensed under AGPL-3.0, plus a commercial option."),
-			TEXT("See LICENSE, COMMERCIAL.md, and ATTRIBUTION.md."),
+			TEXT("GolfForge is free and open source under the GNU AGPL-3.0."),
+			TEXT("See LICENSE and ATTRIBUTION.md."),
 		}, TEXT("\n"));
 	}
 

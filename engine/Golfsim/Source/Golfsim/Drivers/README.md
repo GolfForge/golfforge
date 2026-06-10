@@ -8,29 +8,26 @@ only ever sees the normalized `FShotTakenEvent`, never the hardware.
 > (OPS243-A Doppler radar + Raspberry Pi 5) and is the first concrete `ULaunchMonitorDriver`
 > implementation. Repo: github.com/jewbetcha/openflight.
 
-## ⚠️ License note — read before touching `OpenFlightDriver`
+## License note — read before touching `OpenFlightDriver`
 
-**OpenFlight and this project are both AGPL-3.0**, so there is no MIT-vs-AGPL "firewall" to police
-here. But the separate-process socket boundary still matters, for a different reason:
+**OpenFlight and this project are both AGPL-3.0.** Since GolfForge is AGPL-only (no commercial
+dual-license — dropped 2026-06-10), vendoring OpenFlight's AGPL source would be perfectly
+license-compatible. So this is **no longer a licensing constraint** — it's an architecture one.
 
-**This project is dual-licensed — AGPL-3.0 plus a paid commercial exception (`COMMERCIAL.md`).** To
-sell a commercial (closed-source) license we must own or hold permissive rights to *everything in
-our binary*. If we vendor or copy OpenFlight's AGPL source into our process, the binary then
-contains third-party copyleft we can't relicense — which would break the commercial-exception
-model. So we keep OpenFlight as a **separate process we talk to over a socket**, never code we
-absorb. (This also lines up with architecture invariants #1/#2: OpenFlight runs on the user's Pi or
-a localhost process and just publishes shots that our driver normalizes into `FShotTakenEvent`.)
+We keep OpenFlight as a **separate process we talk to over a socket** because that's the right shape
+(invariants #1/#2): OpenFlight runs on the user's Pi or a localhost process and just publishes shots
+that our driver normalizes into `FShotTakenEvent`. The sim never sees the hardware, only the
+normalized event. Process isolation also keeps a third-party connector's crashes/deps out of our
+binary.
 
 Rules:
 
-1. Do **not** vendor or copy OpenFlight source into our driver (it would taint our ability to offer
-   commercial licenses). Document their WebSocket protocol from their README/docs only — a schema is
-   facts, not code.
-2. Our driver runs in our binary; OpenFlight runs as a **separate process** (the user's Pi, or
-   `localhost` via its `--mock` mode). They communicate only over the socket.
-
-The same separate-process boundary applies to any future third-party-protocol driver: talk to it,
-don't absorb it.
+1. Our driver runs in our binary; OpenFlight runs as a **separate process** (the user's Pi, or
+   `localhost` via its `--mock` mode). They communicate only over the socket. Document their protocol
+   from their README/docs — a schema is facts, not code.
+2. If a future third-party connector is AGPL (or otherwise AGPL-compatible) and it ever makes sense to
+   absorb its code, that's now allowed by the license. Default to the separate-process boundary anyway
+   for the architecture reasons above; absorb only with a deliberate reason.
 
 ## Framework
 

@@ -156,10 +156,11 @@ See [`pipeline/README.md`](pipeline/README.md). Architecture and design notes li
 ## Contributing
 
 Bug reports and feature requests are very welcome via [Issues](../../issues). **We are not accepting
-external pull requests yet** — a Contributor License Agreement needs to land first so the project can
-keep its dual license. See [`CONTRIBUTING.md`](CONTRIBUTING.md) and the
-[Code of Conduct](CODE_OF_CONDUCT.md). Please report security issues privately per
-[`SECURITY.md`](SECURITY.md).
+external pull requests yet** while the foundations settle (a stability pause, not a licensing one).
+When PRs open, contributions will be under the project's AGPL-3.0 license with a
+[Developer Certificate of Origin](https://developercertificate.org/) sign-off (`git commit -s`) — no
+CLA. See [`CONTRIBUTING.md`](CONTRIBUTING.md) and the [Code of Conduct](CODE_OF_CONDUCT.md). Please
+report security issues privately per [`SECURITY.md`](SECURITY.md).
 
 ## Acknowledgements
 
@@ -179,13 +180,11 @@ GolfForge builds on excellent open-source work:
 
 ## License
 
-GolfForge is dual-licensed:
-
-- **[GNU AGPL-3.0](LICENSE)** — free and open source. Use, modify, and distribute under the AGPL,
-  including its network-use/copyleft terms (derivatives and networked deployments must make their
-  source available).
-- **Commercial license** — for closed-source/proprietary use that can't comply with the AGPL. See
-  [`COMMERCIAL.md`](COMMERCIAL.md).
+GolfForge is licensed under the **[GNU AGPL-3.0](LICENSE)** — free and open source, full stop. Use,
+modify, and distribute it under the AGPL, including its network-use/copyleft terms: derivatives and
+networked deployments (multiplayer or hosted servers) must make their complete corresponding source
+available under the AGPL. There is **no** separate commercial license — GolfForge is committed to
+staying open.
 
 Copyright (c) 2026 GolfForge contributors. The Unreal Engine is © Epic Games and used under the
 Unreal Engine EULA — it is not part of this project's license.

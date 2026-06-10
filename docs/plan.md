@@ -107,7 +107,7 @@ Walking integration deliberately lands before launch monitor — it's a bigger d
 
 ## Open decisions
 
-- **License — DECIDED (2026-05-28):** AGPL-3.0 + a paid commercial-exception dual-license (sell closed-source licenses; external contributions under a CLA). See `LICENSE`, `COMMERCIAL.md`, Linear GOL-43. Public name: **GolfForge**.
+- **License — DECIDED (2026-05-28), REVISED (2026-06-10):** **AGPL-3.0, single license** — the earlier commercial-exception dual-license was dropped. The goal is the best open sim (money comes from elsewhere), so GolfForge commits to staying AGPL: no commercial license, contributions under a **DCO** sign-off (not a CLA, so no relicensing rights are retained), and copyleft / public-domain / permissive inputs are embraced (non-commercial-only sources excluded). This trades away open-core revenue + the ability to ever go proprietary for a permanent open guarantee and freedom to use copyleft deps (e.g. a GPL/AGPL physics lib). See `LICENSE`, Linear GOL-43. Public name: **GolfForge**.
 - **Course IP.** Real course names vs. generic "Coastal Links" style. Closed-source competitors play this carefully. Probably real names with disclaimers and clear takedown process.
 - **Walking mode default.** Compressed (~3:1) is recommended default; strict 1:1 opt-in.
 - **Multiplayer host model.** PC-authoritative is the cleanest; needs decision on whether iPad-only households can host.

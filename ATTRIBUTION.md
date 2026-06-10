@@ -1,8 +1,13 @@
 # Data attribution
 
 GolfForge's course data is derived from open geographic data sources. Each source carries its own
-license and attribution requirement, independent of this project's own code license
-(`LICENSE` / `COMMERCIAL.md`) and of the third-party engine assets (`docs/ue5-cookbook.md`).
+license and attribution requirement, independent of this project's own code license (`LICENSE`,
+AGPL-3.0) and of the third-party engine assets (`docs/ue5-cookbook.md`).
+
+**Sourcing rule:** inputs must be **AGPL-compatible** — public-domain, permissive, or
+copyleft/share-alike (ODbL, CC-BY, CC-BY-SA, CC0) are all fine. **Non-commercial-only** sources
+(CC-BY-NC, and the Scottish Remote Sensing Portal's Phase 2 LAZ point clouds) are **excluded**,
+because AGPL must guarantee downstream commercial use and NC terms can't promise that.
 
 Packaged builds and any public reuse of the course data must carry the attributions below.
 

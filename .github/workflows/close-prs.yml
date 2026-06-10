@@ -1,8 +1,8 @@
 name: Close external PRs
 
-# GolfForge isn't accepting external pull requests yet (CLA + governance pending; see
-# CONTRIBUTING.md). This politely closes PRs from non-maintainers. Remove this workflow
-# once a CLA is in place and PRs are reopened.
+# GolfForge isn't accepting external pull requests yet (a stability pause while the foundations
+# settle; see CONTRIBUTING.md). This politely closes PRs from non-maintainers. Remove this workflow
+# once PRs are reopened (contributions will be AGPL-3.0 under a DCO sign-off).
 
 on:
   pull_request_target:
@@ -25,8 +25,8 @@ jobs:
             }
             const body = [
               "Thanks for the contribution! GolfForge isn't accepting external pull requests yet — ",
-              "we need a Contributor License Agreement (CLA) in place first so the project can keep ",
-              "its AGPL-3.0 + commercial dual-license (see CONTRIBUTING.md). ",
+              "the architecture is still moving fast, so we've paused PRs while the foundations settle ",
+              "(see CONTRIBUTING.md; when they open, contributions are AGPL-3.0 under a DCO sign-off). ",
               "Closing this PR automatically for now. Bug reports and feature requests via Issues are very welcome."
             ].join("");
             await github.rest.issues.createComment({

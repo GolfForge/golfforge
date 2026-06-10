@@ -16,10 +16,15 @@ politely closed for now.
 
 ## Why PRs are closed for now
 
-1. **Stability.** The architecture is still moving fast; merging external code now would create more churn than value.
-2. **Licensing.** GolfForge is dual-licensed — AGPL-3.0 plus a paid commercial license (see [`COMMERCIAL.md`](COMMERCIAL.md)). To keep offering both, we need a **Contributor License Agreement (CLA)** in place before we can accept contributed code. That's coming; until then, code contributions can't be merged.
+**Stability.** The architecture is still moving fast; merging external code now would create more
+churn than value. This is a temporary, stability-driven pause — **not** a licensing one.
 
-When PRs open, contributions will be under the project's AGPL-3.0 license and the CLA. We'll update this file when that happens.
+When PRs open, contributions will be under the project's **AGPL-3.0** license, certified with a
+**[Developer Certificate of Origin](https://developercertificate.org/)** sign-off (`git commit -s`) —
+**no CLA and no copyright assignment.** You keep the copyright to your contribution; the sign-off just
+certifies you have the right to submit it under AGPL-3.0. GolfForge is committed to staying AGPL, so
+it deliberately does not collect the relicensing rights a CLA would grant. We'll update this file when
+PRs open.
 
 ## Reporting a good bug
 

@@ -145,6 +145,7 @@ void AGolfRangeHUD::EndPlay(const EEndPlayReason::Type EndPlayReason)
 		EBus->Unsubscribe(OutcomeSub);   // weak-captured anyway, but don't leave a dead entry
 		EBus->Unsubscribe(RoundCompleteSub);   // GOL-120
 		EBus->SurfaceProvider = nullptr; // the subsystem outlives this HUD; drop the lie source (GOL-9)
+		EBus->GroundNormalProvider = nullptr; // GOL-196: same for the normal source
 	}
 	OutcomeSub = FGolfEventSubscription{};
 	RoundCompleteSub = FGolfEventSubscription{};
@@ -497,6 +498,32 @@ void AGolfRangeHUD::EnsureInputBound()
 				Aim.Roll = 0.f;
 				const FVector WorldCm = Pawn->GetActorLocation() + Aim.RotateVector(LandingLocalSIm * 100.0);
 				return GolfRangeSurface::ClassifyLie(WorldCm.X / 100.0, WorldCm.Y / 100.0);
+			};
+
+			// GOL-196: terrain-normal source for the bounce reflection. Same tee+aim transform as the
+			// lie source; trace the landscape's ImpactNormal at the world XY, then UNROTATE by the aim
+			// (yaw-only) back into the shot's launch-local frame. The range corridor is flat except the
+			// GOL-34 bunker depressions, where this tilts the bounce.
+			EBus->GroundNormalProvider = [WeakThis](const FVector& LandingLocalSIm) -> FVector
+			{
+				AGolfRangeHUD* HUD = WeakThis.Get();
+				APlayerController* PC = HUD ? HUD->GetOwningPlayerController() : nullptr;
+				APawn* Pawn = PC ? PC->GetPawn() : nullptr;
+				UWorld* World = HUD ? HUD->GetWorld() : nullptr;
+				if (!Pawn || !World) { return FVector::UpVector; }
+				FRotator Aim = PC->GetControlRotation();
+				Aim.Pitch = 0.f;
+				Aim.Roll = 0.f;
+				const FVector WorldCm = Pawn->GetActorLocation() + Aim.RotateVector(LandingLocalSIm * 100.0);
+				FCollisionQueryParams Params(SCENE_QUERY_STAT(GolfsimRangeNormalTrace), /*bTraceComplex=*/true);
+				Params.AddIgnoredActor(Pawn);
+				FHitResult Hit;
+				if (World->LineTraceSingleByChannel(Hit, FVector(WorldCm.X, WorldCm.Y, WorldCm.Z + 50000.0),
+					FVector(WorldCm.X, WorldCm.Y, WorldCm.Z - 50000.0), ECC_WorldStatic, Params))
+				{
+					return Aim.UnrotateVector(Hit.ImpactNormal);   // world -> launch-local (aim is yaw-only)
+				}
+				return FVector::UpVector;
 			};
 
 			// GOL-145: launch-monitor §6 gating. The LM dropdown's status drives the input mode (a

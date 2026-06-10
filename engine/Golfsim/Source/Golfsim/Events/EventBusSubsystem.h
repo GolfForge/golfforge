@@ -107,6 +107,14 @@ public:
 	TFunction<EGolfLie(const FVector& /*LandingLocalSIm*/)> SurfaceProvider;
 
 	/**
+	 * GOL-196: surface unit normal at a launch-local SI position (same frame as SurfaceProvider),
+	 * used by the ground-roll bounce reflection so hops deflect off slopes. Injected by whatever owns
+	 * the world geometry (range HUD / course subsystem trace the landscape's ImpactNormal). Unset ->
+	 * the integrator passes a flat (0,0,1) normal, i.e. the pre-GOL-196 straight-bounce behavior.
+	 */
+	TFunction<FVector(const FVector& /*LandingLocalSIm*/)> GroundNormalProvider;
+
+	/**
 	 * Green speed for putter shots, in stimpmeter feet (GOL-109). Picked up by the integrator's
 	 * putter-detection branch -> GolfBallFlight::PutterSurfaceRoll(StimpFt). Default 11 = tour green.
 	 * Tunable at runtime via `golfsim.SetStimp <feet>`. Range stays single-surface today; this is

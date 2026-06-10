@@ -93,7 +93,8 @@ namespace GolfBallFlight
 	FGroundRollResult SimulateGroundRollCrossSurface(
 		const FBallTrajectory& Flight,
 		TFunctionRef<EGolfLie(const FVector&)> SurfaceAt,
-		TFunctionRef<FSurfaceRoll(EGolfLie)> CoefsFor)
+		TFunctionRef<FSurfaceRoll(EGolfLie)> CoefsFor,
+		TFunctionRef<FVector(const FVector&)> NormalAt)
 	{
 		FGroundRollResult R;
 		if (!Flight.bValid || !Flight.Samples.IsValidIndex(Flight.LandingSampleIndex))
@@ -109,57 +110,64 @@ namespace GolfBallFlight
 		R.TotalDistanceM = FMath::Sqrt(LandPos.X * LandPos.X + LandPos.Y * LandPos.Y);
 		R.bValid = true;
 
-		// Horizontal travel direction at landing.
-		FVector Horiz(LandVel.X, LandVel.Y, 0.0);
-		double Vh = Horiz.Size();
+		// Horizontal travel direction at landing. GOL-196: Dir now DEFLECTS per bounce (reflected off
+		// the terrain normal), so we track a running 2D ground position instead of a scalar distance
+		// along a fixed heading. Dir0 is the landing heading, kept for the signed roll-distance readout.
+		double Vh = FVector2D(LandVel.X, LandVel.Y).Size();
 		if (Vh < Tiny)
 		{
 			return R;   // dropped straight down -> no roll
 		}
-		const FVector Dir = Horiz / Vh;
+		FVector2D Dir(LandVel.X / Vh, LandVel.Y / Vh);
+		const FVector2D Dir0 = Dir;
+		FVector2D Pos(LandPos.X, LandPos.Y);
 
-		// Launch-local point at signed distance s along Dir (negative s = back toward the tee), height z.
-		auto PointAt = [&](double s, double z) -> FVector
-		{
-			return FVector(LandPos.X + Dir.X * s, LandPos.Y + Dir.Y * s, z);
-		};
-
-		// The landing surface drives the one-time scrape; re-sampled per hop/step below.
-		FSurfaceRoll C = CoefsFor(SurfaceAt(PointAt(0.0, 0.0)));
+		auto CoefAt = [&](const FVector2D& P) { return CoefsFor(SurfaceAt(FVector(P.X, P.Y, 0.0))); };
 
 		// Initial landing scrape: a steep descent digs in more, landing backspin checks the run-out.
-		// Applied ONCE on first contact. SpinAtten hits BOTH horizontal AND vertical -- high spin
-		// bleeds into ground deformation + rotation, so a high-spin wedge bounces lower (real
-		// check-up), not just shorter horizontally.
+		// Applied ONCE on first contact; SpinAtten hits BOTH horizontal and vertical (a high-spin wedge
+		// bounces lower, real check-up).
+		FSurfaceRoll C = CoefAt(Pos);
 		const double DescentAtten = FMath::Clamp(FMath::Cos(FMath::DegreesToRadians(Flight.DescentAngleDeg)), 0.0, 1.0);
 		const double SpinFactor   = FMath::Clamp(Flight.LandingSpinRpm / RefSpinRpm, 0.0, 1.0);
 		const double SpinAtten    = FMath::Clamp(1.0 - C.SpinCheck * SpinFactor, 0.0, 1.0);
 		Vh *= DescentAtten * SpinAtten;
 
-		double VvDown      = FMath::Max(0.0, -LandVel.Z) * SpinAtten;   // downward speed at landing (m/s), bled by spin
-		double DistAccum   = 0.0;                           // signed horizontal distance from landing
-		double TimeAccum   = 0.0;                           // time since landing
-		int32  NumBounces  = 0;
+		double VvDown     = FMath::Max(0.0, -LandVel.Z) * SpinAtten;   // downward speed at landing (m/s), bled by spin
+		double TimeAccum  = 0.0;
+		int32  NumBounces = 0;
 
-		// --- Bounce phase: emit 0..MaxBounces parabolic hops, re-classifying at each touchdown -----
-		// Cross-surface: a hop from fairway into a bunker picks up the bunker's coefficients (tiny
-		// Restitution) at the next touchdown and stops bouncing.
+		// --- Bounce phase: reflect each touchdown off the surface normal, re-classifying per hop -----
+		// On a FLAT normal (0,0,1) the reflection reduces to: VvOut = Restitution*VvDown, Vh *= Keep,
+		// heading unchanged -- i.e. the pre-GOL-196 model exactly (the settle-vs-hop branch keeps the
+		// same un-decayed-Vh-on-settle behavior). On a slope the normal tilts the outgoing heading.
 		while (NumBounces < MaxBounces && Vh > Tiny)
 		{
-			C = CoefsFor(SurfaceAt(PointAt(DistAccum, 0.0)));   // surface at this touchdown
+			C = CoefAt(Pos);
 
-			const double VvOut = FMath::Max(C.Restitution, 0.0) * VvDown;
+			FVector N = NormalAt(FVector(Pos.X, Pos.Y, 0.0));
+			if (!N.Normalize() || N.Z <= 0.0) { N = FVector::UpVector; }   // guard degenerate/inverted
+			const FVector VIn(Dir.X * Vh, Dir.Y * Vh, -VvDown);
+			const FVector VN   = (VIn | N) * N;                            // into-surface normal component
+			const FVector VT   = VIn - VN;                                 // tangential (along the face)
+			const FVector VOut = VT * FMath::Max(C.BounceHorizontalKeep, 0.0)
+			                   - VN * FMath::Max(C.Restitution, 0.0);
+
+			const double VvOut = FMath::Max(VOut.Z, 0.0);
 			if (VvOut < MinBounceVvMps)
 			{
-				break;   // bounce too small to be visible -> settle to roll
+				break;   // bounce too small to be visible -> settle to roll (keep current Vh + heading)
 			}
 
-			Vh *= FMath::Max(C.BounceHorizontalKeep, 0.0);
-			if (Vh < Tiny)
+			const FVector2D HOut(VOut.X, VOut.Y);
+			const double VhOut = HOut.Size();
+			if (VhOut < Tiny)
 			{
 				VvDown = VvOut;
-				break;
+				break;   // straight-up hop -> no horizontal travel
 			}
+			Dir = HOut / VhOut;   // deflected heading
+			Vh  = VhOut;
 
 			const double THop  = 2.0 * VvOut / GravityMps2;
 			const double HopDx = Vh * THop;
@@ -174,54 +182,53 @@ namespace GolfBallFlight
 			{
 				const double T = (i == NumHopSteps) ? THop : (THop * i) / NumHopSteps;
 				const double S = Vh * T;
-				// Parabola z(t) = VvOut*t - 0.5*g*t^2; clamp the last sample exactly to z=0 to avoid
-				// a sub-mm float residual that would pop the ball.
+				// Parabola z(t) = VvOut*t - 0.5*g*t^2; clamp the last sample to z=0 to avoid a sub-mm pop.
 				const double Z = (i == NumHopSteps) ? 0.0
 					: FMath::Max(VvOut * T - 0.5 * GravityMps2 * T * T, 0.0);
 				FTrajectorySample Sample;
-				Sample.TimeSeconds   = Flight.FlightTimeS + TimeAccum + T;
-				Sample.PositionMeters = PointAt(DistAccum + S, Z);
+				Sample.TimeSeconds    = Flight.FlightTimeS + TimeAccum + T;
+				Sample.PositionMeters = FVector(Pos.X + Dir.X * S, Pos.Y + Dir.Y * S, Z);
 				Sample.VelocityMps    = FVector(Dir.X * Vh, Dir.Y * Vh, VvOut - GravityMps2 * T);
 				R.RollSamples.Add(Sample);
 			}
 
-			DistAccum += HopDx;
+			Pos += Dir * HopDx;
 			TimeAccum += THop;
-			VvDown    = VvOut;   // ballistic descent at end of parabola = same magnitude as launch
+			VvDown    = VvOut;
 			++NumBounces;
 		}
 
-		// --- Roll phase: stepped constant-friction slide, re-sampling the surface each step --------
-		// For a single surface this telescopes to the closed-form RollDist = Vh^2/(2a) exactly; the
-		// stepping is what lets friction change at a boundary (fairway -> bunker stops fast in sand).
+		// --- Roll phase: stepped constant-friction slide along the (now possibly deflected) heading --
+		// For a single surface + flat normal this telescopes to RollDist = Vh^2/(2a) exactly; the
+		// stepping lets friction change at a boundary (fairway -> bunker stops fast in sand). Roll
+		// following the fall-line is out of scope (overlaps green break, GOL-75) -- heading stays fixed.
 		{
 			int32 Steps = 0;
 			while (Vh > Tiny && Steps < RollStepsMax)
 			{
-				C = CoefsFor(SurfaceAt(PointAt(DistAccum, 0.0)));
+				C = CoefAt(Pos);
 				const double Accel  = FMath::Max(C.RollFriction, Tiny) * GravityMps2;
 				const double DtStep = FMath::Min(RollSampleDt, Vh / Accel);   // clip the final step to stop exactly
 				const double S      = Vh * DtStep - 0.5 * Accel * DtStep * DtStep;
 
-				DistAccum += S;
+				Pos += Dir * S;
 				TimeAccum += DtStep;
 				Vh = FMath::Max(Vh - Accel * DtStep, 0.0);
 
 				FTrajectorySample Sample;
 				Sample.TimeSeconds    = Flight.FlightTimeS + TimeAccum;
-				Sample.PositionMeters = PointAt(DistAccum, 0.0);
-				Sample.VelocityMps    = Dir * Vh;
+				Sample.PositionMeters = FVector(Pos.X, Pos.Y, 0.0);
+				Sample.VelocityMps    = FVector(Dir.X * Vh, Dir.Y * Vh, 0.0);
 				R.RollSamples.Add(Sample);
 				++Steps;
 			}
 		}
 
-		// --- GOL-39 green spin-back: a green ball that arrived with enough backspin + steep descent
-		// checks forward (above), then rolls BACKWARD here. Gated on the rest surface being Green and
-		// that surface's SpinBackGain > 0. The backward leg stays single-surface (green) for v1.
+		// --- GOL-39 green spin-back: a green ball with enough backspin + steep descent checks forward
+		// (above), then rolls BACKWARD here, along the current heading. Gated on rest surface = Green.
 		{
-			const EGolfLie    RestLie = SurfaceAt(PointAt(DistAccum, 0.0));
-			const FSurfaceRoll GC     = CoefsFor(RestLie);
+			const EGolfLie     RestLie = SurfaceAt(FVector(Pos.X, Pos.Y, 0.0));
+			const FSurfaceRoll GC      = CoefsFor(RestLie);
 			if (RestLie == EGolfLie::Green && GC.SpinBackGain > 0.0
 				&& Flight.LandingSpinRpm > SpinBackThresholdRpm)
 			{
@@ -234,34 +241,35 @@ namespace GolfBallFlight
 				{
 					const double DtStep = FMath::Min(RollSampleDt, Vback / Accel);
 					const double S      = Vback * DtStep - 0.5 * Accel * DtStep * DtStep;
-					DistAccum -= S;                     // backward = toward the tee along Dir
+					Pos -= Dir * S;   // backward = back along the current heading
 					TimeAccum += DtStep;
 					Vback = FMath::Max(Vback - Accel * DtStep, 0.0);
 
 					FTrajectorySample Sample;
 					Sample.TimeSeconds    = Flight.FlightTimeS + TimeAccum;
-					Sample.PositionMeters = PointAt(DistAccum, 0.0);
-					Sample.VelocityMps    = -Dir * Vback;
+					Sample.PositionMeters = FVector(Pos.X, Pos.Y, 0.0);
+					Sample.VelocityMps    = FVector(-Dir.X * Vback, -Dir.Y * Vback, 0.0);
 					R.RollSamples.Add(Sample);
 					++Steps;
 				}
 			}
 		}
 
-		R.RestPositionM = PointAt(DistAccum, 0.0);
-		R.RollDistanceM = DistAccum;
+		R.RestPositionM  = FVector(Pos.X, Pos.Y, 0.0);
+		R.RollDistanceM  = FVector2D::DotProduct(Pos - FVector2D(LandPos.X, LandPos.Y), Dir0);   // signed along landing heading
 		R.TotalDistanceM = FMath::Sqrt(R.RestPositionM.X * R.RestPositionM.X + R.RestPositionM.Y * R.RestPositionM.Y);
 		return R;
 	}
 
 	FGroundRollResult SimulateGroundRoll(const FBallTrajectory& Flight, EGolfLie Lie, const FSurfaceRoll& C)
 	{
-		// Single-surface: constant lie + constant coefficients. Identical to the pre-GOL-39 model
-		// (the stepped roll telescopes to the old closed form); green spin-back still fires when
-		// Lie == Green and C.SpinBackGain > 0 (e.g. SurfaceRollFor(Green), but not a putt).
+		// Single-surface: constant lie + constant coefficients + flat ground. Identical to the
+		// pre-GOL-196 model (flat normal reproduces the straight bounce; the stepped roll telescopes to
+		// the old closed form); green spin-back still fires when Lie == Green and C.SpinBackGain > 0.
 		return SimulateGroundRollCrossSurface(
 			Flight,
 			[Lie](const FVector&) { return Lie; },
-			[&C](EGolfLie) { return C; });
+			[&C](EGolfLie) { return C; },
+			[](const FVector&) { return FVector::UpVector; });
 	}
 }

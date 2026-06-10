@@ -85,14 +85,21 @@ namespace GolfBallFlight
 	 * rolls BACKWARD). Pure-SI + headless: the surface is queried through callbacks so tests can feed
 	 * a synthetic field and no world/asset is required.
 	 *
+	 * GOL-196: each bounce reflects the incoming velocity about the terrain NORMAL (down-slope kicks
+	 * forward + long, up-slope pops + short, side-slope throws lateral), so the outgoing heading now
+	 * depends on the slope. `NormalAt` returns the surface unit normal at a launch-local position; a
+	 * flat normal (0,0,1) reproduces the pre-GOL-196 straight-bounce behavior exactly.
+	 *
 	 * @param Flight     a valid, landed flight trajectory
 	 * @param SurfaceAt  launch-local position (meters, the same frame as Flight) -> EGolfLie
 	 * @param CoefsFor   lie -> roll coefficients (usually &SurfaceRollFor)
+	 * @param NormalAt   launch-local position -> surface unit normal (launch-local; flat = (0,0,1))
 	 */
 	FGroundRollResult SimulateGroundRollCrossSurface(
 		const FBallTrajectory& Flight,
 		TFunctionRef<EGolfLie(const FVector&)> SurfaceAt,
-		TFunctionRef<FSurfaceRoll(EGolfLie)> CoefsFor);
+		TFunctionRef<FSurfaceRoll(EGolfLie)> CoefsFor,
+		TFunctionRef<FVector(const FVector&)> NormalAt);
 }
 
 /** EGolfLie <-> protocol lie string (docs/event-protocol.md): "fairway"/"rough"/"bunker"/... */

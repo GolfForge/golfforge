@@ -2,6 +2,7 @@
 
 #include "Engine/World.h"
 #include "Engine/GameInstance.h"
+#include "CollisionQueryParams.h"   // GOL-196: terrain-normal trace for bounce deflection
 #include "Misc/Paths.h"
 #include "Events/EventBusSubsystem.h"
 #include "Physics/GroundRoll.h"   // LieToProtocol (logging)
@@ -74,6 +75,25 @@ void UCourseSurfaceSubsystem::OnWorldBeginPlay(UWorld& InWorld)
 			: EGolfLie::Unknown;
 	};
 	UE_LOG(LogTemp, Display, TEXT("CourseSurfaceSubsystem: SurfaceProvider wired for the course."));
+
+	// GOL-196: terrain-normal source for the bounce reflection. Same launch-local == world-meters
+	// treatment as the lie source above; trace the landscape at the XY and hand back its ImpactNormal.
+	Bus->GroundNormalProvider = [WeakSelf](const FVector& LandingLocalSIm) -> FVector
+	{
+		const UCourseSurfaceSubsystem* Self = WeakSelf.Get();
+		UWorld* World = Self ? Self->GetWorld() : nullptr;
+		if (!World) { return FVector::UpVector; }
+		const double Xcm = LandingLocalSIm.X * 100.0;
+		const double Ycm = LandingLocalSIm.Y * 100.0;
+		FCollisionQueryParams Params(SCENE_QUERY_STAT(GolfsimCourseNormalTrace), /*bTraceComplex=*/true);
+		FHitResult Hit;
+		if (World->LineTraceSingleByChannel(Hit, FVector(Xcm, Ycm, 100000.0), FVector(Xcm, Ycm, -100000.0),
+			ECC_WorldStatic, Params))
+		{
+			return Hit.ImpactNormal;   // world normal; on a course the launch-local frame == world here
+		}
+		return FVector::UpVector;
+	};
 }
 
 void UCourseSurfaceSubsystem::Deinitialize()
@@ -81,6 +101,7 @@ void UCourseSurfaceSubsystem::Deinitialize()
 	if (UEventBusSubsystem* Bus = EventBusWeak.Get())
 	{
 		Bus->SurfaceProvider = nullptr;   // drop the lie source so the bus doesn't see a dangling lambda
+		Bus->GroundNormalProvider = nullptr;   // GOL-196: same for the normal source
 	}
 	EventBusWeak.Reset();
 	Super::Deinitialize();

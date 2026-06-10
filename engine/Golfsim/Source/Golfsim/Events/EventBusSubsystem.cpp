@@ -129,10 +129,15 @@ void UEventBusSubsystem::OnShotTaken(const FGolfEvent& Event)
 		// GOL-39: full shots re-sample the surface as they roll, so coefficients change at boundaries
 		// (fairway -> bunker on roll-out, green -> rough on overshoot) and green spin-back applies.
 		const bool bIsPutt = Shot.Club.Equals(TEXT("Putter"), ESearchCase::IgnoreCase);
+		// GOL-196: surface-normal source for the bounce reflection; flat (0,0,1) when none is wired.
+		auto NormalProv = [this](const FVector& P) -> FVector
+		{
+			return GroundNormalProvider ? GroundNormalProvider(P) : FVector::UpVector;
+		};
 		const FGroundRollResult Roll = bIsPutt
 			? GolfBallFlight::SimulateGroundRoll(T, LandingLie,
 				GolfBallFlight::PutterSurfaceRoll(UEventBusSubsystem::GreenStimpFt))
-			: GolfBallFlight::SimulateGroundRollCrossSurface(T, SurfaceProvider, &GolfBallFlight::SurfaceRollFor);
+			: GolfBallFlight::SimulateGroundRollCrossSurface(T, SurfaceProvider, &GolfBallFlight::SurfaceRollFor, NormalProv);
 		if (Roll.bValid)
 		{
 			Out.TotalM         = Roll.TotalDistanceM;

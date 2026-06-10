@@ -32,6 +32,9 @@ namespace
 	{
 		return GolfBallFlight::SimulateGroundRoll(F, Lie, GolfBallFlight::SurfaceRollFor(Lie)).RollDistanceM;
 	}
+
+	// GOL-196: flat-ground normal for the cross-surface calls (reproduces the pre-GOL-196 straight bounce).
+	FVector FlatNormal(const FVector&) { return FVector::UpVector; }
 }
 
 // --- Lie classification at known landing positions (done-when #4) -------------------------------
@@ -328,9 +331,9 @@ bool FGolfsimGroundRollCrossSurfaceTest::RunTest(const FString& /*Parameters*/)
 	auto Mixed = [Boundary](const FVector& P) { return P.X < Boundary ? EGolfLie::Fairway : EGolfLie::Bunker; };
 
 	const FGroundRollResult Far = GolfBallFlight::SimulateGroundRollCrossSurface(
-		Land, AllFairway, &GolfBallFlight::SurfaceRollFor);
+		Land, AllFairway, &GolfBallFlight::SurfaceRollFor, &FlatNormal);
 	const FGroundRollResult Trap = GolfBallFlight::SimulateGroundRollCrossSurface(
-		Land, Mixed, &GolfBallFlight::SurfaceRollFor);
+		Land, Mixed, &GolfBallFlight::SurfaceRollFor, &FlatNormal);
 
 	TestTrue(TEXT("both rolls valid"), Far.bValid && Trap.bValid);
 	TestTrue(TEXT("ball reaches the sand (past the boundary)"), Trap.RestPositionM.X > Boundary);
@@ -362,7 +365,7 @@ bool FGolfsimGroundRollEquivalenceTest::RunTest(const FString& /*Parameters*/)
 		Flight, EGolfLie::Fairway, GolfBallFlight::SurfaceRollFor(EGolfLie::Fairway));
 	auto Fairway = [](const FVector&) { return EGolfLie::Fairway; };
 	const FGroundRollResult Cross = GolfBallFlight::SimulateGroundRollCrossSurface(
-		Flight, Fairway, &GolfBallFlight::SurfaceRollFor);
+		Flight, Fairway, &GolfBallFlight::SurfaceRollFor, &FlatNormal);
 
 	TestEqual(TEXT("same sample count"), Cross.RollSamples.Num(), Single.RollSamples.Num());
 	TestTrue(TEXT("same roll distance"), FMath::Abs(Cross.RollDistanceM - Single.RollDistanceM) < 1e-6);
@@ -382,13 +385,13 @@ bool FGolfsimGroundRollSpinBackTest::RunTest(const FString& /*Parameters*/)
 
 	// High backspin + steep descent on a green: lands at origin, ends BEHIND it (negative X).
 	const FGroundRollResult HighSpin = GolfBallFlight::SimulateGroundRollCrossSurface(
-		MakeLanding(/*speed*/18.0, /*descent*/48.0, /*spin*/9000.0), Green, &GolfBallFlight::SurfaceRollFor);
+		MakeLanding(/*speed*/18.0, /*descent*/48.0, /*spin*/9000.0), Green, &GolfBallFlight::SurfaceRollFor, &FlatNormal);
 	// Low backspin on the same green: rolls forward, no spin-back.
 	const FGroundRollResult LowSpin = GolfBallFlight::SimulateGroundRollCrossSurface(
-		MakeLanding(18.0, 48.0, 2000.0), Green, &GolfBallFlight::SurfaceRollFor);
+		MakeLanding(18.0, 48.0, 2000.0), Green, &GolfBallFlight::SurfaceRollFor, &FlatNormal);
 	// Same high spin on a fairway: spin-back is green-only, so it rolls forward.
 	const FGroundRollResult HighSpinFairway = GolfBallFlight::SimulateGroundRollCrossSurface(
-		MakeLanding(18.0, 48.0, 9000.0), Fairway, &GolfBallFlight::SurfaceRollFor);
+		MakeLanding(18.0, 48.0, 9000.0), Fairway, &GolfBallFlight::SurfaceRollFor, &FlatNormal);
 
 	TestTrue(TEXT("high-spin green ball ends behind its landing (X < 0)"), HighSpin.RestPositionM.X < -0.5);
 	TestTrue(TEXT("low-spin green ball rolls forward (X > 0)"), LowSpin.RestPositionM.X > 0.0);
@@ -405,6 +408,47 @@ bool FGolfsimGroundRollSpinBackTest::RunTest(const FString& /*Parameters*/)
 
 	AddInfo(FString::Printf(TEXT("spin-back: high-spin rest %.2f m, low-spin rest %.2f m, fairway rest %.2f m"),
 		HighSpin.RestPositionM.X, LowSpin.RestPositionM.X, HighSpinFairway.RestPositionM.X));
+	return true;
+}
+
+// --- GOL-196 terrain-aware bounce: the outgoing heading reflects off the surface normal ----------
+// Same landing on fairway, four surface normals: flat / down-slope / up-slope / side-slope. The
+// outgoing bounce now depends on the slope (flat reproduces the straight-bounce model, guarded by the
+// equivalence test above).
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FGolfsimGroundRollSlopeBounceTest, "Golfsim.GroundRoll.SlopeBounceDeflection",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FGolfsimGroundRollSlopeBounceTest::RunTest(const FString& /*Parameters*/)
+{
+	const FBallTrajectory Land = MakeLanding(/*speed*/13.0, /*descent*/22.0, /*spin*/300.0);   // travel +X, a few hops
+	auto Fairway = [](const FVector&) { return EGolfLie::Fairway; };
+
+	auto DownN = [](const FVector&) { return FVector(0.25, 0.0, 1.0).GetSafeNormal(); };   // ground descends toward +X
+	auto UpN   = [](const FVector&) { return FVector(-0.25, 0.0, 1.0).GetSafeNormal(); };  // ground rises toward +X
+	auto SideN = [](const FVector&) { return FVector(0.0, 0.25, 1.0).GetSafeNormal(); };   // descends toward +Y
+
+	const FGroundRollResult Flat = GolfBallFlight::SimulateGroundRollCrossSurface(Land, Fairway, &GolfBallFlight::SurfaceRollFor, &FlatNormal);
+	const FGroundRollResult Down = GolfBallFlight::SimulateGroundRollCrossSurface(Land, Fairway, &GolfBallFlight::SurfaceRollFor, DownN);
+	const FGroundRollResult Up   = GolfBallFlight::SimulateGroundRollCrossSurface(Land, Fairway, &GolfBallFlight::SurfaceRollFor, UpN);
+	const FGroundRollResult Side = GolfBallFlight::SimulateGroundRollCrossSurface(Land, Fairway, &GolfBallFlight::SurfaceRollFor, SideN);
+
+	auto MaxZ = [](const FGroundRollResult& Res)
+	{
+		double M = 0.0;
+		for (const FTrajectorySample& S : Res.RollSamples) { M = FMath::Max(M, S.PositionMeters.Z); }
+		return M;
+	};
+
+	TestTrue(TEXT("all valid"), Flat.bValid && Down.bValid && Up.bValid && Side.bValid);
+	TestTrue(TEXT("down-slope kicks forward, runs out longer than flat"), Down.RestPositionM.X > Flat.RestPositionM.X);
+	TestTrue(TEXT("down-slope runs longer than up-slope"), Down.RestPositionM.X > Up.RestPositionM.X);
+	TestTrue(TEXT("up-slope pops the ball higher than flat"), MaxZ(Up) > MaxZ(Flat) + 0.05);
+	TestTrue(TEXT("flat stays straight (no lateral)"), FMath::Abs(Flat.RestPositionM.Y) < 1e-6);
+	TestTrue(TEXT("side-slope throws the ball laterally downhill (+Y)"), Side.RestPositionM.Y > 0.5);
+
+	AddInfo(FString::Printf(TEXT("rest X: flat %.1f, down %.1f, up %.1f | apexZ flat %.2f up %.2f | side Y %.1f"),
+		Flat.RestPositionM.X, Down.RestPositionM.X, Up.RestPositionM.X, MaxZ(Flat), MaxZ(Up), Side.RestPositionM.Y));
 	return true;
 }
 

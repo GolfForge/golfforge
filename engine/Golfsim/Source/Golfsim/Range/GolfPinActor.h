@@ -32,6 +32,11 @@ public:
 	// Pass 0 (or negative) to hide the ring (e.g. range pin -- no gimme to visualize).
 	void SetGimmeRadiusFt(double RadiusFt);
 
+	// GOL-191: hide/show the synthetic green surface (the flat disc + fringe collar). Course pins call
+	// this false so the painted splat_green landscape reads as the green; the range keeps it (the disc
+	// is the range's target green). Pole/flag/hole-cup/gimme-ring are unaffected.
+	void SetGreenSurfaceVisible(bool bVisible);
+
 private:
 	UPROPERTY(VisibleAnywhere, Category = "Golfsim") TObjectPtr<UStaticMeshComponent> DiscMesh;
 	// Collar/fringe: a darker, duller textured disc UNDER the green, slightly larger, so a ring of it

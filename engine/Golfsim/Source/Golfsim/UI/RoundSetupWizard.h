@@ -113,6 +113,7 @@ private:
 
 	// Format step
 	UPROPERTY(Transient) TObjectPtr<USegmentedControl>  HolesSeg;
+	UPROPERTY(Transient) TObjectPtr<USegmentedControl>  PinModeSeg;   // GOL-191/192 Static/Random/Tournament
 	UPROPERTY(Transient) TObjectPtr<UWidget>            CustomPicker;     // hole-chip block; shown only in Custom
 	UPROPERTY(Transient) TArray<TObjectPtr<UButton>>    HoleChips;        // 18 toggle chips (Ref = index+1)
 	UPROPERTY(Transient) TArray<TObjectPtr<UTextBlock>> HoleChipTexts;

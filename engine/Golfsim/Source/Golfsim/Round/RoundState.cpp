@@ -247,6 +247,258 @@ namespace GolfsimRound
 		return ParseHoleScheduleJson(HoleText, MinLon, MinLat, MaxLon, MaxLat, TrackName, Out, OutErr);
 	}
 
+	// --- GOL-191/192 pin-position system ----------------------------------------------------------
+	namespace
+	{
+		// Area-weighted polygon centroid (shoelace); vertex-average fallback for a degenerate ring.
+		// Verts are the OPEN ring (no duplicate closing vertex).
+		FVector2D PolygonCentroid(const TArray<FVector2D>& V)
+		{
+			const int32 N = V.Num();
+			if (N == 0) { return FVector2D::ZeroVector; }
+			auto Average = [&]() { FVector2D S(0, 0); for (const FVector2D& P : V) { S += P; } return S / N; };
+			if (N < 3) { return Average(); }
+			double A = 0.0, Cx = 0.0, Cy = 0.0;
+			for (int32 i = 0; i < N; ++i)
+			{
+				const FVector2D& P0 = V[i];
+				const FVector2D& P1 = V[(i + 1) % N];
+				const double Cross = P0.X * P1.Y - P1.X * P0.Y;
+				A  += Cross;
+				Cx += (P0.X + P1.X) * Cross;
+				Cy += (P0.Y + P1.Y) * Cross;
+			}
+			if (FMath::Abs(A) < 1e-6) { return Average(); }
+			A *= 0.5;
+			return FVector2D(Cx / (6.0 * A), Cy / (6.0 * A));
+		}
+
+		// A GeoJSON linear ring ([[lon,lat],...]) -> world-cm verts, dropping the closing duplicate.
+		void RingToVertsCm(const TArray<TSharedPtr<FJsonValue>>& Ring,
+			double MinLon, double MinLat, double MaxLon, double MaxLat, TArray<FVector2D>& Out)
+		{
+			Out.Reset();
+			Out.Reserve(Ring.Num());
+			for (const TSharedPtr<FJsonValue>& V : Ring)
+			{
+				const TArray<TSharedPtr<FJsonValue>>* Pair = nullptr;
+				if (!V->TryGetArray(Pair) || !Pair || Pair->Num() < 2) { continue; }
+				const FVector W = LonLatToWorldCm((*Pair)[0]->AsNumber(), (*Pair)[1]->AsNumber(),
+					MinLon, MinLat, MaxLon, MaxLat);
+				Out.Add(FVector2D(W.X, W.Y));
+			}
+			if (Out.Num() >= 2 && Out[0].Equals(Out.Last(), 1.0)) { Out.Pop(); }
+		}
+	}
+
+	bool ParseGreenPolygonsJson(const FString& JsonText,
+		double MinLon, double MinLat, double MaxLon, double MaxLat,
+		TArray<FGreenPolygon>& Out, FString& OutErr)
+	{
+		Out.Reset();
+		TSharedPtr<FJsonObject> Root;
+		TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(JsonText);
+		if (!FJsonSerializer::Deserialize(Reader, Root) || !Root.IsValid())
+		{
+			OutErr = TEXT("green.geojson parse failed");
+			return false;
+		}
+		const TArray<TSharedPtr<FJsonValue>>* Features = nullptr;
+		if (!Root->TryGetArrayField(TEXT("features"), Features))
+		{
+			OutErr = TEXT("green.geojson missing features array");
+			return false;
+		}
+		for (const TSharedPtr<FJsonValue>& FVal : *Features)
+		{
+			const TSharedPtr<FJsonObject> Feat = FVal->AsObject();
+			if (!Feat.IsValid()) { continue; }
+			const TSharedPtr<FJsonObject> Geom = Feat->GetObjectField(TEXT("geometry"));
+			if (!Geom.IsValid()) { continue; }
+			FString GeomType;
+			Geom->TryGetStringField(TEXT("type"), GeomType);
+			if (!GeomType.Equals(TEXT("Polygon"), ESearchCase::IgnoreCase)) { continue; }   // greens are Polygons
+			const TArray<TSharedPtr<FJsonValue>>* Rings = nullptr;
+			if (!Geom->TryGetArrayField(TEXT("coordinates"), Rings) || !Rings || Rings->Num() == 0) { continue; }
+			const TArray<TSharedPtr<FJsonValue>>* OuterRing = nullptr;
+			if (!(*Rings)[0]->TryGetArray(OuterRing) || !OuterRing || OuterRing->Num() < 3) { continue; }
+
+			FGreenPolygon G;
+			RingToVertsCm(*OuterRing, MinLon, MinLat, MaxLon, MaxLat, G.VertsCm);
+			if (G.VertsCm.Num() < 3) { continue; }
+			G.CentroidCm = PolygonCentroid(G.VertsCm);
+			if (const TSharedPtr<FJsonObject> Props = Feat->GetObjectField(TEXT("properties")))
+			{
+				double WayId = 0.0;
+				if (Props->TryGetNumberField(TEXT("osm_way_id"), WayId)) { G.OsmWayId = (int64)WayId; }
+			}
+			Out.Add(MoveTemp(G));
+		}
+		if (Out.Num() == 0) { OutErr = TEXT("green.geojson had no Polygon features"); return false; }
+		return true;
+	}
+
+	bool ParsePinSheetJson(const FString& JsonText,
+		double MinLon, double MinLat, double MaxLon, double MaxLat,
+		FPinSheet& Out, FString& OutErr)
+	{
+		Out = FPinSheet{};
+		TSharedPtr<FJsonObject> Root;
+		TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(JsonText);
+		if (!FJsonSerializer::Deserialize(Reader, Root) || !Root.IsValid())
+		{
+			OutErr = TEXT("pin sheet parse failed");
+			return false;
+		}
+		Root->TryGetStringField(TEXT("name"), Out.Name);
+		const TArray<TSharedPtr<FJsonValue>>* Pins = nullptr;
+		if (!Root->TryGetArrayField(TEXT("pins"), Pins))
+		{
+			OutErr = TEXT("pin sheet missing pins array");
+			return false;
+		}
+		for (const TSharedPtr<FJsonValue>& PVal : *Pins)
+		{
+			const TSharedPtr<FJsonObject> P = PVal->AsObject();
+			if (!P.IsValid()) { continue; }
+			int32 Ref = 0;
+			double Lon = 0.0, Lat = 0.0;
+			if (!P->TryGetNumberField(TEXT("hole_ref"), Ref)) { continue; }
+			if (!P->TryGetNumberField(TEXT("lon"), Lon) || !P->TryGetNumberField(TEXT("lat"), Lat)) { continue; }
+			const FVector W = LonLatToWorldCm(Lon, Lat, MinLon, MinLat, MaxLon, MaxLat);
+			Out.PinXYByRefCm.Add(Ref, FVector2D(W.X, W.Y));
+		}
+		if (Out.PinXYByRefCm.Num() == 0) { OutErr = TEXT("pin sheet had no valid pins"); return false; }
+		return true;
+	}
+
+	bool PointInPolygonCm(const FVector2D& Pt, const FGreenPolygon& Poly)
+	{
+		const TArray<FVector2D>& V = Poly.VertsCm;
+		const int32 N = V.Num();
+		bool bInside = false;
+		for (int32 i = 0, j = N - 1; i < N; j = i++)
+		{
+			const FVector2D& A = V[i];
+			const FVector2D& B = V[j];
+			if (((A.Y > Pt.Y) != (B.Y > Pt.Y)) &&
+				(Pt.X < (B.X - A.X) * (Pt.Y - A.Y) / (B.Y - A.Y) + A.X))
+			{
+				bInside = !bInside;
+			}
+		}
+		return bInside;
+	}
+
+	FVector2D RandomPointInGreen(const FGreenPolygon& Poly, FRandomStream& Stream)
+	{
+		if (Poly.VertsCm.Num() < 3) { return Poly.CentroidCm; }
+		FVector2D Min = Poly.VertsCm[0], Max = Poly.VertsCm[0];
+		for (const FVector2D& P : Poly.VertsCm)
+		{
+			Min.X = FMath::Min(Min.X, P.X); Min.Y = FMath::Min(Min.Y, P.Y);
+			Max.X = FMath::Max(Max.X, P.X); Max.Y = FMath::Max(Max.Y, P.Y);
+		}
+		for (int32 i = 0; i < 40; ++i)   // bbox rejection sampling
+		{
+			const FVector2D C(Stream.FRandRange(Min.X, Max.X), Stream.FRandRange(Min.Y, Max.Y));
+			if (PointInPolygonCm(C, Poly)) { return C; }
+		}
+		return Poly.CentroidCm;   // thin/concave green or unlucky draws -> guaranteed-ish on-green point
+	}
+
+	int32 MatchGreenToHole(const FHoleSpec& Hole, const TArray<FGreenPolygon>& Greens)
+	{
+		if (Greens.Num() == 0) { return INDEX_NONE; }
+		const FVector2D HoleXY(Hole.GreenWorldLoc.X, Hole.GreenWorldLoc.Y);
+		for (int32 i = 0; i < Greens.Num(); ++i)
+		{
+			if (PointInPolygonCm(HoleXY, Greens[i])) { return i; }   // prefer the containing polygon
+		}
+		int32 Best = 0;
+		double BestD = TNumericLimits<double>::Max();
+		for (int32 i = 0; i < Greens.Num(); ++i)
+		{
+			const double D = FVector2D::DistSquared(HoleXY, Greens[i].CentroidCm);
+			if (D < BestD) { BestD = D; Best = i; }
+		}
+		return Best;
+	}
+
+	void ResolvePinPositions(TArray<FHoleSpec>& Schedule, EPinMode Mode,
+		const TArray<FGreenPolygon>& Greens, const FPinSheet* Sheet, FRandomStream& Stream)
+	{
+		if (Mode == EPinMode::Static) { return; }   // leave the authored endpoints
+		for (FHoleSpec& H : Schedule)
+		{
+			const int32 Gi = MatchGreenToHole(H, Greens);
+			if (Mode == EPinMode::Random)
+			{
+				if (Gi != INDEX_NONE)
+				{
+					const FVector2D P = RandomPointInGreen(Greens[Gi], Stream);
+					H.PinWorldLoc = FVector(P.X, P.Y, 0.0);
+				}
+			}
+			else // Tournament
+			{
+				const FVector2D* SheetPin = Sheet ? Sheet->PinXYByRefCm.Find(H.Ref) : nullptr;
+				if (SheetPin)
+				{
+					H.PinWorldLoc = FVector(SheetPin->X, SheetPin->Y, 0.0);
+				}
+				else if (Gi != INDEX_NONE)
+				{
+					H.PinWorldLoc = FVector(Greens[Gi].CentroidCm.X, Greens[Gi].CentroidCm.Y, 0.0);
+				}
+			}
+		}
+	}
+
+	bool LoadGreenPolygons(const FString& CourseId, TArray<FGreenPolygon>& Out, FString& OutErr)
+	{
+		Out.Reset();
+		const FString CourseDir = GolfsimPaths::ResolveCourseDataDir(CourseId);
+		if (CourseDir.IsEmpty()) { OutErr = FString::Printf(TEXT("no courses/%s data dir"), *CourseId); return false; }
+		FString HeightmapText;
+		if (!FFileHelper::LoadFileToString(HeightmapText, *(CourseDir / TEXT("heightmap.json"))))
+		{
+			OutErr = TEXT("could not read heightmap.json");
+			return false;
+		}
+		double MinLon, MinLat, MaxLon, MaxLat;
+		if (!ReadBboxFromHeightmapJson(HeightmapText, MinLon, MinLat, MaxLon, MaxLat, OutErr)) { return false; }
+		FString GreenText;
+		if (!FFileHelper::LoadFileToString(GreenText, *(CourseDir / TEXT("green.geojson"))))
+		{
+			OutErr = FString::Printf(TEXT("could not read courses/%s/green.geojson"), *CourseId);
+			return false;
+		}
+		return ParseGreenPolygonsJson(GreenText, MinLon, MinLat, MaxLon, MaxLat, Out, OutErr);
+	}
+
+	bool LoadPinSheet(const FString& CourseId, const FString& SetId, FPinSheet& Out, FString& OutErr)
+	{
+		const FString CourseDir = GolfsimPaths::ResolveCourseDataDir(CourseId);
+		if (CourseDir.IsEmpty()) { OutErr = FString::Printf(TEXT("no courses/%s data dir"), *CourseId); return false; }
+		FString HeightmapText;
+		if (!FFileHelper::LoadFileToString(HeightmapText, *(CourseDir / TEXT("heightmap.json"))))
+		{
+			OutErr = TEXT("could not read heightmap.json");
+			return false;
+		}
+		double MinLon, MinLat, MaxLon, MaxLat;
+		if (!ReadBboxFromHeightmapJson(HeightmapText, MinLon, MinLat, MaxLon, MaxLat, OutErr)) { return false; }
+		const FString SheetPath = CourseDir / TEXT("pins") / (SetId + TEXT(".json"));
+		FString SheetText;
+		if (!FFileHelper::LoadFileToString(SheetText, *SheetPath))
+		{
+			OutErr = FString::Printf(TEXT("could not read %s"), *SheetPath);
+			return false;
+		}
+		return ParsePinSheetJson(SheetText, MinLon, MinLat, MaxLon, MaxLat, Out, OutErr);
+	}
+
 	TArray<FHoleSpec> SelectHoles(const TArray<FHoleSpec>& Full, const FRoundConfig& Config)
 	{
 		switch (Config.HolesMode)

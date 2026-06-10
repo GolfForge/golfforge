@@ -33,6 +33,23 @@ namespace GolfsimRound
 		FVector PinWorldLoc   = FVector::ZeroVector;   // v1: same as GreenWorldLoc (LineString endpoint)
 	};
 
+	/** A real green outline from courses/<id>/green.geojson, projected to world cm (XY). Verts are the
+	 *  outer ring with the duplicate closing vertex dropped. CentroidCm is the area-weighted centroid
+	 *  (a guaranteed-ish on-green point used as the Random/Tournament fallback). GOL-191/192. */
+	struct GOLFSIM_API FGreenPolygon
+	{
+		TArray<FVector2D> VertsCm;
+		FVector2D CentroidCm = FVector2D::ZeroVector;
+		int64 OsmWayId = 0;
+	};
+
+	/** A named pin sheet from courses/<id>/pins/<id>.json: per-hole pin world XY (cm). GOL-191. */
+	struct GOLFSIM_API FPinSheet
+	{
+		FString Name;
+		TMap<int32, FVector2D> PinXYByRefCm;   // keyed by hole Ref
+	};
+
 	struct GOLFSIM_API FRoundState
 	{
 		FString RoundId;
@@ -90,6 +107,42 @@ namespace GolfsimRound
 	 *  warning) so single-track courses without the tag still work. Sorted by Ref ascending.
 	 *  Returns false on missing/malformed files; OutErr explains. */
 	GOLFSIM_API bool LoadHoleSchedule(const FString& CourseId, TArray<FHoleSpec>& Out, FString& OutErr);
+
+	// --- GOL-191/192 pin-position system (all pure; reuse the hole.geojson affine) ----------------
+
+	/** Parse green.geojson (FeatureCollection of golf=green Polygons) into world-cm outlines, using the
+	 *  same course bbox/affine as the holes. Outer ring only; closing-duplicate vertex dropped. */
+	GOLFSIM_API bool ParseGreenPolygonsJson(const FString& JsonText,
+		double MinLon, double MinLat, double MaxLon, double MaxLat,
+		TArray<FGreenPolygon>& Out, FString& OutErr);
+
+	/** Parse a pin sheet ({name, pins:[{hole_ref, lon, lat}]}) into per-hole world XY, projecting the
+	 *  lon/lat with the COURSE bbox (not any bbox the sheet may carry) so it lines up with the holes. */
+	GOLFSIM_API bool ParsePinSheetJson(const FString& JsonText,
+		double MinLon, double MinLat, double MaxLon, double MaxLat,
+		FPinSheet& Out, FString& OutErr);
+
+	/** Even-odd ray-cast point-in-polygon on a green outline (XY cm). */
+	GOLFSIM_API bool PointInPolygonCm(const FVector2D& PointCm, const FGreenPolygon& Poly);
+
+	/** A uniform-random point inside the green (bbox rejection sampling; falls back to the centroid). */
+	GOLFSIM_API FVector2D RandomPointInGreen(const FGreenPolygon& Poly, FRandomStream& Stream);
+
+	/** Index of the green polygon for a hole: the polygon containing GreenWorldLoc, else the nearest
+	 *  centroid. INDEX_NONE only if Greens is empty. */
+	GOLFSIM_API int32 MatchGreenToHole(const FHoleSpec& Hole, const TArray<FGreenPolygon>& Greens);
+
+	/** Set each scheduled hole's PinWorldLoc.XY per Mode (Z stays 0 -- snapped at hole.start). Static
+	 *  leaves the endpoint; Random samples in-green; Tournament reads the sheet (fallback: green
+	 *  centroid, then the endpoint). No-ops gracefully when green/sheet data is missing. */
+	GOLFSIM_API void ResolvePinPositions(TArray<FHoleSpec>& Schedule, EPinMode Mode,
+		const TArray<FGreenPolygon>& Greens, const FPinSheet* Sheet, FRandomStream& Stream);
+
+	/** Read courses/<id>/green.geojson (+ heightmap.json bbox) -> world-cm green outlines. */
+	GOLFSIM_API bool LoadGreenPolygons(const FString& CourseId, TArray<FGreenPolygon>& Out, FString& OutErr);
+
+	/** Read courses/<id>/pins/<SetId>.json (+ heightmap.json bbox) -> a pin sheet. */
+	GOLFSIM_API bool LoadPinSheet(const FString& CourseId, const FString& SetId, FPinSheet& Out, FString& OutErr);
 
 	/** GOL-142: filter a full (Ref-ascending) schedule to the holes the round will actually play.
 	 *  Full18 -> all; Front9 -> Ref 1..9; Back9 -> Ref 10..18; Custom -> entries whose Ref is in

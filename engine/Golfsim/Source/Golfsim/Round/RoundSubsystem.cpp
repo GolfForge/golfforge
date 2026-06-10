@@ -8,6 +8,7 @@
 #include "GameFramework/PlayerController.h"
 #include "Kismet/GameplayStatics.h"   // OpenLevel for course-load
 #include "Misc/Paths.h"
+#include "Misc/DateTime.h"            // GOL-191: RNG seed for Random pin positions
 #include "UObject/UObjectGlobals.h"   // FCoreUObjectDelegates
 #include "Course/CourseLevelMap.h"    // shared course-id <-> level table
 
@@ -123,6 +124,39 @@ void URoundSubsystem::StartRound(const FString& CourseId, EGolfDifficulty Diffic
 			TEXT("URoundSubsystem::StartRound: course=%s holes-mode=%d selected 0 holes; not starting"),
 			*CourseId, (int32)Config.HolesMode);
 		return;
+	}
+
+	// GOL-191/192: resolve pin positions per the round's PinMode before the schedule is locked in.
+	// Random/Tournament read course data + an RNG; Static leaves the authored endpoints. Best-effort --
+	// any load failure logs and the resolver falls back (Tournament -> green centroid -> static).
+	if (Config.PinMode != EPinMode::Static)
+	{
+		TArray<GolfsimRound::FGreenPolygon> Greens;
+		FString PinErr;
+		if (!GolfsimRound::LoadGreenPolygons(CourseId, Greens, PinErr))
+		{
+			UE_LOG(LogTemp, Warning,
+				TEXT("URoundSubsystem::StartRound: green polygons -> %s (pins fall back to static)"), *PinErr);
+		}
+
+		GolfsimRound::FPinSheet Sheet;
+		const GolfsimRound::FPinSheet* SheetPtr = nullptr;
+		if (Config.PinMode == EPinMode::Tournament)
+		{
+			if (GolfsimRound::LoadPinSheet(CourseId, Config.PinSetId, Sheet, PinErr))
+			{
+				SheetPtr = &Sheet;
+			}
+			else
+			{
+				UE_LOG(LogTemp, Warning,
+					TEXT("URoundSubsystem::StartRound: pin sheet '%s' -> %s (pins fall back to centroid/static)"),
+					*Config.PinSetId, *PinErr);
+			}
+		}
+
+		FRandomStream PinStream((int32)(FDateTime::Now().GetTicks() & 0x7FFFFFFF));
+		GolfsimRound::ResolvePinPositions(Schedule, Config.PinMode, Greens, SheetPtr, PinStream);
 	}
 
 	const GolfsimRound::FRoundStep Step =

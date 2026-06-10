@@ -62,6 +62,28 @@ Both `cart_path.geojson` and `water.geojson` (and any future vector layer) use t
 
 Coordinates are WGS84 lon/lat. Polygon rings are guaranteed closed (first vertex == last vertex). Properties always have `osm_way_id` and `osm_tags` — features without those are a bug. **Polygon** features additionally carry `synthesized` (bool) — `true` only for pipeline-generated geometry (currently fallback fairway corridors); `osm_way_id` is `null` for those.
 
+## Pin sheets (`pins/<id>.json` — named hole-location sets, GOL-191/192)
+
+A pin sheet is a named set of per-hole pin (cup) positions the round can play instead of the static
+`hole.geojson` green endpoint — the engine's **Tournament** pin mode loads `courses/<id>/pins/<PinSetId>.json`
+(default id `default`). Shape:
+
+```json
+{
+  "name": "Championship Pins",
+  "bbox_wgs84": [minlon, minlat, maxlon, maxlat],
+  "pins": [ { "hole_ref": 1, "lon": -73.4514, "lat": 40.7451 }, ... ]
+}
+```
+
+Pin `lon`/`lat` are WGS84 and projected with the **course** bbox (`heightmap.json.bbox_wgs84`) — the
+`bbox_wgs84` stored in the sheet is informational; the engine ignores it and uses the course's. One
+pin per `hole_ref`. **Authoring:** `pipeline/build_pin_sheet.py --course-id <id>` seeds a baseline
+sheet (each pin at its matched green's centroid, so every pin is guaranteed on-green); real event
+sheets are hand-tweaked from that baseline toward published hole locations. Engine consumers:
+`GolfsimRound::ParsePinSheetJson` / `LoadPinSheet` / `ResolvePinPositions`. Committed (small) and
+staged with `courses/<id>/` in cooked builds.
+
 ## QA overlays (visual check — not committed)
 
 `build_qa_overlay.py` renders two images per course for eyeballing that derived features land in the right place:

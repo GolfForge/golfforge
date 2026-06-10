@@ -326,6 +326,17 @@ UWidget* URoundSetupWizard::BuildFormatStep()
 
 	BuildHolePicker(Content);
 
+	// ── Pin positions (GOL-191/192) ── Static = today's spots; Random = fresh on-green each round;
+	// Tournament = the course's pin sheet (real event hole locations). Resolved at round start.
+	AddSectionHeader(Content, TEXT("Pin positions"), TEXT("Where the flags sit on each green"));
+	PinModeSeg = CreateWidget<USegmentedControl>(this);
+	PinModeSeg->SetOptions(
+		{ TEXT("Static"), TEXT("Random"), TEXT("Tournament") },
+		{ TEXT("set spots"), TEXT("fresh each round"), TEXT("event pins") });
+	PinModeSeg->SetSelectedIndex((int32)RoundConfig.PinMode, false);
+	PinModeSeg->OnChanged = [this](int32 Sel) { RoundConfig.PinMode = (EPinMode)Sel; };
+	if (UVerticalBoxSlot* PinSlot = Content->AddChildToVerticalBox(PinModeSeg)) { PinSlot->SetHorizontalAlignment(HAlign_Left); }
+
 	// ── Game type (4-up) ──
 	AddSectionHeader(Content, TEXT("Game type"), TEXT("How scoring works"));
 	UUniformGridPanel* GameGrid = WidgetTree->ConstructWidget<UUniformGridPanel>();

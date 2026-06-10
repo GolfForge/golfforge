@@ -76,6 +76,7 @@ void URoundPinSubsystem::SpawnAllHolePins()
 			PinLoc, FRotator::ZeroRotator, Sp);
 		if (!Pin) { continue; }
 		Pin->SetGimmeRadiusFt(0.0);   // decorative until it becomes the active hole
+		Pin->SetGreenSurfaceVisible(false);   // GOL-191: course greens are the painted landscape, not the disc
 		HolePins.Add(H.Ref, Pin);
 		++Spawned;
 	}
@@ -115,6 +116,7 @@ void URoundPinSubsystem::SetActiveHole(int32 HoleRef, const FVector& SnappedPinL
 		Sp.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
 		Pin = World->SpawnActor<AGolfPinActor>(AGolfPinActor::StaticClass(),
 			SnappedPinLoc, FRotator::ZeroRotator, Sp);
+		if (Pin) { Pin->SetGreenSurfaceVisible(false); }   // GOL-191: painted green, not the disc
 		Slot = Pin;
 	}
 	if (!Pin) { return; }

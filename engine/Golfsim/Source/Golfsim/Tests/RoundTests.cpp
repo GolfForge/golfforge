@@ -396,4 +396,154 @@ bool FGolfsimRoundGimmeRuleTest::RunTest(const FString&)
 	return true;
 }
 
+// --- GOL-191/192 pin-position system ----------------------------------------------------------
+
+namespace
+{
+	// A square green centered at (Cx,Cy) with half-extent H (cm). Open ring (4 verts).
+	GolfsimRound::FGreenPolygon SquareGreen(double Cx, double Cy, double H)
+	{
+		GolfsimRound::FGreenPolygon G;
+		G.VertsCm = { FVector2D(Cx - H, Cy - H), FVector2D(Cx + H, Cy - H),
+		              FVector2D(Cx + H, Cy + H), FVector2D(Cx - H, Cy + H) };
+		G.CentroidCm = FVector2D(Cx, Cy);
+		return G;
+	}
+}
+
+// Parse a green.geojson polygon: drops the closing duplicate vertex, computes centroid, reads way id.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FGolfsimGreenParseTest, "Golfsim.Round.GreenPolygonParse",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FGolfsimGreenParseTest::RunTest(const FString&)
+{
+	using namespace GolfsimRound;
+	// bbox 0,0..1,1: LonLatToWorldCm maps lon/lat 0.5/0.5 -> (0,0). Square green lon/lat [0.4,0.6].
+	const FString Json = TEXT(
+		"{\"type\":\"FeatureCollection\",\"features\":[{\"type\":\"Feature\","
+		"\"properties\":{\"osm_way_id\":42,\"osm_tags\":{\"golf\":\"green\"}},"
+		"\"geometry\":{\"type\":\"Polygon\",\"coordinates\":[[[0.4,0.4],[0.6,0.4],[0.6,0.6],[0.4,0.6],[0.4,0.4]]]}}]}");
+	TArray<FGreenPolygon> Greens; FString Err;
+	TestTrue(TEXT("parse ok"), ParseGreenPolygonsJson(Json, 0, 0, 1, 1, Greens, Err));
+	TestEqual(TEXT("one green"), Greens.Num(), 1);
+	TestEqual(TEXT("4 verts (closing dup dropped)"), Greens[0].VertsCm.Num(), 4);
+	TestEqual(TEXT("osm way id"), Greens[0].OsmWayId, (int64)42);
+	TestTrue(TEXT("centroid ~origin"), Greens[0].CentroidCm.Size() < 1.0);
+
+	TArray<FGreenPolygon> None; FString E2;
+	TestFalse(TEXT("empty features -> false"),
+		ParseGreenPolygonsJson(TEXT("{\"type\":\"FeatureCollection\",\"features\":[]}"), 0, 0, 1, 1, None, E2));
+	return true;
+}
+
+// Point-in-polygon + random-in-green always lands inside (seeded, many draws).
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FGolfsimGreenGeometryTest, "Golfsim.Round.GreenGeometry",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FGolfsimGreenGeometryTest::RunTest(const FString&)
+{
+	using namespace GolfsimRound;
+	const FGreenPolygon G = SquareGreen(0, 0, 1000);   // 20x20 m green
+	TestTrue(TEXT("origin inside"), PointInPolygonCm(FVector2D(0, 0), G));
+	TestFalse(TEXT("far point outside"), PointInPolygonCm(FVector2D(5000, 0), G));
+
+	FRandomStream Stream(7);
+	for (int32 i = 0; i < 200; ++i)
+	{
+		const FVector2D P = RandomPointInGreen(G, Stream);
+		TestTrue(TEXT("random point lands on the green"), PointInPolygonCm(P, G));
+	}
+	return true;
+}
+
+// Match a hole to its green: containing polygon wins; else nearest centroid; empty -> INDEX_NONE.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FGolfsimGreenMatchTest, "Golfsim.Round.GreenMatch",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FGolfsimGreenMatchTest::RunTest(const FString&)
+{
+	using namespace GolfsimRound;
+	TArray<FGreenPolygon> Greens = { SquareGreen(0, 0, 500), SquareGreen(10000, 0, 500) };
+
+	FHoleSpec Inside;  Inside.GreenWorldLoc = FVector(10000, 0, 0);   // inside green #1
+	TestEqual(TEXT("containing polygon"), MatchGreenToHole(Inside, Greens), 1);
+
+	FHoleSpec Nearer;  Nearer.GreenWorldLoc = FVector(400, 9999, 0);  // outside both; nearest centroid = #0
+	TestEqual(TEXT("nearest centroid"), MatchGreenToHole(Nearer, Greens), 0);
+
+	TArray<FGreenPolygon> Empty;
+	TestEqual(TEXT("no greens -> INDEX_NONE"), MatchGreenToHole(Inside, Empty), (int32)INDEX_NONE);
+	return true;
+}
+
+// ResolvePinPositions across the three modes + fallbacks.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FGolfsimPinResolveTest, "Golfsim.Round.PinResolve",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FGolfsimPinResolveTest::RunTest(const FString&)
+{
+	using namespace GolfsimRound;
+	TArray<FGreenPolygon> Greens = { SquareGreen(0, 0, 1000) };
+
+	auto MakeHole = [](int32 Ref)
+	{
+		FHoleSpec H; H.Ref = Ref;
+		H.GreenWorldLoc = FVector(0, 0, 0);          // inside the green
+		H.PinWorldLoc   = FVector(50000, 0, 0);      // endpoint far from the green (so changes are visible)
+		return H;
+	};
+
+	// Static: untouched.
+	{
+		TArray<FHoleSpec> S = { MakeHole(1) };
+		FRandomStream R(1);
+		ResolvePinPositions(S, EPinMode::Static, Greens, nullptr, R);
+		TestEqual(TEXT("static keeps endpoint"), S[0].PinWorldLoc.X, 50000.0);
+	}
+	// Random: pin lands on the green.
+	{
+		TArray<FHoleSpec> S = { MakeHole(1) };
+		FRandomStream R(2);
+		ResolvePinPositions(S, EPinMode::Random, Greens, nullptr, R);
+		TestTrue(TEXT("random pin on green"),
+			PointInPolygonCm(FVector2D(S[0].PinWorldLoc.X, S[0].PinWorldLoc.Y), Greens[0]));
+	}
+	// Tournament: sheet hit -> exact; missing ref -> green centroid fallback.
+	{
+		FPinSheet Sheet; Sheet.PinXYByRefCm.Add(1, FVector2D(300, -200));
+		TArray<FHoleSpec> S = { MakeHole(1), MakeHole(2) };
+		FRandomStream R(3);
+		ResolvePinPositions(S, EPinMode::Tournament, Greens, &Sheet, R);
+		TestEqual(TEXT("tournament uses the sheet (X)"), S[0].PinWorldLoc.X, 300.0);
+		TestEqual(TEXT("tournament uses the sheet (Y)"), S[0].PinWorldLoc.Y, -200.0);
+		TestTrue(TEXT("missing ref -> centroid fallback"),
+			FVector2D(S[1].PinWorldLoc.X, S[1].PinWorldLoc.Y).Equals(Greens[0].CentroidCm, 1.0));
+	}
+	// Random with no greens: endpoint unchanged (graceful).
+	{
+		TArray<FHoleSpec> S = { MakeHole(1) };
+		FRandomStream R(4);
+		TArray<FGreenPolygon> Empty;
+		ResolvePinPositions(S, EPinMode::Random, Empty, nullptr, R);
+		TestEqual(TEXT("no greens -> static fallback"), S[0].PinWorldLoc.X, 50000.0);
+	}
+	return true;
+}
+
+// Pin-sheet parse: per-hole lon/lat projected with the course bbox.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FGolfsimPinSheetParseTest, "Golfsim.Round.PinSheetParse",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FGolfsimPinSheetParseTest::RunTest(const FString&)
+{
+	using namespace GolfsimRound;
+	const FString Json = TEXT(
+		"{\"name\":\"Championship Pins\",\"pins\":["
+		"{\"hole_ref\":1,\"lon\":0.5,\"lat\":0.5},"
+		"{\"hole_ref\":2,\"lon\":0.6,\"lat\":0.4}]}");
+	FPinSheet Sheet; FString Err;
+	TestTrue(TEXT("parse ok"), ParsePinSheetJson(Json, 0, 0, 1, 1, Sheet, Err));
+	TestEqual(TEXT("name"), Sheet.Name, FString(TEXT("Championship Pins")));
+	TestEqual(TEXT("two pins"), Sheet.PinXYByRefCm.Num(), 2);
+	const FVector2D* P1 = Sheet.PinXYByRefCm.Find(1);
+	TestNotNull(TEXT("ref 1 present"), P1);
+	if (P1) { TestTrue(TEXT("ref 1 ~origin"), P1->Size() < 1.0); }
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

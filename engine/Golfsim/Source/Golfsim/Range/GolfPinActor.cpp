@@ -283,3 +283,11 @@ void AGolfPinActor::SetGimmeRadiusFt(double RadiusFt)
 	GimmeRingMesh->SetRelativeLocation(FVector(0.f, 0.f, GimmeRingLiftUU));
 	GimmeRingMesh->SetVisibility(true);
 }
+
+void AGolfPinActor::SetGreenSurfaceVisible(bool bVisible)
+{
+	// GOL-191: the synthetic green disc + fringe collar. Course pins hide these so the painted
+	// splat_green landscape is the green; the hole cup, pole, flag and gimme ring stay.
+	if (DiscMesh)   { DiscMesh->SetVisibility(bVisible); }
+	if (CollarMesh) { CollarMesh->SetVisibility(bVisible); }
+}

@@ -22,13 +22,22 @@ system scores by distance-from-pin, the cycle repeats. First slice of the GOL-73
   hook, the putt-out loop (reuses the putter + `GolfsimRound::IsWithinGimme`: within N yd -> putt
   from the lie until holed, score = strokes), a 2 s next-pin gap that gates fires, and a ball->pin
   result line.
-- **UI** (`GolfRangePanel`): a Mode dropdown (Free Play / Closest to Pin) reveals a settings cluster
-  (Min/Max at 5-yd steps, side-offset + putt-out toggles, within-N) plus a This/Best/Avg/Shots
-  scoreboard. **History**: `FShotHistoryEntry.Mode` tag ("free"/"ctp"). **Console**:
-  `golfsim.Practice.CTP/Free/End/Status` for headless validation.
+- **Entry flow** (post-feedback): CTP is entered from the **Practice** main-menu tile (was a disabled
+  seam), not a range dropdown. New `UI/PracticeSetup` drill picker — a glass card list (Closest to Pin
+  available; Islands/Putting "coming soon" seams) mirroring the round-setup pattern (reuses
+  `UI/OptionCard`). The **Range** tile is now plain free-fire. On the range during a drill the CTP
+  settings cluster + scoreboard show, with a **PIN** target readout (distance + side) and an **End
+  drill** button.
+- **Scoring rule**: CTP scores by **approach distance-from-pin only** (THIS/BEST/AVG in yards). Putts
+  are never counted — putt-out is an unscored "play it out" sequence. (Earlier strokes-mode display
+  made every shot read "1" once putt-out was on.)
+- **Range UX**: follow cam returns to the tee after 3 s idle by **re-framing + resetting the ball to
+  the tee** (no auto Tee/Follow mode switch — that was jarring); new **`C`** key toggles camera; the
+  Tab cheat sheet was reskinned onto `GolfUITheme`. **History**: `FShotHistoryEntry.Mode` tag. **Console**:
+  `golfsim.Practice.CTP/Free/End/Status`.
 - Full project suite 83/83 green. **Deferred (sub-issues):** realistic putt-out break (GOL-75/191),
   Islands (GOL-74), multiplayer/leaderboards; the ball->pin line uses `DrawDebugLine` (stripped in
-  Shipping — fine for alpha/Development, swap to a persistent primitive before ship).
+  Shipping — GOL-197, swap to a persistent primitive before ship).
 
 ## 2026-06-09 — GOL-39: cross-surface ground roll + green spin-back (Windows)
 

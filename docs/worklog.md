@@ -2,6 +2,31 @@
 
 > Dated milestone summaries, newest on top. The durable outcome + the committed artifact, not the blow-by-blow — process detail lives in git history, `docs/ue5-cookbook.md`, and the scripts themselves.
 
+## 2026-06-11 — GOL-199: OldAndre playable — St Andrews Old Course as a whole ~2 km map (Windows)
+
+Putting now plays on a **real, full-scale links**: the St Andrews Old Course, built from a 2-tile LIDAR
+mosaic, scrubbed to the trademark-safe name **OldAndre**.
+
+- **cog backend mosaics multiple tiles** (`972e0c5`). A ~2 km course can straddle two 5 km LIDAR tiles, so
+  `fetch_dem_cog` now stitches several `--cog-source` tiles (merge within the bbox in the shared CRS,
+  then the existing WarpedVRT->WGS84 windowed read). New mosaic test; pipeline suite 68.
+- **Whole-course data** (`52dc727`): bbox `-2.8322,56.3415,-2.7998,56.3595` (~2 km, ~1:1 with the
+  ±100800 cm landscape), **2017 px**, mosaicked from phase-5 **NO41NE + NO51NW** 50 cm DTM. OSM rich
+  (84 greens / 281 bunkers / 83 holes across the Links). 18th green present with real 2.61 m relief.
+- **Engine wiring + trademark rename** (`2c5cb18`). Registered `oldandre -> OldAndre` in
+  `CourseLevelMap` (activates `UCourseSurfaceSubsystem` for break/friction); Putting card ->
+  `StartPuttingOnCourse("oldandre", 18)`; `EnterPuttingOnGreen` targets the 18th by **stable OSM
+  way-id (236999240)** so it nails the right green among the 84 (multi-course bbox), naming-independent.
+  Scrubbed `courses/st-andrews-old -> courses/oldandre` + `heightmap.json course_id` + level `OldAndre`
+  (matches the Bethpage->GolfForgeDemo precedent; OSM tags left as factual ODbL). Deleted the abandoned
+  st-andrews-18 leftover. Suite 93/93.
+- **Editor**: duplicated GolfForgeDemoBlack -> `OldAndre.umap`, imported the heightmap + splats,
+  **hand-set Z scale 5.89** (`a...` so the 30 m range renders 1:1, not the 17x-tall default). Putting on
+  the 18th now reads as real, gently-contoured links. Map committed (LFS).
+- **Next**: **GOL-204** trees orient to the surface normal (lean on slopes) -> world-up; **affects all
+  maps, prioritized next.** Then **GOL-205** (OldAndre inherited-demo-tree/prop cleanup + links vibe),
+  **GOL-203** (elevate putting), **GOL-202** (practice-UI gating).
+
 ## 2026-06-11 — GOL-199: putt on a real course green + Scottish-LIDAR pipeline backend; license → AGPL-only (Windows)
 
 Putting now plays on a **real, contoured course green** (validated on the demo course's 18th), and the

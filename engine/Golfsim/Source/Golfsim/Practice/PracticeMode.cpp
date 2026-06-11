@@ -10,7 +10,7 @@ namespace GolfsimPractice
 		Cfg.bSideOffset  = false;                  // putting pins sit dead ahead; offset is a CTP knob
 		Cfg.bPuttOut     = true;                   // putting is always played out to the cup
 		Cfg.PuttWithinM  = CorridorMaxM;           // no approach gate -- the first shot is already a putt
-		Cfg.GimmeRadiusFt = 1.0;                   // hole it; a tight cup tolerance, not a range gimme
+		Cfg.GimmeRadiusFt = 0.25;                  // small cup (~6 in across) -- hole it for real, no gimme
 		Cfg.Score        = EScoreMode::HoleOut;    // the putting headline metric: putts-to-hole
 		return Cfg;
 	}

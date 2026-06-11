@@ -374,12 +374,19 @@ private:
 	bool bPuttingOnCourseGreen = false;
 	GolfsimRound::FGreenPolygon PuttingTargetGreen;
 	FRandomStream GreenStream;                               // green-point sampling RNG
+
+	// GOL-199: cup capture -- a real-size cup is unputtable with settle-only holing, so a putt that
+	// rolls over the cup slowly drops in. Tracked per putt from the live ball each Tick.
+	bool bPuttCaptured = false;
+	FVector PuttPrevBallLoc = FVector::ZeroVector;
+	bool bPuttPrevValid = false;
 	bool bPendingEnterGreen = false;
 	FString PendingGreenCourseId;
 	int32 PendingGreenHoleRef = 0;
 
 	void EnterPuttingOnGreen(const FString& CourseId, int32 HoleRef);   // load green + start the drill on it
-	void PlacePuttOnGreen();                                            // place pin + position pawn on the green
+	void PlacePuttOnGreen();                                            // pick a new pin + address the ball on the green
+	void AddressPuttAt(const FVector2D& BallXYcm, const FVector2D& PinXYcm);  // stand the pawn + ball AT the lie, facing the pin
 	bool TraceGroundZ(double Xcm, double Ycm, double& OutZ) const;      // landscape Z under a world XY
 
 	void SpawnNextCtpPin();                                  // pick + place the next pin via the subsystem

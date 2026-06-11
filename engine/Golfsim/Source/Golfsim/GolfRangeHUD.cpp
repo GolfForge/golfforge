@@ -262,6 +262,30 @@ void AGolfRangeHUD::Tick(float DeltaSeconds)
 			Panel->UpdateMetrics(AnimClub, AnimSpeedMph, AnimLaunchDeg, AnimSpinRpm,
 				FMath::Min(LiveYd, AnimTargetCarryYd), FMath::Min(LiveYd, AnimTargetTotalYd),
 				AnimOfflineYd, bAnimSpinEstimated);
+
+			// GOL-199: cup capture -- a putt rolling over the cup below the drop speed is holed (a
+			// real-size cup is impossible with settle-only detection). Sampled off the live ball.
+			if (bPuttingOnCourseGreen && !bPuttCaptured)
+			{
+				if (AGolfPinActor* PinA = Pin.Get())
+				{
+					const FVector BallLoc = Ball->GetActorLocation();
+					if (bPuttPrevValid && DeltaSeconds > 0.f)
+					{
+						constexpr double CupCaptureRadiusCm = 10.0;   // ~2x a real cup -- playable
+						constexpr double CupCaptureSpeedMps  = 1.6;    // a putt dies into the hole below this
+						const double SpeedMps = ((BallLoc - PuttPrevBallLoc).Size2D() / 100.0) / DeltaSeconds;
+						const FVector P = PinA->GetActorLocation();
+						const double DistCm = FVector2D(BallLoc.X - P.X, BallLoc.Y - P.Y).Size();
+						if (SpeedMps < CupCaptureSpeedMps && DistCm < CupCaptureRadiusCm)
+						{
+							bPuttCaptured = true;
+						}
+					}
+					PuttPrevBallLoc = BallLoc;
+					bPuttPrevValid = true;
+				}
+			}
 		}
 		else
 		{
@@ -697,8 +721,11 @@ void AGolfRangeHUD::EnsureInputBound()
 	InputComponent->BindAxisKey(EKeys::MouseY, this, &AGolfRangeHUD::OnOrbitPitch);
 	// GOL-121: skip the menu greet when the HUD is spawning on the auto-loaded course map mid
 	// round-start. Otherwise the menu pops up over Black 1's first tee and the player has to
-	// click Range just to dismiss it.
-	if (URoundSubsystem* Round = URoundSubsystem::Get(this); !Round || !Round->IsPendingStart())
+	// click Range just to dismiss it. GOL-199: same for a pending putt-on-green map travel
+	// (BeginPlay set bPendingEnterGreen) -- we drop the player straight onto the green.
+	URoundSubsystem* Round = URoundSubsystem::Get(this);
+	const bool bAutoEntering = (Round && Round->IsPendingStart()) || bPendingEnterGreen;
+	if (!bAutoEntering)
 	{
 		ShowMainMenu();   // greet on the already-loaded range; gameplay stays gated until "Range"
 	}
@@ -1521,6 +1548,11 @@ void AGolfRangeHUD::EnterPuttingOnGreen(const FString& CourseId, int32 HoleRef)
 		*CourseId, PuttingTargetGreen.OsmWayId, PuttingTargetGreen.VertsCm.Num());
 
 	SetPracticeMode(EPracticeMode::Putting);   // common putting setup + spawns the first pin (on the green)
+
+	// Belt-and-suspenders: if the startup greet slipped in before BeginPlay set the skip flag, drop it
+	// so the player lands in the drill, not behind the menu (the bug the IsPendingStart skip prevents).
+	if (bMenuOpen) { DismissMainMenu(); }
+	ReturnFocusToGame();
 }
 
 bool AGolfRangeHUD::TraceGroundZ(double Xcm, double Ycm, double& OutZ) const
@@ -1558,9 +1590,8 @@ void AGolfRangeHUD::PlacePuttOnGreen()
 	const FVector2D PinXY  = RandomPointInGreen(PuttingTargetGreen, GreenStream);
 	const FVector2D BallXY = PointOnGreenAtDistance(PuttingTargetGreen, PinXY, DistCm, GreenStream);
 
-	double PinZ = 0.0, BallZ = 0.0;
+	double PinZ = 0.0;
 	TraceGroundZ(PinXY.X, PinXY.Y, PinZ);
-	TraceGroundZ(BallXY.X, BallXY.Y, BallZ);
 
 	// Pin: find-or-spawn, hide the synthetic disc (the real painted green reads underneath), size the
 	// gimme ring + orient its label toward the ball.
@@ -1580,29 +1611,52 @@ void AGolfRangeHUD::PlacePuttOnGreen()
 	if (PinActor)
 	{
 		PinActor->SetGreenSurfaceVisible(false);
-		PinActor->SetGimmeRadiusFt(Sub->GetConfig().GimmeRadiusFt);
-		PinActor->SetGimmeApproachDir(FVector(PinXY.X - BallXY.X, PinXY.Y - BallXY.Y, 0.0));
+		PinActor->SetGimmeRadiusFt(0.0);   // GOL-199: no gimme ring on a real green -- the cup/flag is the target
 	}
 
-	// Position the pawn at the ball spot, on the putter, facing the pin -- the next fire launches the
-	// putt from BallXY across the green's real contour. (The ball spawns at the pawn floor on fire.)
+	AddressPuttAt(BallXY, PinXY);   // stand the pawn + place the ball at the chosen spot, facing the pin
+	PuttStrokeCount = 0;
+
+	if (Panel) { Panel->SetPuttingPinInfo(Next.DistanceM / MetersPerFoot); }
+}
+
+void AGolfRangeHUD::AddressPuttAt(const FVector2D& BallXYcm, const FVector2D& PinXYcm)
+{
+	UWorld* World = GetWorld();
+	if (!World) { return; }
+
+	double BallZ = 0.0;
+	TraceGroundZ(BallXYcm.X, BallXYcm.Y, BallZ);
+
+	// Ball-to-pin heading: the pawn faces it, the follow cam frames along it.
+	FVector ToPin(PinXYcm.X - BallXYcm.X, PinXYcm.Y - BallXYcm.Y, 0.0);
+	const FVector Dir = ToPin.IsNearlyZero() ? FVector::ForwardVector : ToPin.GetSafeNormal();
+	FollowDownrangeDir = Dir;   // follow cam looks down the putt line even before the first stroke
+
+	// Stand the pawn AT the lie (not behind it) on the putter -- the fire path launches the ball from
+	// the pawn floor, so this makes the putt start from exactly where the ball lies. Z is traced to the
+	// green (a fix vs the range's cached-tee-Z standoff, which floated the pawn + jumped the lie).
 	if (APlayerController* PC = GetOwningPlayerController())
 	{
 		if (APawn* Pawn = PC->GetPawn())
 		{
-			FVector ToPin(PinXY.X - BallXY.X, PinXY.Y - BallXY.Y, 0.0);
-			const FVector Dir = ToPin.IsNearlyZero() ? FVector::ForwardVector : ToPin.GetSafeNormal();
 			const float HalfH = Pawn->GetSimpleCollisionHalfHeight();
-			Pawn->SetActorLocation(FVector(BallXY.X, BallXY.Y, BallZ + HalfH), /*bSweep=*/false,
+			Pawn->SetActorLocation(FVector(BallXYcm.X, BallXYcm.Y, BallZ + HalfH), /*bSweep=*/false,
 				nullptr, ETeleportType::TeleportPhysics);
 			PC->SetControlRotation(Dir.Rotation());
 		}
 	}
 	SelectPutterIfAvailable();
-	bTeeCached = false;          // fresh pin: the next re-putt caches its own "home" pose
-	PuttStrokeCount = 0;
 
-	if (Panel) { Panel->SetPuttingPinInfo(Next.DistanceM / MetersPerFoot); }
+	// Place the ball at address on the green: visible before the stroke, and gives the follow cam +
+	// orbit something to frame (SetCameraMode(Follow) no-ops without a ball). The fire path reuses this
+	// same ball via GetOrSpawnBallAt, so the putt launches from exactly here.
+	const FVector AddressBallLoc(BallXYcm.X, BallXYcm.Y, BallZ + BallRestHeightUU);
+	if (AGolfBallActor* AddressBall = GetOrSpawnBallAt(World, AddressBallLoc, Dir.Rotation()))
+	{
+		AnimBall = AddressBall;
+	}
+	bTeeCached = false;   // green putting doesn't use the range tee-pose cache (no standoff to restore)
 }
 
 void AGolfRangeHUD::SpawnNextCtpPin()
@@ -1719,9 +1773,11 @@ void AGolfRangeHUD::OnPuttingShotSettled(AGolfBallActor* Ball)
 		return;
 	}
 
-	// Hole-out scoring: keep putting until the ball is in the cup, then score putts-to-hole.
-	if (GolfsimRound::IsWithinGimme(BallWorld, PinWorld, Cfg.GimmeRadiusFt))
+	// Hole-out scoring: the ball is holed if it rolled over the cup at drop speed (GOL-199 capture) or
+	// settled inside it. Then score putts-to-hole.
+	if (bPuttCaptured || GolfsimRound::IsWithinGimme(BallWorld, PinWorld, Cfg.GimmeRadiusFt))
 	{
+		if (Ball) { Ball->SetActorLocation(FVector(PinWorld.X, PinWorld.Y, BallWorld.Z)); }   // drop it in the cup
 		Sub->RecordHoleOut(PuttStrokeCount, DistM);
 		RefreshCtpScoreboard();
 		PuttStrokeCount = 0;
@@ -1730,8 +1786,16 @@ void AGolfRangeHUD::OnPuttingShotSettled(AGolfBallActor* Ball)
 	}
 	else
 	{
-		TeleportPawnForPutt(BallWorld, PinWorld);   // not holed -- putt again from the new lie
-		bCtpPutting = true;                         // pawn now stands behind a lie; EndCtpPuttSequence restores
+		// Not holed -- re-putt from where the ball lies.
+		if (bPuttingOnCourseGreen)
+		{
+			AddressPuttAt(FVector2D(BallWorld.X, BallWorld.Y), FVector2D(PinWorld.X, PinWorld.Y));
+		}
+		else
+		{
+			TeleportPawnForPutt(BallWorld, PinWorld);   // flat-range standoff (Phase A range putting)
+			bCtpPutting = true;                         // pawn stands behind the lie; EndCtpPuttSequence restores
+		}
 	}
 }
 
@@ -2601,6 +2665,8 @@ void AGolfRangeHUD::OnShotOutcome(const FGolfEvent& Event)
 	if ((IsCtpActive() || IsPuttingActive()) && !RoundIsActive())
 	{
 		bCtpScorePending = true;
+		bPuttCaptured = false;   // GOL-199: fresh putt -- reset cup-capture tracking
+		bPuttPrevValid = false;
 	}
 
 	// Follow cam: a new shot re-chases from the tee (even if we were parked on the last ball). Snap the

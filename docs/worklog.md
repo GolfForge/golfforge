@@ -2,6 +2,35 @@
 
 > Dated milestone summaries, newest on top. The durable outcome + the committed artifact, not the blow-by-blow — process detail lives in git history, `docs/ue5-cookbook.md`, and the scripts themselves.
 
+## 2026-06-11 — GOL-199: putt on a real course green + Scottish-LIDAR pipeline backend; license → AGPL-only (Windows)
+
+Putting now plays on a **real, contoured course green** (validated on the demo course's 18th), and the
+pipeline can ingest **non-US national LIDAR**. Also dropped the commercial dual-license.
+
+- **Pipeline `cog` elevation backend** (`build_heightmap.py`, commit `c4758e5`). Reads any DTM
+  Cloud-Optimized GeoTIFF (local / `https://` / `s3://`) for the bbox and reprojects **any** CRS to
+  WGS84 via a windowed WarpedVRT — the route to high-res LIDAR outside US 3DEP. Validated against
+  **Scotland's 50 cm DTM** on the public `s3://srsp-open-data` bucket (EPSG:27700, OGL-v3; anonymous
+  S3). Hermetic tests; pipeline suite 67. Pulled `courses/st-andrews-18/` (commit `fdccc5f`).
+- **Putt-on-a-real-green drill** (`ddf1669` + PIE fixes `fff7eb7` + `47ff532`). The Putting card now
+  `OpenLevel`s a course and drops the player onto a chosen green (`MatchGreenToHole`/`RandomPointInGreen`
+  + new `PointOnGreenAtDistance`), pins + ball placed ON the green, Z-traced, facing the cup. **Course-
+  agnostic** — works for any course with a `green.geojson`. Hole-out via **cup capture** (a putt rolling
+  over the cup < ~1.6 m/s within ~10 cm drops in — settle-only holing was unputtable); ball drops in;
+  tracers clear + a "holed out" banner. Fixed: startup-menu greet on the travel, re-putt from the lie
+  (not a 1.5 yd standoff), follow cam dead pre-shot (ball now placed at address). Suite **93/93**.
+- **Key engine constraint found (now in the cookbook):** `LonLatToWorldCm` maps **any** course bbox onto
+  a **fixed ±100800 cm (~2 km) landscape** (`HalfXYCm`, also in `FCourseSurfaceSampler`). So course bboxes
+  must be ~2 km (the demo's design point); a small (230 m) putting-green bbox gets stretched ~9× and the
+  break flattens. → St Andrews must be built as a **whole ~2 km course**, not a tiny green map.
+- **License → AGPL-3.0 only** (`31b36bf`). Dropped the commercial dual-license + `COMMERCIAL.md`; CLA →
+  DCO; copyleft inputs welcome, non-commercial-only excluded. Updated invariant #4, README, CONTRIBUTING,
+  ATTRIBUTION, plan.md, the in-app credits string, and the OpenFlight driver rationale.
+- **Next (GOL-199):** the Old Course 18th spans **2 LIDAR tiles** (NO51NW + the tile west), so build
+  St Andrews as a real ~2 km course = extend the `cog` backend to **mosaic multiple tiles** → re-pull the
+  whole Old Course at 2017 px → manual landscape import → point the Putting card at `st-andrews-old`.
+  Engine-side execution detail is a comment on GOL-199. Polish → GOL-203; practice-UI cleanup → GOL-202.
+
 ## 2026-06-10 — GOL-75: putting practice mode — logic (drill + feet settings + scored hole-out) (Windows)
 
 The putting epic's **game mode** (Phase A of the remainder; the physics was finished earlier today).

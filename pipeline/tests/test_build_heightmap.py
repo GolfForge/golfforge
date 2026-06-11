@@ -161,3 +161,40 @@ class TestFetchDemCog:
         # A bbox in the Pacific — nowhere near the Scottish tile.
         with pytest.raises(SystemExit):
             fetch_dem_cog((-150.0, 10.0, -149.9, 10.1), str(src_tif), tmp_path / "dem.tif")
+
+    def test_mosaics_two_adjacent_tiles(self, tmp_path):
+        """A bbox straddling two tiles (e.g. St Andrews across NO51NW + the tile west) stitches them."""
+        rasterio = pytest.importorskip("rasterio")
+        import numpy as np
+        from rasterio.transform import from_origin
+        from rasterio.warp import transform_bounds
+
+        res = 1.0
+        north0 = 700000.0
+        h = 100
+
+        def make_tile(east0, w, val):
+            transform = from_origin(east0, north0 + h * res, res, res)
+            p = tmp_path / f"tile_{int(east0)}.tif"
+            with rasterio.open(p, "w", driver="GTiff", height=h, width=w, count=1,
+                               dtype="float32", crs="EPSG:27700", transform=transform) as dst:
+                dst.write(np.full((h, w), float(val), dtype="float32"), 1)
+            return p
+
+        # Two adjacent 50 m-wide BNG tiles: west = elevation 1, east = elevation 2.
+        west_tile = make_tile(320000.0, 50, 1.0)
+        east_tile = make_tile(320050.0, 50, 2.0)
+
+        # A bbox spanning the seam (inner region so it sits on both tiles).
+        w, s, e, n = transform_bounds("EPSG:27700", "EPSG:4326",
+                                      320010.0, 700010.0, 320090.0, 700090.0)
+        out_tif = tmp_path / "dem.tif"
+        # Comma-separated string form (also exercises the source split).
+        fetch_dem_cog((w, s, e, n), f"{west_tile},{east_tile}", out_tif)
+
+        assert out_tif.exists()
+        with rasterio.open(out_tif) as r:
+            assert r.crs.to_epsg() == 4326
+            arr = r.read(1, masked=True)
+            vals = set(np.round(arr.compressed()).astype(int).tolist())
+            assert 1 in vals and 2 in vals   # both tiles contributed to the mosaic

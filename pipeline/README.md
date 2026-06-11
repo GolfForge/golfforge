@@ -67,16 +67,26 @@ Note the `=` syntax for `--bbox-wgs84`. Negative longitudes start with `-` and a
 
 ## Backends
 
-`build_heightmap.py` supports two LIDAR sources:
+`build_heightmap.py` supports three LIDAR sources:
 
 | Backend | Source | Speed | Quality | When to use |
 |---|---|---|---|---|
 | `opentopo` (default) | OpenTopography REST API | fast | lower (10–30m resolution) | iteration, prototyping, picking bbox |
-| `pdal` | USGS 3DEP point cloud via AWS Entwine | slow | high (sub-meter) | building a course you actually care about |
+| `pdal` | USGS 3DEP point cloud via AWS Entwine | slow | high (sub-meter) | building a US course you actually care about |
+| `cog` | any DTM Cloud-Optimized GeoTIFF (local / `https://` / `s3://`) | fast | as-good-as-the-source | high-res LIDAR outside US 3DEP (e.g. Scotland) |
 
 The `opentopo` backend needs an OpenTopography API key — see the setup section above.
 
 For the `pdal` backend you also need the EPT (Entwine Point Tile) URL of the USGS 3DEP project covering your bbox — look it up at https://usgs.entwine.io/.
+
+The `cog` backend reads a single DTM Cloud-Optimized GeoTIFF and reprojects **any** source CRS to WGS84, windowed to your bbox (so a big national tile only fetches the part you need). It's the route for high-resolution national LiDAR outside the US 3DEP coverage — e.g. **Scotland's ~50 cm DTM** on the public `s3://srsp-open-data` bucket (EPSG:27700 British National Grid, OGL-v3 — use the DTM products, **not** the Phase 2 LAZ, which is non-commercial). Pass the tile with `--cog-source <path|https://...|s3://bucket/key>`. Anonymous S3 reads are enabled automatically (`AWS_NO_SIGN_REQUEST`); only **AGPL-compatible** sources belong here (see `ATTRIBUTION.md` — non-commercial-only data is excluded).
+
+```bash
+python build_heightmap.py \
+    --bbox-wgs84 -2.8025,56.3475,-2.7985,56.3500 \
+    --course-id st-andrews-18 --size 1009 \
+    --backend cog --cog-source s3://srsp-open-data/<phase>/<dtm-tile>.tif
+```
 
 ## UE5 import quick reference
 

@@ -2,12 +2,18 @@
 """
 build_heightmap.py — bbox + LIDAR source → 16-bit PNG heightmap for UE5 Landscape.
 
-Two backends:
+Three backends:
   --backend opentopo  (default) — pulls a pre-processed DEM from OpenTopography REST API.
                                   Easy, lower-resolution, good for fast iteration.
   --backend pdal                — pulls raw 3DEP point cloud from AWS Entwine,
                                   ground-classifies, rasterizes via PDAL.
-                                  Higher quality. Requires PDAL installed.
+                                  Higher quality. Requires PDAL installed. US-only (3DEP).
+  --backend cog                 — reads a DTM Cloud-Optimized GeoTIFF (local path, https://, or
+                                  s3://) for the bbox, reprojecting ANY source CRS to WGS84. The
+                                  route for high-res national LiDAR outside US 3DEP — e.g. Scotland's
+                                  ~50cm DTM on s3://srsp-open-data (EPSG:27700, OGL-v3). A COG read is
+                                  windowed, so only the bbox neighbourhood is fetched from a big tile.
+                                  Use --cog-source <path|url|s3://...>.
 
 Output:
   <out_dir>/heightmap.png  — 16-bit grayscale PNG sized for UE5 Landscape (default 4033x4033)
@@ -185,6 +191,71 @@ def fetch_dem_pdal(bbox: Tuple[float, float, float, float], ept_url: str, out_ti
     print(f"[pdal] wrote {out_tif}")
 
 
+def vsi_path(source: str) -> str:
+    """
+    Map a COG source to a GDAL virtual-filesystem path rasterio can open:
+      s3://bucket/key     -> /vsis3/bucket/key   (anonymous reads need AWS_NO_SIGN_REQUEST=YES)
+      https://.../x.tif   -> /vsicurl/https://.../x.tif
+      /vsi*/... or local  -> unchanged
+    Pure string mapping (no I/O) so it's unit-testable.
+    """
+    if source.startswith(("/vsis3/", "/vsicurl/", "/vsizip/", "/vsigzip/", "/vsimem/")):
+        return source
+    if source.startswith("s3://"):
+        return "/vsis3/" + source[len("s3://"):]
+    if source.startswith(("http://", "https://")):
+        return "/vsicurl/" + source
+    return source
+
+
+def fetch_dem_cog(bbox: Tuple[float, float, float, float], cog_source: str, out_tif: Path) -> None:
+    """
+    Read a DTM Cloud-Optimized GeoTIFF clipped + reprojected to the WGS84 bbox.
+
+    Handles any source CRS (e.g. the Scottish DTM is EPSG:27700 / British National Grid) by warping
+    to EPSG:4326 on read via a WarpedVRT. COG-friendly: the VRT does lazy windowed reads, so only the
+    bbox neighbourhood is pulled even from a large remote tile. Anonymous public-bucket reads (the
+    Scottish srsp-open-data bucket is public) are enabled via AWS_NO_SIGN_REQUEST.
+    """
+    import rasterio
+    from rasterio.enums import Resampling
+    from rasterio.vrt import WarpedVRT
+    from rasterio.windows import Window, from_bounds
+
+    minlon, minlat, maxlon, maxlat = bbox
+    # Public open-data buckets are read anonymously; harmless for non-S3 sources.
+    os.environ.setdefault("AWS_NO_SIGN_REQUEST", "YES")
+
+    path = vsi_path(cog_source)
+    print(f"[cog] opening {path}")
+    with rasterio.open(path) as src:
+        with WarpedVRT(src, crs="EPSG:4326", resampling=Resampling.bilinear) as vrt:
+            # Window into the warped (WGS84) grid for the bbox, snapped to whole pixels and clamped
+            # to the VRT so a bbox spilling past the tile edge doesn't read out of bounds.
+            fwin = from_bounds(minlon, minlat, maxlon, maxlat, transform=vrt.transform)
+            col_off = max(0, int(np.floor(fwin.col_off)))
+            row_off = max(0, int(np.floor(fwin.row_off)))
+            col_end = min(vrt.width, int(np.ceil(fwin.col_off + fwin.width)))
+            row_end = min(vrt.height, int(np.ceil(fwin.row_off + fwin.height)))
+            if col_end <= col_off or row_end <= row_off:
+                print(f"[cog] ERROR: bbox {bbox} does not overlap the COG ({cog_source})", file=sys.stderr)
+                sys.exit(1)
+            win = Window(col_off, row_off, col_end - col_off, row_end - row_off)
+            data = vrt.read(1, window=win, masked=True)
+            win_transform = vrt.window_transform(win)
+            nodata = vrt.nodata if vrt.nodata is not None else -9999.0
+
+    out_tif.parent.mkdir(parents=True, exist_ok=True)
+    with rasterio.open(
+        out_tif, "w", driver="GTiff",
+        height=int(data.shape[0]), width=int(data.shape[1]),
+        count=1, dtype="float32", crs="EPSG:4326",
+        transform=win_transform, nodata=nodata,
+    ) as dst:
+        dst.write(np.ma.filled(data, nodata).astype("float32"), 1)
+    print(f"[cog] wrote {out_tif} ({data.shape[1]}x{data.shape[0]} px @ EPSG:4326)")
+
+
 # -------------------- DEM → 16-bit PNG --------------------
 
 
@@ -263,7 +334,7 @@ def main() -> None:
     p.add_argument("--out-dir", default="out", help="Output directory (default: ./out)")
     p.add_argument("--size", type=int, default=4033, choices=UE5_LANDSCAPE_SIZES,
                    help="Heightmap output size in pixels (must be UE5-friendly)")
-    p.add_argument("--backend", choices=["opentopo", "pdal"], default="opentopo")
+    p.add_argument("--backend", choices=["opentopo", "pdal", "cog"], default="opentopo")
     p.add_argument("--opentopo-dataset", default="USGS10m",
                    help="OpenTopography dataset name (opentopo backend only)")
     p.add_argument("--opentopo-key", default=None,
@@ -273,6 +344,10 @@ def main() -> None:
                    help="USGS 3DEP EPT (Entwine) URL covering the bbox (pdal backend only)")
     p.add_argument("--pdal-resolution", type=float, default=0.5,
                    help="DEM grid resolution in meters (pdal backend only)")
+    p.add_argument("--cog-source", default=None,
+                   help="DTM Cloud-Optimized GeoTIFF for the bbox: local path, https:// URL, or "
+                        "s3://bucket/key (cog backend only). E.g. a Scottish DTM tile on "
+                        "s3://srsp-open-data/...")
     args = p.parse_args()
 
     out_dir = Path(args.out_dir) / args.course_id
@@ -286,6 +361,12 @@ def main() -> None:
         api_key = resolve_opentopo_key(args.opentopo_key)
         fetch_dem_opentopo(args.bbox_wgs84, intermediate_tif,
                            dataset=args.opentopo_dataset, api_key=api_key)
+    elif args.backend == "cog":
+        if not args.cog_source:
+            print("--cog-source required for cog backend (local path, https:// URL, or s3://bucket/key)",
+                  file=sys.stderr)
+            sys.exit(2)
+        fetch_dem_cog(args.bbox_wgs84, args.cog_source, intermediate_tif)
     else:
         if not args.pdal_ept_url:
             print("--pdal-ept-url required for pdal backend", file=sys.stderr)

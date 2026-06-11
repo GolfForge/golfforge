@@ -134,6 +134,11 @@ AGolfRangeHUD::AGolfRangeHUD()
 	PrimaryActorTick.bStartWithTickEnabled = true;
 }
 
+// GOL-199: transient "holed out" banner (file-static -- single-player, ephemeral DrawHUD state; a
+// later pass can promote to members alongside the GOL-202 practice-UI cleanup).
+static double GPuttHoledMsgUntilSec = 0.0;
+static int32  GPuttHoledMsgPutts    = 0;
+
 void AGolfRangeHUD::BeginPlay()
 {
 	Super::BeginPlay();
@@ -1583,6 +1588,8 @@ void AGolfRangeHUD::PlacePuttOnGreen()
 	UPracticeModeSubsystem* Sub = UPracticeModeSubsystem::Get(this);
 	if (!World || !Sub) { return; }
 
+	FlushPersistentDebugLines(World);   // GOL-199: start each pin with a clean green (clear prior tracers)
+
 	// Distance from the (feet-config'd) subsystem RNG; green geometry from the HUD's own stream.
 	const FCtpPin Next = Sub->NextPin();
 	const double DistCm = Next.DistanceM * 100.0;
@@ -1780,6 +1787,15 @@ void AGolfRangeHUD::OnPuttingShotSettled(AGolfBallActor* Ball)
 		if (Ball) { Ball->SetActorLocation(FVector(PinWorld.X, PinWorld.Y, BallWorld.Z)); }   // drop it in the cup
 		Sub->RecordHoleOut(PuttStrokeCount, DistM);
 		RefreshCtpScoreboard();
+
+		// Clean up the holed putt's tracer + flash a "holed out" banner (drawn in DrawHUD).
+		if (UWorld* W = GetWorld())
+		{
+			FlushPersistentDebugLines(W);
+			GPuttHoledMsgPutts    = PuttStrokeCount;
+			GPuttHoledMsgUntilSec = W->GetTimeSeconds() + 2.5;
+		}
+
 		PuttStrokeCount = 0;
 		EndCtpPuttSequence();   // restore the tee pose for the next pin (no-op if we holed the first putt)
 		StartCtpRespawnTimer();
@@ -2952,6 +2968,21 @@ void AGolfRangeHUD::DrawHUD()
 		const FString Res = FString::Printf(TEXT("Res: %d x %d"),
 			(int32)Canvas->SizeX, (int32)Canvas->SizeY);
 		DrawText(Res, FLinearColor(1.0f, 0.92f, 0.35f), 20.0f, 20.0f);
+
+		// GOL-199: "holed out" banner -- a brief centered flash after a putt drops (set in OnPuttingShotSettled).
+		if (GetWorld() && GetWorld()->GetTimeSeconds() < GPuttHoledMsgUntilSec)
+		{
+			const FString Msg = (GPuttHoledMsgPutts == 1)
+				? TEXT("Holed it!  (1 putt)")
+				: FString::Printf(TEXT("Holed out!  (%d putts)"), GPuttHoledMsgPutts);
+			constexpr float Scale = 2.4f;
+			float TW = 0.f, TH = 0.f;
+			GetTextSize(Msg, TW, TH, GEngine ? GEngine->GetLargeFont() : nullptr, Scale);
+			const float X = (Canvas->SizeX - TW) * 0.5f;
+			const float Y = Canvas->SizeY * 0.22f;
+			DrawText(Msg, FLinearColor(0.43f, 0.89f, 0.46f), X, Y,
+				GEngine ? GEngine->GetLargeFont() : nullptr, Scale);
+		}
 
 		// GOL-167: on-HUD FPS counter (top-left, under the resolution) so perf is
 		// glanceable while playtesting heavy scenes (e.g. the mixed-forest scatter).

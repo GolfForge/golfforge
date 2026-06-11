@@ -1526,11 +1526,22 @@ void AGolfRangeHUD::EnterPuttingOnGreen(const FString& CourseId, int32 HoleRef)
 		return;
 	}
 
-	// Pick the target green: the polygon matched to hole <HoleRef> if the schedule reads, else the
-	// vertex-richest green (the real putting green dominates any partially-mapped neighbours).
+	// Pick the target green. A curated putting course's bbox spans a whole links (many greens across
+	// several courses), so hole-ref matching is ambiguous -- target THE green by its stable OSM way-id.
+	// 0 = no explicit target -> fall back to hole-ref match, then the vertex-richest green.
+	int64 TargetWayId = 0;
+	if (CourseId == TEXT("oldandre")) { TargetWayId = 236999240; }   // the 18th (front-swale) green
+
 	int32 Gi = INDEX_NONE;
+	if (TargetWayId != 0)
+	{
+		for (int32 i = 0; i < Greens.Num(); ++i)
+		{
+			if (Greens[i].OsmWayId == TargetWayId) { Gi = i; break; }
+		}
+	}
 	TArray<FHoleSpec> Holes; FString HErr;
-	if (HoleRef > 0 && LoadHoleSchedule(CourseId, Holes, HErr))
+	if (Gi == INDEX_NONE && HoleRef > 0 && LoadHoleSchedule(CourseId, Holes, HErr))
 	{
 		for (const FHoleSpec& H : Holes)
 		{
@@ -2173,9 +2184,9 @@ void AGolfRangeHUD::EnsurePracticeSetup()
 		if (!HUD) { return; }
 		HUD->ClosePracticeSetup();
 		HUD->DismissMainMenu();
-		// GOL-199: putt on a real course green. Default to the demo course's 18th until St Andrews is
-		// built; the flow is course-agnostic, so it's a one-line change to point at any course/green.
-		HUD->StartPuttingOnCourse(TEXT("golfforge-demo-black"), 18);
+		// GOL-199: putt on the OldAndre 18th green (the famous front-swale closing green). Course-
+		// agnostic, so this is a one-liner to point at any course/hole.
+		HUD->StartPuttingOnCourse(TEXT("oldandre"), 18);
 	};
 	PracticeSetup->OnClose = [WeakThis]()
 	{

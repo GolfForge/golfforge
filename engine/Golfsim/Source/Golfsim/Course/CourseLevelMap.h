@@ -19,6 +19,7 @@ namespace GolfsimCourseMap
 			{ TEXT("golfforge-demo-red"),    TEXT("GolfForgeDemoRed")    },
 			{ TEXT("golfforge-demo-green"),  TEXT("GolfForgeDemoGreen")  },
 			{ TEXT("golfforge-demo-yellow"), TEXT("GolfForgeDemoYellow") },
+			{ TEXT("oldandre"),              TEXT("OldAndre")            },   // GOL-199 putting green (trademark-safe alias for the real links it's built from)
 		};
 		return Rows;
 	}

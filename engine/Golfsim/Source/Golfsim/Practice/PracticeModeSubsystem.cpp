@@ -72,6 +72,22 @@ void UPracticeModeSubsystem::StartPuttingSession(const FCtpConfig& InConfig)
 		Config.Score == EScoreMode::HoleOut ? TEXT("hole-out") : TEXT("distance"));
 }
 
+void UPracticeModeSubsystem::SetPendingCourseGreen(const FString& CourseId, int32 HoleRef)
+{
+	PendingCourseId = CourseId;
+	PendingHoleRef = HoleRef;
+	bHasPendingCourseGreen = true;
+}
+
+bool UPracticeModeSubsystem::ConsumePendingCourseGreen(FString& OutCourseId, int32& OutHoleRef)
+{
+	if (!bHasPendingCourseGreen) { return false; }
+	OutCourseId = PendingCourseId;
+	OutHoleRef = PendingHoleRef;
+	bHasPendingCourseGreen = false;
+	return true;
+}
+
 void UPracticeModeSubsystem::EndSession()
 {
 	Mode = EPracticeMode::Free;

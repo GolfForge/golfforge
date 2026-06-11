@@ -128,6 +128,12 @@ namespace GolfsimRound
 	/** A uniform-random point inside the green (bbox rejection sampling; falls back to the centroid). */
 	GOLFSIM_API FVector2D RandomPointInGreen(const FGreenPolygon& Poly, FRandomStream& Stream);
 
+	/** GOL-199: a point on the green a given distance (cm) from the pin -- the putt-from spot for a
+	 *  putting drill. Random heading at DistCm clamped to stay on-green; falls back to any on-green
+	 *  point >1 ft from the pin when the green is smaller than DistCm in every direction. */
+	GOLFSIM_API FVector2D PointOnGreenAtDistance(const FGreenPolygon& Poly, const FVector2D& PinCm,
+		double DistCm, FRandomStream& Stream);
+
 	/** Index of the green polygon for a hole: the polygon containing GreenWorldLoc, else the nearest
 	 *  centroid. INDEX_NONE only if Greens is empty. */
 	GOLFSIM_API int32 MatchGreenToHole(const FHoleSpec& Hole, const TArray<FGreenPolygon>& Greens);

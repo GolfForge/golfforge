@@ -25,6 +25,7 @@
 #include "Course/CourseSurfaceSubsystem.h" // GOL-75: classify via the course splat sampler during a round
 #include "Round/RoundSubsystem.h"          // IsActive() guard for the range pin (GOL-117)
 #include "Round/RoundState.h"              // GolfsimRound::IsWithinGimme (CTP putt-out hole-out, GOL-73)
+#include "Course/CourseLevelMap.h"         // GOL-199: course-id -> level for putt-on-a-real-green
 #include "Practice/PracticeModeSubsystem.h"// GOL-73: CTP config/session/scoring + practice.shot_scored
 
 #include "DrawDebugHelpers.h"              // GOL-73: ball->pin result line
@@ -137,6 +138,19 @@ void AGolfRangeHUD::BeginPlay()
 {
 	Super::BeginPlay();
 	EnsureInputBound();
+
+	// GOL-199: if we arrived here via StartPuttingOnCourse (OpenLevel), the practice subsystem carries
+	// a pending course-green target. Stash it; DrawHUD enters putting once the pawn is ready.
+	if (UPracticeModeSubsystem* Sub = UPracticeModeSubsystem::Get(this))
+	{
+		FString CourseId; int32 HoleRef = 0;
+		if (Sub->ConsumePendingCourseGreen(CourseId, HoleRef))
+		{
+			bPendingEnterGreen = true;
+			PendingGreenCourseId = CourseId;
+			PendingGreenHoleRef = HoleRef;
+		}
+	}
 }
 
 void AGolfRangeHUD::EndPlay(const EEndPlayReason::Type EndPlayReason)
@@ -1349,6 +1363,7 @@ void AGolfRangeHUD::SetPracticeMode(GolfsimPractice::EPracticeMode Mode)
 
 	if (Mode == EPracticeMode::ClosestToPin)
 	{
+		bPuttingOnCourseGreen = false;   // CTP is range-only (GOL-199)
 		if (Sub)
 		{
 			// Seed the session from the subsystem's current config (panel defaults, or a prior console set).
@@ -1390,6 +1405,7 @@ void AGolfRangeHUD::SetPracticeMode(GolfsimPractice::EPracticeMode Mode)
 	}
 	else
 	{
+		bPuttingOnCourseGreen = false;   // back to free play / range (GOL-199)
 		if (Sub) { Sub->EndSession(); }
 		if (History) { History->SetCurrentMode(TEXT("free")); }
 		if (Panel)
@@ -1448,11 +1464,160 @@ void AGolfRangeHUD::ApplyPuttingConfig(double MinFt, double MaxFt, bool bHoleOut
 	}
 }
 
+void AGolfRangeHUD::StartPuttingOnCourse(const FString& CourseId, int32 HoleRef)
+{
+	const FString Level = GolfsimCourseMap::LevelNameForCourse(CourseId);
+	if (Level.IsEmpty())
+	{
+		UE_LOG(LogTemp, Warning, TEXT("StartPuttingOnCourse: no level mapped for course '%s'"), *CourseId);
+		return;
+	}
+	if (UPracticeModeSubsystem* Sub = UPracticeModeSubsystem::Get(this))
+	{
+		Sub->SetPendingCourseGreen(CourseId, HoleRef);   // survives the level travel
+	}
+	UE_LOG(LogTemp, Display, TEXT("Putting: loading %s (course %s, hole %d green)"), *Level, *CourseId, HoleRef);
+	UGameplayStatics::OpenLevel(this, FName(*Level));
+}
+
+void AGolfRangeHUD::EnterPuttingOnGreen(const FString& CourseId, int32 HoleRef)
+{
+	using namespace GolfsimRound;
+	using namespace GolfsimPractice;
+
+	TArray<FGreenPolygon> Greens; FString Err;
+	if (!LoadGreenPolygons(CourseId, Greens, Err) || Greens.Num() == 0)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("Putting: no greens for '%s' (%s) -- falling back to range putting"),
+			*CourseId, *Err);
+		SetPracticeMode(EPracticeMode::Putting);   // flat-range fallback
+		return;
+	}
+
+	// Pick the target green: the polygon matched to hole <HoleRef> if the schedule reads, else the
+	// vertex-richest green (the real putting green dominates any partially-mapped neighbours).
+	int32 Gi = INDEX_NONE;
+	TArray<FHoleSpec> Holes; FString HErr;
+	if (HoleRef > 0 && LoadHoleSchedule(CourseId, Holes, HErr))
+	{
+		for (const FHoleSpec& H : Holes)
+		{
+			if (H.Ref == HoleRef) { Gi = MatchGreenToHole(H, Greens); break; }
+		}
+	}
+	if (Gi == INDEX_NONE)
+	{
+		int32 BestVerts = -1;
+		for (int32 i = 0; i < Greens.Num(); ++i)
+		{
+			if (Greens[i].VertsCm.Num() > BestVerts) { BestVerts = Greens[i].VertsCm.Num(); Gi = i; }
+		}
+	}
+
+	PuttingTargetGreen = Greens[Gi];
+	GreenStream.Initialize(FMath::Rand());
+	bPuttingOnCourseGreen = true;   // SpawnNextCtpPin (run inside SetPracticeMode) reads this
+	UE_LOG(LogTemp, Display, TEXT("Putting on %s green (way %lld, %d verts)"),
+		*CourseId, PuttingTargetGreen.OsmWayId, PuttingTargetGreen.VertsCm.Num());
+
+	SetPracticeMode(EPracticeMode::Putting);   // common putting setup + spawns the first pin (on the green)
+}
+
+bool AGolfRangeHUD::TraceGroundZ(double Xcm, double Ycm, double& OutZ) const
+{
+	UWorld* World = GetWorld();
+	if (!World) { return false; }
+	FCollisionQueryParams Params(SCENE_QUERY_STAT(GolfsimGreenZTrace), /*bTraceComplex=*/true);
+	if (const APlayerController* PC = GetOwningPlayerController())
+	{
+		if (const APawn* P = PC->GetPawn()) { Params.AddIgnoredActor(P); }
+	}
+	if (const AGolfPinActor* Existing = Pin.Get()) { Params.AddIgnoredActor(Existing); }
+	FHitResult Hit;
+	const FVector Start(Xcm, Ycm, 500000.0), End(Xcm, Ycm, -500000.0);
+	if (World->LineTraceSingleByChannel(Hit, Start, End, ECC_WorldStatic, Params))
+	{
+		OutZ = Hit.ImpactPoint.Z;
+		return true;
+	}
+	return false;
+}
+
+void AGolfRangeHUD::PlacePuttOnGreen()
+{
+	using namespace GolfsimRound;
+	using namespace GolfsimPractice;
+	UWorld* World = GetWorld();
+	UPracticeModeSubsystem* Sub = UPracticeModeSubsystem::Get(this);
+	if (!World || !Sub) { return; }
+
+	// Distance from the (feet-config'd) subsystem RNG; green geometry from the HUD's own stream.
+	const FCtpPin Next = Sub->NextPin();
+	const double DistCm = Next.DistanceM * 100.0;
+
+	const FVector2D PinXY  = RandomPointInGreen(PuttingTargetGreen, GreenStream);
+	const FVector2D BallXY = PointOnGreenAtDistance(PuttingTargetGreen, PinXY, DistCm, GreenStream);
+
+	double PinZ = 0.0, BallZ = 0.0;
+	TraceGroundZ(PinXY.X, PinXY.Y, PinZ);
+	TraceGroundZ(BallXY.X, BallXY.Y, BallZ);
+
+	// Pin: find-or-spawn, hide the synthetic disc (the real painted green reads underneath), size the
+	// gimme ring + orient its label toward the ball.
+	const FVector PinLoc(PinXY.X, PinXY.Y, PinZ);
+	AGolfPinActor* PinActor = Pin.Get();
+	if (!PinActor)
+	{
+		FActorSpawnParameters Sp;
+		Sp.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+		PinActor = World->SpawnActor<AGolfPinActor>(AGolfPinActor::StaticClass(), PinLoc, FRotator::ZeroRotator, Sp);
+		Pin = PinActor;
+	}
+	else
+	{
+		PinActor->SetActorLocation(PinLoc);
+	}
+	if (PinActor)
+	{
+		PinActor->SetGreenSurfaceVisible(false);
+		PinActor->SetGimmeRadiusFt(Sub->GetConfig().GimmeRadiusFt);
+		PinActor->SetGimmeApproachDir(FVector(PinXY.X - BallXY.X, PinXY.Y - BallXY.Y, 0.0));
+	}
+
+	// Position the pawn at the ball spot, on the putter, facing the pin -- the next fire launches the
+	// putt from BallXY across the green's real contour. (The ball spawns at the pawn floor on fire.)
+	if (APlayerController* PC = GetOwningPlayerController())
+	{
+		if (APawn* Pawn = PC->GetPawn())
+		{
+			FVector ToPin(PinXY.X - BallXY.X, PinXY.Y - BallXY.Y, 0.0);
+			const FVector Dir = ToPin.IsNearlyZero() ? FVector::ForwardVector : ToPin.GetSafeNormal();
+			const float HalfH = Pawn->GetSimpleCollisionHalfHeight();
+			Pawn->SetActorLocation(FVector(BallXY.X, BallXY.Y, BallZ + HalfH), /*bSweep=*/false,
+				nullptr, ETeleportType::TeleportPhysics);
+			PC->SetControlRotation(Dir.Rotation());
+		}
+	}
+	SelectPutterIfAvailable();
+	bTeeCached = false;          // fresh pin: the next re-putt caches its own "home" pose
+	PuttStrokeCount = 0;
+
+	if (Panel) { Panel->SetPuttingPinInfo(Next.DistanceM / MetersPerFoot); }
+}
+
 void AGolfRangeHUD::SpawnNextCtpPin()
 {
 	using namespace GolfsimPractice;
 	UPracticeModeSubsystem* Sub = UPracticeModeSubsystem::Get(this);
 	if (!Sub) { return; }
+
+	// GOL-199: putting on a real course green -- place the pin + ball ON the green, not the range lane.
+	if (bPuttingOnCourseGreen)
+	{
+		PlacePuttOnGreen();
+		bCtpAwaitingRespawn = false;
+		return;
+	}
 
 	const FCtpPin NextPin = Sub->NextPin();
 	CurrentPinYd     = NextPin.DistanceM   / MetersPerYard;
@@ -1928,7 +2093,9 @@ void AGolfRangeHUD::EnsurePracticeSetup()
 		if (!HUD) { return; }
 		HUD->ClosePracticeSetup();
 		HUD->DismissMainMenu();
-		HUD->SetPracticeMode(GolfsimPractice::EPracticeMode::Putting);
+		// GOL-199: putt on a real course green. Default to the demo course's 18th until St Andrews is
+		// built; the flow is course-agnostic, so it's a one-line change to point at any course/green.
+		HUD->StartPuttingOnCourse(TEXT("golfforge-demo-black"), 18);
 	};
 	PracticeSetup->OnClose = [WeakThis]()
 	{
@@ -2700,6 +2867,17 @@ void AGolfRangeHUD::DrawHUD()
 {
 	Super::DrawHUD();
 	EnsureInputBound();   // still the retry that binds input + creates the panel once the PC exists
+
+	// GOL-199: deferred putt-on-green entry -- wait until the pawn exists on the freshly-loaded map.
+	if (bPendingEnterGreen)
+	{
+		APlayerController* PC = GetOwningPlayerController();
+		if (PC && PC->GetPawn())
+		{
+			bPendingEnterGreen = false;
+			EnterPuttingOnGreen(PendingGreenCourseId, PendingGreenHoleRef);
+		}
+	}
 	// The UMG panel draws club + metrics. We only add a tiny render-resolution
 	// readout (top-left) to sit alongside the stat fps overlay, so fullscreen /
 	// 4K perf is easy to gauge. Canvas->SizeX/Y is the actual viewport draw size.

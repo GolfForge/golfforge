@@ -454,6 +454,36 @@ bool FGolfsimGreenGeometryTest::RunTest(const FString&)
 	return true;
 }
 
+// GOL-199: a putt-from spot a given distance from the pin, on the green. On-green + ~right distance
+// when it fits; graceful fallback (on-green, not on top of the cup) when the green is too small.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FGolfsimPuttFromPointTest, "Golfsim.Round.PointOnGreenAtDistance",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FGolfsimPuttFromPointTest::RunTest(const FString&)
+{
+	using namespace GolfsimRound;
+	const FGreenPolygon G = SquareGreen(0, 0, 1000);   // 20x20 m green
+	const FVector2D Pin(0, 0);
+	FRandomStream Stream(11);
+
+	// 3 m fits inside a 20 m green -> on-green and ~3 m from the pin.
+	for (int32 i = 0; i < 100; ++i)
+	{
+		const FVector2D P = PointOnGreenAtDistance(G, Pin, 300.0, Stream);
+		TestTrue(TEXT("putt-from lands on the green"), PointInPolygonCm(P, G));
+		TestTrue(TEXT("putt-from ~3 m from pin"), FMath::Abs(FVector2D::Distance(P, Pin) - 300.0) < 1.0);
+	}
+
+	// A distance larger than the green in every direction -> fall back to an on-green point, still
+	// off the cup (the fallback guarantees > 1 ft).
+	for (int32 i = 0; i < 50; ++i)
+	{
+		const FVector2D P = PointOnGreenAtDistance(G, Pin, 100000.0, Stream);
+		TestTrue(TEXT("fallback lands on the green"), PointInPolygonCm(P, G));
+		TestTrue(TEXT("fallback not on the cup"), FVector2D::Distance(P, Pin) > 30.48);
+	}
+	return true;
+}
+
 // Match a hole to its green: containing polygon wins; else nearest centroid; empty -> INDEX_NONE.
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FGolfsimGreenMatchTest, "Golfsim.Round.GreenMatch",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)

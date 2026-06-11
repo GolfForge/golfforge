@@ -15,6 +15,7 @@
 #include "Input/KeyboardSwingComponent.h"   // GOL-67: Game-mode swing state
 #include "Game/GolfDifficulty.h"
 #include "Practice/PracticeMode.h"          // GOL-73: EPracticeMode + FCtpConfig (CTP practice)
+#include "Round/RoundState.h"               // GOL-199: FGreenPolygon (putt-on-a-real-green target)
 #include "GolfRangeHUD.generated.h"
 
 class UManualShotDialog;
@@ -152,6 +153,11 @@ public:
 	// pushes the panel's FEET sliders + scoring toggle into the subsystem; the next pin uses them.
 	void ApplyPuttingConfig(double MinFt, double MaxFt, bool bHoleOut);
 	bool IsPuttingActive() const { return CtpMode == GolfsimPractice::EPracticeMode::Putting; }
+
+	// GOL-199: load <CourseId>'s map and putt on hole <HoleRef>'s real green. Stashes the target on
+	// the (travel-surviving) practice subsystem, then OpenLevels the course; the new map's HUD enters
+	// putting on that green. Course-agnostic -- works for any course we build with a green.geojson.
+	void StartPuttingOnCourse(const FString& CourseId, int32 HoleRef);
 
 	// GOL-117: true while URoundSubsystem reports an active single-player round. Range HUD uses
 	// this to (a) skip the Tick respawn of its own pin, (b) early-return from ApplyPinDistance so
@@ -361,6 +367,20 @@ private:
 	bool bCtpPutting = false;
 	int32 PuttStrokeCount = 0;                               // GOL-75: putts taken on the current putting pin
 	FTimerHandle CtpRespawnTimer;
+
+	// GOL-199: course-green putting. When set, pins + the ball spawn ON a real green (PuttingTargetGreen,
+	// world cm) instead of the flat range lane. Deferred entry: BeginPlay (post-OpenLevel) stashes the
+	// target; DrawHUD fires EnterPuttingOnGreen once the pawn exists.
+	bool bPuttingOnCourseGreen = false;
+	GolfsimRound::FGreenPolygon PuttingTargetGreen;
+	FRandomStream GreenStream;                               // green-point sampling RNG
+	bool bPendingEnterGreen = false;
+	FString PendingGreenCourseId;
+	int32 PendingGreenHoleRef = 0;
+
+	void EnterPuttingOnGreen(const FString& CourseId, int32 HoleRef);   // load green + start the drill on it
+	void PlacePuttOnGreen();                                            // place pin + position pawn on the green
+	bool TraceGroundZ(double Xcm, double Ycm, double& OutZ) const;      // landscape Z under a world XY
 
 	void SpawnNextCtpPin();                                  // pick + place the next pin via the subsystem
 	void OnCtpShotSettled(AGolfBallActor* Ball);            // score the settled shot / drive the putt-out loop

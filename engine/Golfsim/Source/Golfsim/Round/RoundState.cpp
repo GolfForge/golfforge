@@ -407,6 +407,27 @@ namespace GolfsimRound
 		return Poly.CentroidCm;   // thin/concave green or unlucky draws -> guaranteed-ish on-green point
 	}
 
+	FVector2D PointOnGreenAtDistance(const FGreenPolygon& Poly, const FVector2D& PinCm,
+		double DistCm, FRandomStream& Stream)
+	{
+		if (Poly.VertsCm.Num() < 3) { return PinCm; }
+		// Random heading at the requested distance; accept the first candidate that lands on the green.
+		for (int32 i = 0; i < 48; ++i)
+		{
+			const double Ang = Stream.FRandRange(0.0, 2.0 * PI);
+			const FVector2D C(PinCm.X + DistCm * FMath::Cos(Ang), PinCm.Y + DistCm * FMath::Sin(Ang));
+			if (PointInPolygonCm(C, Poly)) { return C; }
+		}
+		// Green smaller than DistCm in every direction -- fall back to any on-green point that's at
+		// least ~1 ft from the pin (so the putt isn't a tap on top of the cup).
+		for (int32 i = 0; i < 24; ++i)
+		{
+			const FVector2D C = RandomPointInGreen(Poly, Stream);
+			if (FVector2D::DistSquared(C, PinCm) > FMath::Square(30.48)) { return C; }
+		}
+		return RandomPointInGreen(Poly, Stream);
+	}
+
 	int32 MatchGreenToHole(const FHoleSpec& Hole, const TArray<FGreenPolygon>& Greens)
 	{
 		if (Greens.Num() == 0) { return INDEX_NONE; }

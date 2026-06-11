@@ -43,6 +43,12 @@ public:
 	 *  drives a putt-from-the-tee flow and reports holed attempts via RecordHoleOut. */
 	void StartPuttingSession(const GolfsimPractice::FCtpConfig& InConfig);
 
+	/** GOL-199: stash "enter putting on course <CourseId> hole <HoleRef>" before an OpenLevel. This
+	 *  subsystem is a GameInstanceSubsystem so it survives map travel; the new map's HUD consumes it. */
+	void SetPendingCourseGreen(const FString& CourseId, int32 HoleRef);
+	/** Consume the pending course-green target (one-shot). Returns false if none is pending. */
+	bool ConsumePendingCourseGreen(FString& OutCourseId, int32& OutHoleRef);
+
 	/** Leave the active drill back to free play (keeps the finished session readable until the next Start). */
 	void EndSession();
 
@@ -64,6 +70,12 @@ private:
 	GolfsimPractice::FCtpConfig Config;
 	GolfsimPractice::FCtpSession Session;
 	FRandomStream Stream;
+
+	// GOL-199: pending "putt on this course's green" target, set before OpenLevel, consumed once on
+	// the new map's HUD BeginPlay.
+	FString PendingCourseId;
+	int32   PendingHoleRef = 0;
+	bool    bHasPendingCourseGreen = false;
 
 	TWeakObjectPtr<UEventBusSubsystem> EventBusWeak;
 };

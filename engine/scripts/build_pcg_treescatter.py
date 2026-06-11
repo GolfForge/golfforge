@@ -238,9 +238,20 @@ def _split_chain(graph, src_node, src_out, roll_attr, cuts):
 
 def _mk_transform(graph, smin, smax, lean):
     """Full random yaw + NON-uniform scale (x,y width / z height vary
-    independently) + small random pitch/roll lean (+/- lean deg)."""
+    independently) + small random pitch/roll lean (+/- lean deg).
+
+    GOL-204: rotation is ABSOLUTE, not relative. The landscape surface sample
+    hands each point a normal-aligned rotation, so a RELATIVE rotation here
+    would compound on top of it -> trunks tilt perpendicular to the ground on
+    slopes (diagonal trees). absolute_rotation=True makes the rolled rotation
+    REPLACE the point's rotation: it's built straight from rotation_min/max in
+    world space (pitch/roll in [-lean,lean] -> near-vertical trunk; yaw [0,360]
+    -> random facing), so the normal tilt is discarded and trees stand up like
+    real (gravitropic) trees with only our slight random lean. Scale stays
+    relative -- sampler points are unit-scale, so scale_min/max land as intended."""
     node, st = _add(graph, unreal.PCGTransformPointsSettings)
     st.set_editor_property("uniform_scale", False)
+    st.set_editor_property("absolute_rotation", True)   # GOL-204: world-up, not surface normal
     _set_struct(st, "scale_min", lambda v: (
         v.set_editor_property("x", smin[0]),
         v.set_editor_property("y", smin[1]),

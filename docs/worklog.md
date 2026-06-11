@@ -2,6 +2,28 @@
 
 > Dated milestone summaries, newest on top. The durable outcome + the committed artifact, not the blow-by-blow — process detail lives in git history, `docs/ue5-cookbook.md`, and the scripts themselves.
 
+## 2026-06-11 — GOL-204: PCG trees orient to world-up, not the surface normal (Windows)
+
+PCG-scattered trees leaned with the terrain on slopes (trunk perpendicular to the ground)
+because the landscape surface sample hands each point a normal-aligned rotation, and the
+scatter graph's TransformPoints node added our random yaw + lean as a **relative** rotation
+on top of it. Real trees grow straight up — fixed in one place, every map.
+
+- **One-line graph fix** (`build_pcg_treescatter.py::_mk_transform`): set the TransformPoints
+  node `absolute_rotation=True` so the rolled rotation (world-up + small random pitch/roll +
+  random yaw) **replaces** the normal orientation instead of compounding. The single
+  `_mk_transform` feeds both species branches and both built graphs, so the course graph
+  (`/Game/PCG/PCG_TreeScatter`) and the range graph (`/Game/PCG/PCG_TreeScatter_Range`, via
+  `build_range_treescatter.py`) both inherit it. Scale stays relative (sampler points are
+  unit-scale). Graph rebuilds verified `absolute_rotation=True` on all 4 TransformPoints nodes.
+- **Re-scattered + saved all 7 tree-bearing umaps.** `GenerateOnLoad` does NOT re-bake on
+  editor load — each umap serializes its instances — so every map was force-regenerated
+  (`cleanup_local` + `generate(True)`) and re-saved: GolfForgeDemo Black/Blue/Green/Red/Yellow,
+  OldAndre, PracticeRange. Verified world-up numerically (trunk up-vector from the per-instance
+  quaternion): max tilt 3.93–4.12 deg per map (inside the +/-3 deg Birch / +/-2 deg Pine lean
+  envelope), was up to ~42 deg on slopes. Instance counts unchanged (rotation-only).
+- Files: `build_pcg_treescatter.py` + the 2 graph `.uasset`s + the 7 `.umap`s.
+
 ## 2026-06-11 — GOL-199: OldAndre playable — St Andrews Old Course as a whole ~2 km map (Windows)
 
 Putting now plays on a **real, full-scale links**: the St Andrews Old Course, built from a 2-tile LIDAR

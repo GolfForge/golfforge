@@ -396,3 +396,15 @@ Design takeaway: don't accrete `if (squaregolf)…` in one shared path — that'
 - **Trim a long CC0 clip to a one-shot, pure stdlib.** BigSoundBank s0455 ("golf swing", CC0) is a 10.5 s take — useless as a per-shot SFX. `import_ball_strike_sfx.py` trims it to ~0.55 s around the loudest transient with **stdlib only**: `aifc` reads the (big-endian) AIFF, `audioop.rms` over 20 ms windows finds the impact, `audioop.byteswap` → little-endian, `wave` writes the short clip; then `AssetImportTask` imports it as a **non-looping** `USoundWave`. (Download the AIFF — `https://bigsoundbank.com/UPLOAD/aiff/<id>.aiff` — not the wav; the obvious `/UPLOAD/wav/<id>.wav` 404s. `aifc`/`audioop` are deprecated in 3.11 but present; UE 5.7 embeds 3.11.) Commit the trimmed `.wav` as the source of truth (small) + the `.uasset`; don't bloat history with the 1 MB AIFF.
 - **One-shot SFX from C++.** `UGameplayStatics::PlaySoundAtLocation(World, Sound, Loc)` in `AGolfRangeHUD::OnShotOutcome` right after `Ball->PlayTrajectory` — fires for every shot source (keyboard/LM/manual all land in the outcome subscriber). The `USoundBase*` is lazy-`LoadObject`'d on first shot (the HUD is pure C++, no Blueprint to wire it in). `GameplayStatics` + `Sound/SoundBase.h` are in `Engine` — no new Build.cs module.
 - **A "ready / take your shot" indicator** is a separate seam from connection status: a `TFunction<void(bool)> OnReadyChanged` on `ULaunchMonitorDriver` (mirrors `OnStatusChanged`), forwarded by the manager as `OnActiveReadyChanged` only for the active driver. `UGSProConnectDriver` marshals the connector's `LaunchMonitorIsReady` heartbeat over an SPSC queue to the game thread and fires it; the HUD shows a badge. Keeping it off the connected-bool seam avoids disturbing the verified status path.
+
+## `-ExecCmds` is COMMA-separated; `;` only works inside the Automation command (GOL-207)
+
+Chaining console commands headlessly with `-ExecCmds="golfsim.Foo a; golfsim.Bar b; Quit"` executes
+ONLY the first command — the `;`-tail is swallowed and `Quit` never runs, so `UnrealEditor-Cmd`
+hangs forever (had to be killed). The familiar `-ExecCmds="Automation RunTests X; Quit"` idiom works
+because the **Automation** exec handler parses its own `;`-separated subcommands internally, not
+because ExecCmds splits on `;`. For arbitrary console commands use commas:
+`-ExecCmds="golfsim.Foo a, golfsim.Bar b, Quit"`. Also: each editor instance writes its own log
+(`Golfsim.log`, `Golfsim_2.log`, ...) — when the user's editor is open, a headless run's output is in
+the NUMBERED log, and the unnumbered one is the user's live session (don't spawn a second instance
+while the user is in PIE without asking).

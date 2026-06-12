@@ -2,6 +2,26 @@
 
 > Dated milestone summaries, newest on top. The durable outcome + the committed artifact, not the blow-by-blow — process detail lives in git history, `docs/ue5-cookbook.md`, and the scripts themselves.
 
+## 2026-06-11 — GOL-207: spin-aware ground check — high-spin shots no longer run off after settling (Windows)
+
+Second cause of the "settles then runs away" symptom (GOL-206 was the first): the GOL-39 spin-back
+leg launched a high-spin green ball backward at up to 4.5 m/s AFTER it visually settled (~4.7 m run;
+~1.8 m at 6000 rpm). Root weakness: spin wasn't state in the ground model. Bounded fix (full Penner
+spin-vector rework filed as GOL-208, with libgolf's GPL-3.0 bounce model as the porting reference —
+evaluated and rejected as a dependency: its roll model has no spin coupling/check at all).
+
+- **Decaying ground-spin state** through bounce + roll (75% retained per impact; 4000 rpm/s scrubbed
+  while rolling). Per-bounce spin kill: remaining spin scales the tangential bounce keep from the 2nd
+  impact on (really spinny shots don't bounce forward much — user-requested behavior).
+- **Green check braking:** remaining spin multiplies roll friction (up to 2.5x) on green-like surfaces
+  (`SpinBackGain > 0`), so the forward trickle is short and the check reads immediate.
+- **Defused spin-back:** gated + scaled on the *decayed* spin, backward speed hard-capped at 2.0 m/s,
+  and ramped up at 2x friction accel from ~0 (the residual spin torques the ball back — no instant
+  backward launch). Max total zip ~1.4 m.
+- Result at 18 m/s / 48 deg on green: 8000 rpm = +0.43 m forward peak then rest at **-0.65 m**
+  (was ~-4.7); 9500 = -0.96; 6000 = +0.46; 2000 = +2.51 (low spin unchanged). New
+  `HighSpinStaysNearTouchdown` test pins all of it; full suite 97/97.
+
 ## 2026-06-11 — GOL-206: green-roll 2nd pass — clamp fall-line break + settle floor (Windows)
 
 Fixed the "ball settles then runs 1-2 m to a random spot" on greens (the GOL-205 deferred issue:

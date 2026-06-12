@@ -35,9 +35,21 @@ namespace
 	// enough descent checks forward, then rolls BACKWARD. Backward launch speed (m/s) =
 	//   SpinBackGain * clamp((spin - Threshold)/Scale, 0, 1) * clamp(descentDeg/SteepRef, 0, 1)
 	// then a green-friction roll backward to rest. Gated on EGolfLie::Green AND SpinBackGain > 0.
-	constexpr double SpinBackThresholdRpm = 3500.0;   // below this landing spin, no spin-back
+	constexpr double SpinBackThresholdRpm = 3500.0;   // below this REMAINING spin (post-decay), no spin-back
 	constexpr double SpinBackSpinScaleRpm = 4000.0;   // spin span (above threshold) over which gain ramps to full
 	constexpr double SpinBackSteepRefDeg  = 40.0;     // descent at/above which spin-back is fully effective
+
+	// GOL-207 spin-aware ground check. Spin is now a decaying STATE through the ground phase (a stand-in
+	// until the GOL-208 Penner spin-vector rework): each impact consumes spin, remaining spin kills
+	// forward speed per bounce (a really spinny wedge doesn't bounce forward much) and brakes the
+	// forward trickle on a green so the check reads immediate, and the backward leg is driven by the
+	// DECAYED spin, speed-capped, and ramped up (no instantaneous 4.5 m/s backward jump after the ball
+	// has visually settled -- that read as "settles, then warps 1-5 m away"). Provisional, GOL-195.
+	constexpr double BounceSpinRetain     = 0.75;   // spin fraction surviving each ground impact
+	constexpr double RollSpinDecayRpmPerS = 4000.0; // ground contact scrubs spin during the roll
+	constexpr double SpinRollBrakeGain    = 1.5;    // extra roll-friction multiplier at full spin (green-like only)
+	constexpr double SpinBackSpeedCapMps  = 2.0;    // hard ceiling on backward speed (max total zip ~1.4 m on a green)
+	constexpr double SpinBackDriveFactor  = 2.0;    // backward spin-up accel = factor * friction accel (the ramp)
 }
 
 FString LieToProtocol(EGolfLie Lie)
@@ -158,6 +170,7 @@ namespace GolfBallFlight
 		double VvDown     = FMath::Max(0.0, -LandVel.Z) * SpinAtten;   // downward speed at landing (m/s), bled by spin
 		double TimeAccum  = 0.0;
 		int32  NumBounces = 0;
+		double SpinRpm    = Flight.LandingSpinRpm;   // GOL-207: decaying ground-spin state (impacts + roll scrub it)
 
 		// --- Bounce phase: reflect each touchdown off the surface normal, re-classifying per hop -----
 		// On a FLAT normal (0,0,1) the reflection reduces to: VvOut = Restitution*VvDown, Vh *= Keep,
@@ -172,7 +185,13 @@ namespace GolfBallFlight
 			const FVector VIn(Dir.X * Vh, Dir.Y * Vh, -VvDown);
 			const FVector VN   = (VIn | N) * N;                            // into-surface normal component
 			const FVector VT   = VIn - VN;                                 // tangential (along the face)
-			const FVector VOut = VT * FMath::Max(C.BounceHorizontalKeep, 0.0)
+			// GOL-207: remaining backspin bites EVERY contact, not just the landing scrape -- a spinny
+			// wedge's later hops barely move forward. First contact (NumBounces == 0) is already covered
+			// by the scrape above, so the per-bounce kill starts at the second impact.
+			const double BounceSpinAtten = NumBounces > 0
+				? FMath::Clamp(1.0 - C.SpinCheck * FMath::Clamp(SpinRpm / RefSpinRpm, 0.0, 1.0), 0.0, 1.0)
+				: 1.0;
+			const FVector VOut = VT * (FMath::Max(C.BounceHorizontalKeep, 0.0) * BounceSpinAtten)
 			                   - VN * FMath::Max(C.Restitution, 0.0);
 
 			const double VvOut = FMath::Max(VOut.Z, 0.0);
@@ -218,6 +237,7 @@ namespace GolfBallFlight
 			TimeAccum += THop;
 			VvDown    = VvOut;
 			++NumBounces;
+			SpinRpm *= BounceSpinRetain;   // GOL-207: each impact consumes spin
 		}
 
 		// --- Roll phase: stepped friction slide that now FOLLOWS THE FALL LINE (GOL-75) -------------
@@ -235,7 +255,13 @@ namespace GolfBallFlight
 			{
 				C = CoefAt(Pos);
 				const double Speed  = Vel.Size();
-				const double Accel  = FMath::Max(C.RollFriction, Tiny) * GravityMps2;
+				// GOL-207: remaining backspin grips a green-like surface (SpinBackGain > 0 marks it) and
+				// brakes the forward trickle hard -- the check reads immediate instead of "settle, then
+				// warp backward". Spin-free or non-green rolls are untouched (Brake == 1).
+				const double Brake  = C.SpinBackGain > 0.0
+					? 1.0 + SpinRollBrakeGain * FMath::Clamp(SpinRpm / RefSpinRpm, 0.0, 1.0)
+					: 1.0;
+				const double Accel  = FMath::Max(C.RollFriction, Tiny) * GravityMps2 * Brake;
 				const double DtStep = FMath::Min(RollSampleDt, Speed / Accel);   // clip toward a clean friction stop
 
 				// Fall-line (downhill) acceleration: horizontal projection of gravity on the slope. For a
@@ -261,6 +287,7 @@ namespace GolfBallFlight
 				Pos += (Vel + NewVel) * 0.5 * DtStep;   // trapezoidal; on flat == Vh*dt - 0.5*a*dt^2 exactly
 				TimeAccum += DtStep;
 				Vel = NewVel;
+				SpinRpm = FMath::Max(SpinRpm - RollSpinDecayRpmPerS * DtStep, 0.0);   // GOL-207: contact scrubs spin
 				if (Vel.Size() > Tiny) { Dir = Vel / Vel.Size(); }   // keep the last heading for the spin-back leg
 
 				FTrajectorySample Sample;
@@ -274,24 +301,42 @@ namespace GolfBallFlight
 
 		// --- GOL-39 green spin-back: a green ball with enough backspin + steep descent checks forward
 		// (above), then rolls BACKWARD here, along the current heading. Gated on rest surface = Green.
+		// GOL-207: driven by the DECAYED ground spin (not the raw landing spin), speed-capped, and the
+		// backward speed RAMPS UP at SpinBackDriveFactor * friction accel -- the residual spin torques
+		// the ball backward, it doesn't get launched. Kills the "settles, then warps 4.7 m" read.
 		{
 			const EGolfLie     RestLie = SurfaceAt(FVector(Pos.X, Pos.Y, 0.0));
 			const FSurfaceRoll GC      = CoefsFor(RestLie);
 			if (RestLie == EGolfLie::Green && GC.SpinBackGain > 0.0
-				&& Flight.LandingSpinRpm > SpinBackThresholdRpm)
+				&& SpinRpm > SpinBackThresholdRpm)
 			{
-				const double SpinFrac  = FMath::Clamp((Flight.LandingSpinRpm - SpinBackThresholdRpm) / SpinBackSpinScaleRpm, 0.0, 1.0);
+				const double SpinFrac  = FMath::Clamp((SpinRpm - SpinBackThresholdRpm) / SpinBackSpinScaleRpm, 0.0, 1.0);
 				const double SteepFrac = FMath::Clamp(Flight.DescentAngleDeg / SpinBackSteepRefDeg, 0.0, 1.0);
-				double Vback = GC.SpinBackGain * SpinFrac * SteepFrac;
+				const double VbackPeak = FMath::Min(GC.SpinBackGain * SpinFrac * SteepFrac, SpinBackSpeedCapMps);
 				const double Accel = FMath::Max(GC.RollFriction, Tiny) * GravityMps2;
+				const double Drive = SpinBackDriveFactor * Accel;
+				double Vback = 0.0;
+				bool bSpinDriving = VbackPeak > Tiny;
 				int32 Steps = 0;
-				while (Vback > Tiny && Steps < RollStepsMax)
+				while (bSpinDriving || Vback > Tiny)
 				{
-					const double DtStep = FMath::Min(RollSampleDt, Vback / Accel);
-					const double S      = Vback * DtStep - 0.5 * Accel * DtStep * DtStep;
+					if (Steps >= RollStepsMax) { break; }
+					double DtStep, S;
+					if (bSpinDriving)
+					{
+						DtStep = FMath::Min(RollSampleDt, (VbackPeak - Vback) / Drive);
+						S      = Vback * DtStep + 0.5 * Drive * DtStep * DtStep;
+						Vback  = FMath::Min(Vback + Drive * DtStep, VbackPeak);
+						if (Vback >= VbackPeak - Tiny) { bSpinDriving = false; }   // spin spent -> friction leg
+					}
+					else
+					{
+						DtStep = FMath::Min(RollSampleDt, Vback / Accel);
+						S      = Vback * DtStep - 0.5 * Accel * DtStep * DtStep;
+						Vback  = FMath::Max(Vback - Accel * DtStep, 0.0);
+					}
 					Pos -= Dir * S;   // backward = back along the current heading
 					TimeAccum += DtStep;
-					Vback = FMath::Max(Vback - Accel * DtStep, 0.0);
 
 					FTrajectorySample Sample;
 					Sample.TimeSeconds    = Flight.FlightTimeS + TimeAccum;

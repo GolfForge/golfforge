@@ -40,8 +40,8 @@ struct FSurfaceRoll
 	double RollFriction = 0.30;            // rolling-friction coefficient -> decel a = RollFriction * g (higher = shorter roll)
 	double Restitution = 0.35;             // vertical coefficient of restitution (COR) per bounce, 0..1
 	double BounceHorizontalKeep = 0.55;    // horizontal-speed retention per bounce, 0..1 (GOL-38)
-	double SpinCheck = 0.20;               // how strongly landing backspin kills the initial scrape (0 = none, 1 = full at RefSpin)
-	double SpinBackGain = 0.0;             // GOL-39: backward launch speed (m/s) at full spin once checked; >0 only on Green
+	double SpinCheck = 0.20;               // how strongly backspin kills forward speed at each contact (0 = none, 1 = full at RefSpin); GOL-207: applies per bounce, not just the landing scrape
+	double SpinBackGain = 0.0;             // GOL-39: peak backward roll speed (m/s) at full spin once checked; >0 only on Green (GOL-207: capped + ramped, driven by decayed spin)
 	double BreakSlopeMaxDeg = 45.0;        // GOL-206: cap on the slope angle feeding the roll fall-line term (break + run-out); 45 = effectively uncapped
 };
 

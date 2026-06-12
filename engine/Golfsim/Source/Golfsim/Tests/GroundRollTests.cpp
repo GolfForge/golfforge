@@ -411,6 +411,62 @@ bool FGolfsimGroundRollSpinBackTest::RunTest(const FString& /*Parameters*/)
 	return true;
 }
 
+// --- GOL-207 high-spin green check: the ball stays NEAR its touchdown, no runaway ----------------
+// The bug: a high-spin wedge bounced, trickled forward, nearly settled, then got LAUNCHED backward at
+// 4.5 m/s (up to ~4.7 m, "settles then warps away"). Now spin decays through the ground phase, kills
+// the forward hops per bounce, brakes the green trickle, and the backward leg ramps from ~0 with a
+// hard speed cap -- so a spinny wedge drops, checks, and zips back modestly.
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FGolfsimGroundRollHighSpinCheckTest, "Golfsim.GroundRoll.HighSpinStaysNearTouchdown",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FGolfsimGroundRollHighSpinCheckTest::RunTest(const FString& /*Parameters*/)
+{
+	auto Green = [](const FVector&) { return EGolfLie::Green; };
+	auto Run = [&](double SpinRpm)
+	{
+		return GolfBallFlight::SimulateGroundRollCrossSurface(
+			MakeLanding(/*speed*/18.0, /*descent*/48.0, SpinRpm), Green, &GolfBallFlight::SurfaceRollFor, &FlatNormal);
+	};
+
+	const FGroundRollResult S2000 = Run(2000.0);
+	const FGroundRollResult S6000 = Run(6000.0);
+	const FGroundRollResult S8000 = Run(8000.0);
+	const FGroundRollResult S9500 = Run(9500.0);
+
+	TestTrue(TEXT("all valid"), S2000.bValid && S6000.bValid && S8000.bValid && S9500.bValid);
+
+	// The headline: a high-spin wedge ends NEAR its touchdown -- a modest zip-back, not a 3-5 m run.
+	TestTrue(TEXT("8000 rpm rests within 1.6 m of touchdown"), FMath::Abs(S8000.RestPositionM.X) < 1.6 && FMath::Abs(S8000.RestPositionM.Y) < 0.1);
+	TestTrue(TEXT("8000 rpm checks (no forward release past 0.6 m)"), S8000.RestPositionM.X < 0.6);
+	TestTrue(TEXT("9500 rpm also stays within 1.6 m"), FMath::Abs(S9500.RestPositionM.X) < 1.6);
+	TestTrue(TEXT("low spin still releases forward"), S2000.RestPositionM.X > 1.5);
+	TestTrue(TEXT("mid spin sits between the extremes"), S6000.RestPositionM.X < S2000.RestPositionM.X
+		&& S6000.RestPositionM.X > S8000.RestPositionM.X - 0.1);
+
+	// The backward leg ramps up from ~rest (no instantaneous backward launch) and respects the cap.
+	double FirstBackSpeed = -1.0, MaxBackSpeed = 0.0, MaxForwardX = 0.0;
+	for (const FTrajectorySample& S : S8000.RollSamples)
+	{
+		MaxForwardX = FMath::Max(MaxForwardX, S.PositionMeters.X);
+		if (S.VelocityMps.X < -1e-3)
+		{
+			const double Spd = S.VelocityMps.Size();
+			if (FirstBackSpeed < 0.0) { FirstBackSpeed = Spd; }
+			MaxBackSpeed = FMath::Max(MaxBackSpeed, Spd);
+		}
+	}
+	TestTrue(TEXT("a backward leg exists"), FirstBackSpeed >= 0.0);
+	TestTrue(TEXT("backward leg ramps up (first backward sample < 0.6 m/s)"), FirstBackSpeed < 0.6);
+	TestTrue(TEXT("backward speed honors the 2.0 m/s cap"), MaxBackSpeed < 2.05);
+	TestTrue(TEXT("forward excursion before the check is short (< 1.5 m)"), MaxForwardX < 1.5);
+
+	AddInfo(FString::Printf(TEXT("net roll X by spin: 2000 %.2f, 6000 %.2f, 8000 %.2f, 9500 %.2f | 8000: fwd peak %.2f, back first %.2f peak %.2f m/s"),
+		S2000.RestPositionM.X, S6000.RestPositionM.X, S8000.RestPositionM.X, S9500.RestPositionM.X,
+		MaxForwardX, FirstBackSpeed, MaxBackSpeed));
+	return true;
+}
+
 // --- GOL-196 terrain-aware bounce: the outgoing heading reflects off the surface normal ----------
 // Same landing on fairway, four surface normals: flat / down-slope / up-slope / side-slope. The
 // outgoing bounce now depends on the slope (flat reproduces the straight-bounce model, guarded by the

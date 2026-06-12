@@ -19,7 +19,7 @@ UTexture2D* LoadMinimapTexture(const FString& CourseId, FString& OutErr)
 		return nullptr;
 	}
 
-	const FString PngPath = CourseDir + TEXT("minimap.png");
+	const FString PngPath = CourseDir / TEXT("minimap.png");
 	TArray<uint8> Compressed;
 	if (!FFileHelper::LoadFileToArray(Compressed, *PngPath))
 	{

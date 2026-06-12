@@ -7,8 +7,8 @@
 // Cooked path:    FPaths::ProjectDir() / "../courses/<id>/"     (UAT stages courses/ next to the
 //                                                                project dir via NonUFS stage hook)
 //
-// Returns the FULL course dir path (terminating slash baked in), or an empty FString if no
-// candidate resolves. Caller appends concrete filenames.
+// Returns the FULL course dir path (NO terminating slash), or an empty FString if no candidate
+// resolves. Callers append concrete filenames with the path-join operator: CourseDir / TEXT("x.png").
 
 #pragma once
 

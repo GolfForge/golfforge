@@ -298,7 +298,8 @@ void UHoleMapView::PaintGreenTab(const FGeometry& Geo, FSlateWindowElementList& 
 		{
 			Outline.Add(FVector2f(P.WorldToWidget(V)));
 		}
-		Outline.Add(Outline[0]);   // close the ring
+		const FVector2f First = Outline[0];   // copy: Add(Outline[0]) trips UE's aliased-element assert
+		Outline.Add(First);                   // close the ring
 		FSlateDrawElement::MakeLines(Out, LayerId + 4, Geo.ToPaintGeometry(), Outline,
 			ESlateDrawEffect::None, Color::Text().CopyWithNewOpacity(0.9f), true, 1.5f);
 	}

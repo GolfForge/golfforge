@@ -4,6 +4,7 @@
 #include "Blueprint/WidgetTree.h"
 #include "Components/Border.h"
 #include "Engine/Texture2D.h"
+#include "Misc/App.h"   // FApp::GetCurrentTime for the green-tab ball-ring pulse
 #include "Physics/CourseSurface.h"   // FCourseSurfaceSampler::HalfXYCm (shared georeference)
 #include "Rendering/DrawElements.h"
 
@@ -338,4 +339,22 @@ void UHoleMapView::PaintMarkers(const FGeometry& Geo, FSlateWindowElementList& O
 	FSlateDrawElement::MakeBox(Out, LayerId + 1,
 		Geo.ToPaintGeometry(FVector2f(6.f, 6.f), FSlateLayoutTransform(FVector2f(BallPx - FVector2D(3.0, 3.0)))),
 		&BallDotBrush);
+
+	// GREEN tab "you are here": a slow-pulsing accent ring around the ball, so your spot reads
+	// instantly over the heat cells + arrows. The widget is ForceVolatile, so paint runs every
+	// frame and the pulse animates for free.
+	if (ActiveTab == EHoleMapTab::Green)
+	{
+		const double T = FApp::GetCurrentTime();
+		const float RingR = 9.f + 2.5f * static_cast<float>(FMath::Sin(T * 2.0 * PI / 1.2));
+		TArray<FVector2f> Ring;
+		Ring.Reserve(25);
+		for (int32 S = 0; S <= 24; ++S)
+		{
+			const double A = 2.0 * PI * S / 24;
+			Ring.Add(FVector2f(BallPx + FVector2D(FMath::Cos(A) * RingR, FMath::Sin(A) * RingR)));
+		}
+		FSlateDrawElement::MakeLines(Out, LayerId + 1, Geo.ToPaintGeometry(), Ring,
+			ESlateDrawEffect::None, GolfUI::Color::Accent(), true, 1.5f);
+	}
 }

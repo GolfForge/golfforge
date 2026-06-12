@@ -92,7 +92,7 @@ private:
 	GolfMap::FHoleMapProjection HoleProj, GreenProj;
 	double BaseHolePxPerCm = 0.0, BaseGreenPxPerCm = 0.0;   // zoom-out floor per tab (8x ceiling)
 
-	FVector2D ViewSizePx = FVector2D(248.0, 248.0);
+	FVector2D ViewSizePx = FVector2D(280.0, 280.0);
 	EHoleMapTab ActiveTab = EHoleMapTab::Hole;
 	FVector2D BallCm = FVector2D::ZeroVector;
 	float AimYawDeg = 0.f;

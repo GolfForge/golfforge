@@ -213,12 +213,21 @@ void URoundHud::BuildTree()
 	}
 	{
 		MapWidthBox = WidgetTree->ConstructWidget<USizeBox>();
-		MapWidthBox->SetWidthOverride(248.f);
+		MapWidthBox->SetWidthOverride(280.f);   // wide enough that tabs + the +/- buttons never collide
 		MapCard->SetContent(MapWidthBox);
 		UVerticalBox* MapCol = WidgetTree->ConstructWidget<UVerticalBox>();
 		MapWidthBox->SetContent(MapCol);
 
-		// tabs row: HOLE / GREEN segmented control + enlarge/collapse buttons
+		// tabs row: HOLE / GREEN segmented control + enlarge/collapse buttons. The ghost-button
+		// style bakes 18x10 label padding -- far too wide for single glyphs next to the tabs --
+		// so tighten the pair down to icon-button size.
+		auto TightenButton = [](UButton* B)
+		{
+			FButtonStyle Sty = B->GetStyle();
+			Sty.SetNormalPadding(FMargin(9.f, 4.f));
+			Sty.SetPressedPadding(FMargin(9.f, 4.f));
+			B->SetStyle(Sty);
+		};
 		UHorizontalBox* TabRow = WidgetTree->ConstructWidget<UHorizontalBox>();
 		MapTabs = CreateWidget<USegmentedControl>(this);
 		MapTabs->SetOptions({ TEXT("HOLE"), TEXT("GREEN") });
@@ -229,20 +238,22 @@ void URoundHud::BuildTree()
 		};
 		if (UHorizontalBoxSlot* TS = TabRow->AddChildToHorizontalBox(MapTabs)) { TS->SetSize(FSlateChildSize(ESlateSizeRule::Fill)); TS->SetVerticalAlignment(VAlign_Center); }
 		MapEnlargeBtn = MakeGhostButton(WidgetTree, TEXT("+"));
+		TightenButton(MapEnlargeBtn);
 		MapEnlargeBtn->OnClicked.AddDynamic(this, &URoundHud::HandleMapEnlargeClicked);
 		if (UHorizontalBoxSlot* ES = TabRow->AddChildToHorizontalBox(MapEnlargeBtn)) { ES->SetVerticalAlignment(VAlign_Center); ES->SetPadding(FMargin(8.f, 0, 0, 0)); }
 		UButton* CollapseBtn = MakeGhostButton(WidgetTree, TEXT("-"));
+		TightenButton(CollapseBtn);
 		CollapseBtn->OnClicked.AddDynamic(this, &URoundHud::HandleMapCollapseClicked);
 		if (UHorizontalBoxSlot* CS = TabRow->AddChildToHorizontalBox(CollapseBtn)) { CS->SetVerticalAlignment(VAlign_Center); CS->SetPadding(FMargin(4.f, 0, 0, 0)); }
 		if (UVerticalBoxSlot* TRS = MapCol->AddChildToVerticalBox(TabRow)) { TRS->SetPadding(FMargin(10.f, 10.f, 10.f, 8.f)); }
 
 		// map area (square so the projection math frames against a fixed view) + pin tag
 		MapImgBox = WidgetTree->ConstructWidget<USizeBox>();
-		MapImgBox->SetHeightOverride(248.f);
+		MapImgBox->SetHeightOverride(280.f);
 		UOverlay* ImgOverlay = WidgetTree->ConstructWidget<UOverlay>();
 		MapImgBox->SetContent(ImgOverlay);
 		MapView = CreateWidget<UHoleMapView>(this);
-		MapView->SetViewSize(FVector2D(248.0, 248.0));
+		MapView->SetViewSize(FVector2D(280.0, 280.0));
 		MapView->OnAimAt = [this](FVector2D WorldCm) { if (OnAimAt) { OnAimAt(WorldCm); } };
 		if (UOverlaySlot* MVS = Cast<UOverlaySlot>(ImgOverlay->AddChildToOverlay(MapView))) { MVS->SetHorizontalAlignment(HAlign_Fill); MVS->SetVerticalAlignment(VAlign_Fill); }
 		UBorder* PinTag = WidgetTree->ConstructWidget<UBorder>();
@@ -326,7 +337,7 @@ void URoundHud::SetMapSize(int32 Size)
 	}
 	// Card (1) vs large (2). The large view exists to read greens/breaks; SetViewSize re-frames
 	// the projections (and resets the wheel zoom) so the map fills the new area exactly.
-	const float Px = (MapSize == 2) ? 480.f : 248.f;
+	const float Px = (MapSize == 2) ? 480.f : 280.f;
 	if (MapWidthBox) { MapWidthBox->SetWidthOverride(Px); }
 	if (MapImgBox)   { MapImgBox->SetHeightOverride(Px); }
 	if (MapView)     { MapView->SetViewSize(FVector2D(Px, Px)); }

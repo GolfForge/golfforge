@@ -3,10 +3,11 @@
 // UUserWidget built from GolfUITheme; SelfHitTestInvisible so only its interactive children (Menu
 // button, hole-map card) take input and the swing meter / control bar below stay interactive. Dumb
 // view: the HUD pushes live data each frame via SetData and reports up through TFunctions (OnMenu
-// for the leave path; OnAimAt / OnMapExpandedChanged / OnMapTabChanged for the GOL-209 minimap).
+// for the leave path; OnAimAt / OnMapSizeChanged / OnMapTabChanged for the GOL-209 minimap).
 //
 // GOL-209: the hole-map card is a real minimap (UI/HoleMapView -- baked basemap, zoom, click-to-aim,
-// HOLE/GREEN tabs) and collapses to a small chip; expanded/tab state persists via GolfDisplaySettings.
+// HOLE/GREEN tabs) at three sizes (chip / 280 card / 480 large); size + tab persist via
+// GolfDisplaySettings.
 //
 // Conditions strip: sky + time-of-day are bound to the real env director; wind + temp are seams shown
 // as "--" until GOL-154 adds a weather source.
@@ -55,7 +56,7 @@ public:
 	/** Per-hole payload (tee/pin/green, basemap texture, green outline + slope grid). Disables the
 	 *  GREEN tab when there's no green outline for the hole. */
 	void SetHoleMapStatic(const FHoleMapStaticData& Data);
-	/** Map size: 0 = chip, 1 = card (248), 2 = large (480, reads breaks better). No broadcast --
+	/** Map size: 0 = chip, 1 = card (280), 2 = large (480, reads breaks better). No broadcast --
 	 *  use for seeding from persisted settings. */
 	void SetMapSize(int32 Size);
 	/** M hotkey: cycle chip -> card -> large -> chip; reports through OnMapSizeChanged. */
@@ -97,8 +98,8 @@ private:
 	UPROPERTY(Transient) TObjectPtr<UTextBlock>        MapChipText; // "H07 · 412 YD"
 	UPROPERTY(Transient) TObjectPtr<USegmentedControl> MapTabs;     // HOLE / GREEN
 	UPROPERTY(Transient) TObjectPtr<UHoleMapView>      MapView;
-	UPROPERTY(Transient) TObjectPtr<USizeBox>          MapWidthBox;  // card width: 248 / 480
-	UPROPERTY(Transient) TObjectPtr<USizeBox>          MapImgBox;    // map area height: 248 / 480
+	UPROPERTY(Transient) TObjectPtr<USizeBox>          MapWidthBox;  // card width: 280 / 480
+	UPROPERTY(Transient) TObjectPtr<USizeBox>          MapImgBox;    // map area height: 280 / 480
 	UPROPERTY(Transient) TObjectPtr<UButton>           MapEnlargeBtn;// "+" (hidden at large)
 	UPROPERTY(Transient) TObjectPtr<UTextBlock>        MapPinText;
 	UPROPERTY(Transient) TObjectPtr<UTextBlock>        MapTitleText;

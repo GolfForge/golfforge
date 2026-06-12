@@ -11,6 +11,8 @@
 #include "UI/PracticeSetup.h"               // GOL-73: practice-drill picker over main menu
 #include "Game/CourseRegistry.h"            // GOL-141: course-card seed list
 #include "UI/RoundHud.h"                    // GOL-144: in-round glass top HUD
+#include "UI/HoleMapView.h"                 // GOL-209: FHoleMapStaticData (minimap payload)
+#include "Game/MinimapTexture.h"            // GOL-209: courses/<id>/minimap.png -> UTexture2D
 #include "UI/LeaveConfirmDialog.h"          // GOL-147: leave/quit confirmation modal
 #include "ScorecardPanel.h"                 // GOL-120: end-of-round scorecard modal
 #include "Kismet/GameplayStatics.h"        // OpenLevel for the scorecard's Back-to-Menu
@@ -708,7 +710,8 @@ void AGolfRangeHUD::EnsureInputBound()
 	InputComponent->BindKey(EKeys::Left,     IE_Released, this, &AGolfRangeHUD::TurnLeftReleased);
 	InputComponent->BindKey(EKeys::Right,    IE_Pressed,  this, &AGolfRangeHUD::TurnRightPressed);
 	InputComponent->BindKey(EKeys::Right,    IE_Released, this, &AGolfRangeHUD::TurnRightReleased);
-	InputComponent->BindKey(EKeys::M,        IE_Pressed,  this, &AGolfRangeHUD::ToggleManualDialog);
+	InputComponent->BindKey(EKeys::M,        IE_Pressed,  this, &AGolfRangeHUD::ToggleHoleMap);       // GOL-209 (manual dialog moved to N)
+	InputComponent->BindKey(EKeys::N,        IE_Pressed,  this, &AGolfRangeHUD::ToggleManualDialog);
 	InputComponent->BindKey(EKeys::C,        IE_Pressed,  this, &AGolfRangeHUD::ToggleCameraMode);       // GOL-73 camera flip
 	InputComponent->BindKey(EKeys::H,        IE_Pressed,  this, &AGolfRangeHUD::ToggleHistoryFromKey);   // GOL-65
 	// Settings/credits menu. Escape works in packaged builds + PIE (the editor's Escape-stops-play
@@ -1064,6 +1067,28 @@ void AGolfRangeHUD::EnsureRoundHud()
 		// Settings -> "Main Menu" -> the mode-aware leave confirm.
 		if (AGolfRangeHUD* HUD = WeakThis.Get()) { HUD->ToggleSettingsMenu(); }
 	};
+
+	// GOL-209: minimap click-to-aim. The widget reports a world XY; the HUD owns the aim and writes
+	// it exactly the way the arrow keys / tee-up do (yaw-only control rotation), so the map's aim
+	// line, the camera, and the next shot's launch frame all agree.
+	RoundHud->OnAimAt = [WeakThis](FVector2D TargetCm)
+	{
+		AGolfRangeHUD* HUD = WeakThis.Get();
+		APlayerController* PC = HUD ? HUD->GetOwningPlayerController() : nullptr;
+		APawn* Pawn = PC ? PC->GetPawn() : nullptr;
+		if (!Pawn) { return; }
+		const FVector B = Pawn->GetActorLocation();
+		const FVector2D To = TargetCm - FVector2D(B.X, B.Y);
+		if (To.SquaredLength() < 1.0) { return; }   // clicked the ball itself -- no direction
+		const double Yaw = FMath::RadiansToDegrees(FMath::Atan2(To.Y, To.X));
+		PC->SetControlRotation(FRotator(0.0, Yaw, 0.0));
+	};
+	// GOL-209: persisted card state (default collapsed / HOLE tab).
+	RoundHud->OnMapExpandedChanged = [](bool bExpanded) { GolfDisplay::WriteHoleMapExpanded(bExpanded); };
+	RoundHud->OnMapTabChanged = [](int32 Tab) { GolfDisplay::WriteHoleMapTab(Tab); };
+	RoundHud->SetMapExpanded(GolfDisplay::ReadHoleMapExpanded());
+	RoundHud->SetMapTab(GolfDisplay::ReadHoleMapTab());
+
 	RoundHud->AddToViewport(20);   // above the legacy panel (0) + swing meter (15), below modals (30+)
 	RoundHud->SetVisibility(ESlateVisibility::Collapsed);
 }
@@ -1178,16 +1203,23 @@ void AGolfRangeHUD::UpdateInRoundHud()
 	D.HoleYds    = FMath::RoundToInt(FVector::Dist(Hole.TeeWorldLoc, Hole.GreenWorldLoc) / CmPerYd);
 	D.Shot       = S.StrokesThisHole + 1;
 
-	// to-pin: live pawn -> pin (XY), in yards.
+	// to-pin: live pawn -> pin (XY), in yards. The same pawn XY feeds the minimap ball dot
+	// (between shots the pawn stands at the ball), and the control-rotation yaw feeds the aim line.
 	if (APlayerController* PC = GetOwningPlayerController())
 	{
+		D.AimYawDeg = static_cast<float>(PC->GetControlRotation().Yaw);
 		if (APawn* Pawn = PC->GetPawn())
 		{
 			const FVector P = Pawn->GetActorLocation();
 			const FVector2D Delta(Hole.PinWorldLoc.X - P.X, Hole.PinWorldLoc.Y - P.Y);
 			D.ToPinYd = FMath::RoundToInt(Delta.Size() / CmPerYd);
+			D.BallWorldCm = FVector2D(P.X, P.Y);
 		}
 	}
+
+	// GOL-209: per-hole minimap payload (basemap texture, green outline, slope grid). No-op unless
+	// (CourseId, HoleIndex) changed -- which also covers HUD recreation after the GOL-199 map travel.
+	PushHoleMapStatic(S);
 
 	// conditions: real sky + time from the env director if one exists on this map (find-only, no spawn
 	// -- spawning on the course map would re-light it). Wind + temp stay seams ("--") for GOL-154.
@@ -1206,6 +1238,120 @@ void AGolfRangeHUD::UpdateInRoundHud()
 
 	RoundHud->SetData(D);
 	RoundHud->SetVisibility(ESlateVisibility::SelfHitTestInvisible);
+}
+
+void AGolfRangeHUD::ToggleHoleMap()
+{
+	// In-round only: the hole-map card is part of RoundHud, and on the range M would otherwise
+	// silently flip persisted state with nothing visible.
+	if (InputGated() || !RoundIsActive() || !RoundHud)
+	{
+		return;
+	}
+	RoundHud->ToggleMapExpanded();   // broadcasts OnMapExpandedChanged -> persisted
+}
+
+void AGolfRangeHUD::PushHoleMapStatic(const GolfsimRound::FRoundState& S)
+{
+	if (!RoundHud || !S.Schedule.IsValidIndex(S.HoleIndex))
+	{
+		return;
+	}
+	if (S.CourseId == HoleMapCourseId && S.HoleIndex == HoleMapHoleIndex)
+	{
+		return;   // same hole -- payload already pushed
+	}
+	HoleMapCourseId = S.CourseId;
+	HoleMapHoleIndex = S.HoleIndex;
+	const GolfsimRound::FHoleSpec& Hole = S.Schedule[S.HoleIndex];
+
+	// Per-course caches. Failures are cached too (the course id stamps regardless), so a course
+	// without minimap.png / green.geojson logs once instead of retrying every hole.
+	if (HoleMapTextureCourseId != S.CourseId)
+	{
+		HoleMapTextureCourseId = S.CourseId;
+		FString Err;
+		HoleMapTexture = GolfsimMinimap::LoadMinimapTexture(S.CourseId, Err);
+		if (!HoleMapTexture)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("hole map: no basemap for '%s' (%s) -- flat fill + markers"), *S.CourseId, *Err);
+		}
+	}
+	if (HoleMapGreensCourseId != S.CourseId)
+	{
+		HoleMapGreensCourseId = S.CourseId;
+		HoleMapGreens.Reset();
+		FString Err;
+		if (!GolfsimRound::LoadGreenPolygons(S.CourseId, HoleMapGreens, Err))
+		{
+			UE_LOG(LogTemp, Warning, TEXT("hole map: no green outlines for '%s' (%s) -- GREEN tab disabled"), *S.CourseId, *Err);
+		}
+	}
+
+	FHoleMapStaticData Data;
+	Data.TeeCm = FVector2D(Hole.TeeWorldLoc.X, Hole.TeeWorldLoc.Y);
+	Data.PinCm = FVector2D(Hole.PinWorldLoc.X, Hole.PinWorldLoc.Y);
+	Data.GreenCm = FVector2D(Hole.GreenWorldLoc.X, Hole.GreenWorldLoc.Y);
+	Data.MinimapTexture = HoleMapTexture;
+
+	const int32 GreenIdx = GolfsimRound::MatchGreenToHole(Hole, HoleMapGreens);
+	if (HoleMapGreens.IsValidIndex(GreenIdx))
+	{
+		const GolfsimRound::FGreenPolygon& Poly = HoleMapGreens[GreenIdx];
+		Data.GreenVertsCm = Poly.VertsCm;
+
+		// Slope grid for the GREEN tab's break arrows: green bbox + 2 m margin, ~1 m cells (coarser
+		// on huge double greens so the trace count stays bounded). Corner heights come from the same
+		// landscape trace SnapToGround uses; GolfMap::ComputeSlopeGrid derives slope + fall lines.
+		// One-time per hole (a few-ms burst of ~1-3k traces), not per frame.
+		if (UWorld* World = GetWorld(); World && Poly.VertsCm.Num() >= 3)
+		{
+			FVector2D Min(TNumericLimits<double>::Max(), TNumericLimits<double>::Max());
+			FVector2D Max(-TNumericLimits<double>::Max(), -TNumericLimits<double>::Max());
+			for (const FVector2D& V : Poly.VertsCm)
+			{
+				Min.X = FMath::Min(Min.X, V.X); Min.Y = FMath::Min(Min.Y, V.Y);
+				Max.X = FMath::Max(Max.X, V.X); Max.Y = FMath::Max(Max.Y, V.Y);
+			}
+			Min -= FVector2D(200.0, 200.0);
+			Max += FVector2D(200.0, 200.0);
+
+			GolfMap::FGreenSlopeGrid& Grid = Data.Slope;
+			const double SpanMax = FMath::Max(Max.X - Min.X, Max.Y - Min.Y);
+			Grid.CellCm = FMath::Max(100.0, SpanMax / 48.0);   // <= ~50x50 cells even on a double green
+			Grid.NX = FMath::Max(1, FMath::CeilToInt32((Max.X - Min.X) / Grid.CellCm));
+			Grid.NY = FMath::Max(1, FMath::CeilToInt32((Max.Y - Min.Y) / Grid.CellCm));
+			Grid.OriginCm = Min + FVector2D(Grid.CellCm * 0.5, Grid.CellCm * 0.5);
+
+			Grid.bInGreen.SetNum(Grid.NX * Grid.NY);
+			for (int32 J = 0; J < Grid.NY; ++J)
+			{
+				for (int32 I = 0; I < Grid.NX; ++I)
+				{
+					const FVector2D Center = Grid.OriginCm + FVector2D(I * Grid.CellCm, J * Grid.CellCm);
+					Grid.bInGreen[J * Grid.NX + I] = GolfsimRound::PointInPolygonCm(Center, Poly);
+				}
+			}
+
+			TArray<double> Corners;
+			Corners.SetNum((Grid.NX + 1) * (Grid.NY + 1));
+			FCollisionQueryParams TraceParams(SCENE_QUERY_STAT(GolfsimHoleMapSlopeTrace), /*bTraceComplex=*/true);
+			for (int32 J = 0; J <= Grid.NY; ++J)
+			{
+				for (int32 I = 0; I <= Grid.NX; ++I)
+				{
+					const FVector2D C = Grid.OriginCm + FVector2D((I - 0.5) * Grid.CellCm, (J - 0.5) * Grid.CellCm);
+					FHitResult Hit;
+					const bool bHit = World->LineTraceSingleByChannel(Hit,
+						FVector(C.X, C.Y, 200000.0), FVector(C.X, C.Y, -200000.0), ECC_WorldStatic, TraceParams);
+					Corners[J * (Grid.NX + 1) + I] = bHit ? Hit.ImpactPoint.Z : GolfMap::InvalidHeightCm;
+				}
+			}
+			GolfMap::ComputeSlopeGrid(Corners, Grid);
+		}
+	}
+
+	RoundHud->SetHoleMapStatic(Data);
 }
 
 void AGolfRangeHUD::ApplyPinDistance(double Yards)

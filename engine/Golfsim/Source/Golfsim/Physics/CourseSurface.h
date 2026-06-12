@@ -35,6 +35,13 @@ public:
 	bool   IsValid() const { return bValid; }
 	int32  GetSizePx() const { return SizePx; }
 
+	// Half-extent of the landscape in cm. GOL-85: default-stretched 2016 m x 2016 m
+	// regardless of bbox physical extent; bbox content stretches to fill it. Public:
+	// the GOL-209 minimap projection (UI/HoleMapProjection.h) shares this georeference
+	// (minimap.png has the same bbox/dims as the splatmap, so world XY maps onto both
+	// rasters with this one constant).
+	static constexpr double HalfXYCm = 100800.0;
+
 private:
 	struct FLayer
 	{
@@ -47,8 +54,5 @@ private:
 	int32         SizePx = 0;
 	TArray<FLayer> Layers;   // priority order: Bunker, Green, Tee, Fairway, CartPath, Trees
 
-	// Half-extent of the landscape in cm. GOL-85: default-stretched 2016 m x 2016 m
-	// regardless of bbox physical extent; bbox content stretches to fill it.
-	static constexpr double HalfXYCm   = 100800.0;
 	static constexpr uint8  MaskThresh = 128;
 };

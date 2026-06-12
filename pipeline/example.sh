@@ -43,6 +43,12 @@ python3 build_splatmap.py \
     --out-dir "$OUT_DIR"
 
 echo
+echo "Building minimap..."
+python3 build_minimap.py \
+    --course-id "$COURSE_ID" \
+    --courses-dir "$OUT_DIR"
+
+echo
 echo "Building QA overlays..."
 # Best-effort: a tile-server outage must not fail the pipeline (the script falls
 # back to masks-only internally, but guard anyway).
@@ -56,6 +62,7 @@ echo "Done. Outputs in: $OUT_DIR/$COURSE_ID/"
 echo "  heightmap.png + heightmap.json"
 echo "  splatmap.png  + splatmap.json"
 echo "  layer_*.png   (extras)"
+echo "  minimap.png   (HUD basemap)"
 echo "  fairway.geojson / green.geojson / water.geojson / hole.geojson (vectors)"
 echo "  qa_overlay_aerial.png / qa_overlay_osm.png (visual QA — gitignored)"
 echo

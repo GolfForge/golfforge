@@ -469,4 +469,36 @@ namespace GolfDisplay
 		GConfig->SetInt(PlayerNameSection, HandicapKey, FMath::Clamp(Handicap, 0, 54), GGameUserSettingsIni);
 		GConfig->Flush(/*bRead=*/false, GGameUserSettingsIni);
 	}
+
+	// GOL-209 hole-map card state. Same [GolfForge.Round] section.
+	static const TCHAR* HoleMapExpandedKey = TEXT("HoleMapExpanded");
+	static const TCHAR* HoleMapTabKey = TEXT("HoleMapTab");
+
+	bool ReadHoleMapExpanded()
+	{
+		bool bV = false;   // default collapsed: always-open costs too much screen (the GOL-209 brief)
+		if (GConfig) { GConfig->GetBool(PlayerNameSection, HoleMapExpandedKey, bV, GGameUserSettingsIni); }
+		return bV;
+	}
+
+	void WriteHoleMapExpanded(bool bExpanded)
+	{
+		if (!GConfig) { return; }
+		GConfig->SetBool(PlayerNameSection, HoleMapExpandedKey, bExpanded, GGameUserSettingsIni);
+		GConfig->Flush(/*bRead=*/false, GGameUserSettingsIni);
+	}
+
+	int32 ReadHoleMapTab()
+	{
+		int32 V = 0;
+		if (GConfig) { GConfig->GetInt(PlayerNameSection, HoleMapTabKey, V, GGameUserSettingsIni); }
+		return FMath::Clamp(V, 0, 1);
+	}
+
+	void WriteHoleMapTab(int32 Tab)
+	{
+		if (!GConfig) { return; }
+		GConfig->SetInt(PlayerNameSection, HoleMapTabKey, FMath::Clamp(Tab, 0, 1), GGameUserSettingsIni);
+		GConfig->Flush(/*bRead=*/false, GGameUserSettingsIni);
+	}
 }

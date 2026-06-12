@@ -33,6 +33,7 @@ class ULeaveConfirmDialog;
 class AGolfBallActor;
 class AGolfPinActor;
 class ACameraActor;
+class UTexture2D;
 struct FManualShotValues;
 enum class ELaunchMonitorStatus : uint8;   // Drivers/LaunchMonitorManager.h
 
@@ -78,9 +79,13 @@ private:
 	void PublishShotTaken(double BallMps, double LaunchDeg, double AzDeg, double BackRpm,
 		double SideRpm, const FString& Club, const FString& Source);
 
-	// Manual-shot dialog (GOL-8): M toggles it (hiding the auto-fire panel); Fire routes here.
+	// Manual-shot dialog (GOL-8): N toggles it (hiding the auto-fire panel); Fire routes here.
+	// (Was M until GOL-209 gave M to the in-round hole map.)
 	void ToggleManualDialog();
 	void FireManualShot(const FManualShotValues& Values);
+
+	// GOL-209: M expands/collapses the in-round hole-map card (no-op on the range / under menus).
+	void ToggleHoleMap();
 
 	// GOL-65: H toggles the in-range history view (current session only).
 	void ToggleHistoryFromKey() { ToggleHistoryPanel(); }
@@ -338,6 +343,17 @@ private:
 	UPROPERTY(Transient) TObjectPtr<USwingMeterWidget> SwingMeter;            // GOL-67 (Game mode only)
 	UPROPERTY(Transient) TObjectPtr<URoundHud> RoundHud;                      // GOL-144 in-round top HUD
 	UPROPERTY(Transient) TObjectPtr<ULeaveConfirmDialog> LeaveDialog;         // GOL-147 leave/quit confirm
+
+	// GOL-209 hole-map caches. Texture + greens are per-course (null/empty results cached too, so a
+	// course without minimap.png / green.geojson doesn't retry every hole); the static payload is
+	// rebuilt when (CourseId, HoleIndex) changes -- which also covers the GOL-199 map-travel path.
+	void PushHoleMapStatic(const GolfsimRound::FRoundState& S);
+	UPROPERTY(Transient) TObjectPtr<UTexture2D> HoleMapTexture;
+	FString HoleMapTextureCourseId;
+	TArray<GolfsimRound::FGreenPolygon> HoleMapGreens;
+	FString HoleMapGreensCourseId;
+	FString HoleMapCourseId;                                                  // payload cache keys
+	int32 HoleMapHoleIndex = INDEX_NONE;
 	EInputMode CurrentInputMode = EInputMode::Game;                           // default Game (renamed to avoid shadowing FInputModeGameAndUI local)
 	GolfsimKeyboardSwing::FState SwingState;
 	GolfsimKeyboardSwing::FConfig SwingConfig;

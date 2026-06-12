@@ -1,5 +1,7 @@
 #include "UI/RoundHud.h"
 #include "UI/GolfUITheme.h"
+#include "UI/HoleMapView.h"
+#include "UI/SegmentedControl.h"
 
 #include "Blueprint/WidgetTree.h"
 #include "Components/Border.h"
@@ -8,7 +10,6 @@
 #include "Components/CanvasPanelSlot.h"
 #include "Components/HorizontalBox.h"
 #include "Components/HorizontalBoxSlot.h"
-#include "Components/Image.h"
 #include "Components/Overlay.h"
 #include "Components/OverlaySlot.h"
 #include "Components/SizeBox.h"
@@ -49,16 +50,6 @@ void URoundHud::BuildTree()
 
 	UCanvasPanel* Root = WidgetTree->ConstructWidget<UCanvasPanel>(UCanvasPanel::StaticClass(), TEXT("Root"));
 	WidgetTree->RootWidget = Root;
-
-	// top legibility gradient (dark at top -> transparent down) behind the panels
-	UImage* Grad = MakeLinearGradient(WidgetTree, FLinearColor(0, 0, 0, 0), FLinearColor(0.035f, 0.05f, 0.04f, 0.78f));
-	Grad->SetVisibility(ESlateVisibility::HitTestInvisible);
-	if (UCanvasPanelSlot* GS = Root->AddChildToCanvas(Grad))
-	{
-		GS->SetAnchors(FAnchors(0.f, 0.f, 1.f, 0.f));
-		GS->SetOffsets(FMargin(0.f, 0.f, 0.f, 300.f));   // L,T,R = anchored; B = height
-		GS->SetAlignment(FVector2D(0.f, 0.f));
-	}
 
 	// ───────────────── round panel (top-left) ─────────────────
 	UBorder* RoundCard = MakeGlassPanel(WidgetTree);
@@ -210,8 +201,8 @@ void URoundHud::BuildTree()
 		RoundCol->AddChildToVerticalBox(Row);
 	}
 
-	// ───────────────── hole-map card (top-right) ─────────────────
-	UBorder* MapCard = MakeGlassPanel(WidgetTree);
+	// ───────────────── hole-map card (top-right, GOL-209 minimap) ─────────────────
+	MapCard = MakeGlassPanel(WidgetTree);
 	MapCard->SetPadding(FMargin(0.f));
 	if (UCanvasPanelSlot* MS = Root->AddChildToCanvas(MapCard))
 	{
@@ -227,17 +218,34 @@ void URoundHud::BuildTree()
 		UVerticalBox* MapCol = WidgetTree->ConstructWidget<UVerticalBox>();
 		MapBox->SetContent(MapCol);
 
-		// image area + pin tag
+		// tabs row: HOLE / GREEN segmented control + collapse button
+		UHorizontalBox* TabRow = WidgetTree->ConstructWidget<UHorizontalBox>();
+		MapTabs = CreateWidget<USegmentedControl>(this);
+		MapTabs->SetOptions({ TEXT("HOLE"), TEXT("GREEN") });
+		MapTabs->OnChanged = [this](int32 Idx)
+		{
+			if (MapView) { MapView->SetTab(static_cast<EHoleMapTab>(Idx)); }
+			if (OnMapTabChanged) { OnMapTabChanged(Idx); }
+		};
+		if (UHorizontalBoxSlot* TS = TabRow->AddChildToHorizontalBox(MapTabs)) { TS->SetSize(FSlateChildSize(ESlateSizeRule::Fill)); TS->SetVerticalAlignment(VAlign_Center); }
+		UButton* CollapseBtn = MakeGhostButton(WidgetTree, TEXT("-"));
+		CollapseBtn->OnClicked.AddDynamic(this, &URoundHud::HandleMapCollapseClicked);
+		if (UHorizontalBoxSlot* CS = TabRow->AddChildToHorizontalBox(CollapseBtn)) { CS->SetVerticalAlignment(VAlign_Center); CS->SetPadding(FMargin(8.f, 0, 0, 0)); }
+		if (UVerticalBoxSlot* TRS = MapCol->AddChildToVerticalBox(TabRow)) { TRS->SetPadding(FMargin(10.f, 10.f, 10.f, 8.f)); }
+
+		// map area (square so the projection math frames against a fixed view) + pin tag
 		USizeBox* ImgBox = WidgetTree->ConstructWidget<USizeBox>();
-		ImgBox->SetHeightOverride(150.f);
+		ImgBox->SetHeightOverride(248.f);
 		UOverlay* ImgOverlay = WidgetTree->ConstructWidget<UOverlay>();
 		ImgBox->SetContent(ImgOverlay);
-		UBorder* ImgFill = WidgetTree->ConstructWidget<UBorder>();
-		ImgFill->SetBrush(RoundedBrush(Color::Surface2(), Radius::Sm));   // flyover placeholder
-		if (UOverlaySlot* IFS = Cast<UOverlaySlot>(ImgOverlay->AddChildToOverlay(ImgFill))) { IFS->SetHorizontalAlignment(HAlign_Fill); IFS->SetVerticalAlignment(VAlign_Fill); }
+		MapView = CreateWidget<UHoleMapView>(this);
+		MapView->SetViewSize(FVector2D(248.0, 248.0));
+		MapView->OnAimAt = [this](FVector2D WorldCm) { if (OnAimAt) { OnAimAt(WorldCm); } };
+		if (UOverlaySlot* MVS = Cast<UOverlaySlot>(ImgOverlay->AddChildToOverlay(MapView))) { MVS->SetHorizontalAlignment(HAlign_Fill); MVS->SetVerticalAlignment(VAlign_Fill); }
 		UBorder* PinTag = WidgetTree->ConstructWidget<UBorder>();
 		PinTag->SetBrush(RoundedBrush(FLinearColor(0, 0, 0, 0.45f), Radius::Sm, Color::BorderStrong(), 1.f));
 		PinTag->SetPadding(FMargin(8.f, 4.f));
+		PinTag->SetVisibility(ESlateVisibility::HitTestInvisible);   // never block map clicks
 		MapPinText = WidgetTree->ConstructWidget<UTextBlock>();
 		MapPinText->SetText(FText::FromString(TEXT("PIN — YD")));
 		{ FSlateFontInfo F = Mono(10); F.LetterSpacing = 80; MapPinText->SetFont(F); }
@@ -264,6 +272,78 @@ void URoundHud::BuildTree()
 		if (UHorizontalBoxSlot* MYS = FootRow->AddChildToHorizontalBox(MapYdsText)) { MYS->SetVerticalAlignment(VAlign_Center); }
 		MapCol->AddChildToVerticalBox(Foot);
 	}
+
+	// ───────────────── collapsed map chip (same top-right anchor) ─────────────────
+	MapChip = WidgetTree->ConstructWidget<UButton>();
+	StyleButton(MapChip, Color::GlassFill(), Radius::Lg, Color::Border(), 1.f);   // style brings 18x10 padding
+	MapChip->OnClicked.AddDynamic(this, &URoundHud::HandleMapChipClicked);
+	MapChipText = WidgetTree->ConstructWidget<UTextBlock>();
+	MapChipText->SetText(FText::FromString(TEXT("H— · — YD")));
+	{ FSlateFontInfo F = Mono(12); F.LetterSpacing = 60; MapChipText->SetFont(F); }
+	MapChipText->SetColorAndOpacity(FSlateColor(Color::Text()));
+	MapChip->AddChild(MapChipText);
+	if (UCanvasPanelSlot* CS = Root->AddChildToCanvas(MapChip))
+	{
+		CS->SetAnchors(FAnchors(1.f, 0.f, 1.f, 0.f));
+		CS->SetAlignment(FVector2D(1.f, 0.f));
+		CS->SetAutoSize(true);
+		CS->SetOffsets(FMargin(0.f, 28.f, 28.f, 0.f));
+	}
+
+	SetMapExpanded(bMapExpanded);   // default collapsed; HUD seeds the persisted state after create
+}
+
+void URoundHud::SetHoleMapStatic(const FHoleMapStaticData& Data)
+{
+	if (!MapView)
+	{
+		return;
+	}
+	MapView->SetStaticData(Data);
+	const bool bHasGreen = MapView->HasGreenData();
+	if (MapTabs)
+	{
+		MapTabs->SetOptionDisabled(1, !bHasGreen);
+	}
+	if (!bHasGreen && MapView->GetTab() == EHoleMapTab::Green)
+	{
+		SetMapTab(0);
+	}
+}
+
+void URoundHud::SetMapExpanded(bool bExpanded)
+{
+	bMapExpanded = bExpanded;
+	if (MapCard) { MapCard->SetVisibility(bExpanded ? ESlateVisibility::Visible : ESlateVisibility::Collapsed); }
+	if (MapChip) { MapChip->SetVisibility(bExpanded ? ESlateVisibility::Collapsed : ESlateVisibility::Visible); }
+}
+
+void URoundHud::ToggleMapExpanded()
+{
+	SetMapExpanded(!bMapExpanded);
+	if (OnMapExpandedChanged)
+	{
+		OnMapExpandedChanged(bMapExpanded);
+	}
+}
+
+void URoundHud::SetMapTab(int32 Index)
+{
+	// No HasGreenData gate here: the persisted tab is seeded BEFORE the first hole's data arrives.
+	// SetHoleMapStatic forces HOLE when a hole genuinely has no green outline.
+	Index = FMath::Clamp(Index, 0, 1);
+	if (MapTabs) { MapTabs->SetSelectedIndex(Index, /*bBroadcast=*/false); }
+	if (MapView) { MapView->SetTab(static_cast<EHoleMapTab>(Index)); }
+}
+
+void URoundHud::HandleMapChipClicked()
+{
+	ToggleMapExpanded();
+}
+
+void URoundHud::HandleMapCollapseClicked()
+{
+	ToggleMapExpanded();
 }
 
 void URoundHud::SetData(const FRoundHudData& Data)
@@ -285,6 +365,8 @@ void URoundHud::SetData(const FRoundHudData& Data)
 	if (MapPinText)  { MapPinText->SetText(FText::FromString(FString::Printf(TEXT("PIN %d YD"), Data.ToPinYd))); }
 	if (MapTitleText){ MapTitleText->SetText(FText::FromString(FString::Printf(TEXT("Hole %d · Par %d"), Data.HoleNum, Data.Par))); }
 	if (MapYdsText)  { MapYdsText->SetText(FText::FromString(FString::Printf(TEXT("%d yd"), Data.HoleYds))); }
+	if (MapChipText) { MapChipText->SetText(FText::FromString(FString::Printf(TEXT("H%02d · %d YD"), Data.HoleNum, Data.HoleYds))); }
+	if (MapView)     { MapView->SetLive(Data.BallWorldCm, Data.AimYawDeg); }
 }
 
 void URoundHud::HandleMenuClicked()

@@ -75,4 +75,12 @@ namespace GolfDisplay
 	// [0, 54]. Stored for the round-setup wizard's player row; net scoring that consumes it is GOL-69.
 	int32 ReadHandicap();
 	void WriteHandicap(int32 Handicap);
+
+	// Hole-map card state (GOL-209). Same [GolfForge.Round] section, keys HoleMapExpanded +
+	// HoleMapTab. Expanded defaults false (the collapsed chip); tab defaults 0 (HOLE), clamped
+	// [0,1]. Persisted so the card opens how the player left it across holes and sessions.
+	bool ReadHoleMapExpanded();
+	void WriteHoleMapExpanded(bool bExpanded);
+	int32 ReadHoleMapTab();
+	void WriteHoleMapTab(int32 Tab);
 }

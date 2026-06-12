@@ -37,6 +37,12 @@ For every non-core feature type, the pipeline may emit a raster mask, a vector s
 | `trees` | `layer_trees.png` | — | Weight-paint → PCG SurfaceSampler with `AttributeFiltering` on the weight |
 | `hole` | — (skip_raster) | `hole.geojson` (LineString) | Per-hole tee→green centerline (`golf=hole`). Drives scorecard, hole selector, opening camera fly-in. `osm_tags` carries `par`, `handicap`, `ref` (hole number), `name`. Survives even when OSM is missing fairway polygons — the only source of truth for hole metadata on under-mapped courses |
 
+## Minimap (HUD basemap, GOL-209)
+
+| File | Format | Consumer |
+|---|---|---|
+| `minimap.png` | RGB 8-bit PNG, **same dims + same `bbox_wgs84` as `splatmap.png`** | The in-round HUD hole-map card (`UHoleMapView`). Colorized top-down composite of the layer masks (rough base, fairway/green/tee/bunker/cart_path/trees palette fills, water rasterized from `water.geojson`) multiplied by a heightmap hillshade. Because it shares the splatmap georeference, the engine maps world XY in `[-100800, +100800]` cm linearly onto pixel `[0, N-1]` — the same affine as `FCourseSurfaceSampler::ClassifyAt`. Built by `pipeline/build_minimap.py` (standalone, no network; runs after the heightmap + splatmap stages). Absent ⇒ the HUD falls back to a flat fill with markers only |
+
 ## GeoJSON sidecar shape (one canonical form for both line and polygon)
 
 Both `cart_path.geojson` and `water.geojson` (and any future vector layer) use the same envelope:

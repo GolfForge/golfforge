@@ -2,6 +2,33 @@
 
 > Dated milestone summaries, newest on top. The durable outcome + the committed artifact, not the blow-by-blow — process detail lives in git history, `docs/ue5-cookbook.md`, and the scripts themselves.
 
+## 2026-06-12 — GOL-209: real round-HUD minimap (+ GOL-210 top-gradient removal) (Windows)
+
+The hole-map card is a real minimap, PIE-validated by the user ("looks amazing"). Map source is a
+new pipeline stage; the widget is the repo's first NativePaint/custom-Slate-draw precedent.
+
+- **Pipeline `build_minimap.py`:** composites `courses/<id>/minimap.png` (RGB, splatmap
+  georeference) from the existing layer masks + water.geojson + a heightmap lambertian hillshade.
+  No network; standalone per course. 4 pytest tests (suite 72/72); regenerated for oldandre + the
+  5 demo courses (LFS); data-contract + example.sh updated.
+- **Engine, new:** `UI/HoleMapProjection` (pure world<->widget similarity transform, hole-axis-up
+  framing, anchor-preserving zoom, green slope grid — 5 automation tests, suite 103/103),
+  `Game/MinimapTexture` (PNG -> transient `UTexture2D`, first in repo), `UI/HoleMapView` (first
+  NativePaint widget: basemap drawn via a render-transform `MakeChild` so the texture affine IS the
+  click-inverse; ball/pin/aim-line/50-yd-arc overlays; wheel zoom 1-8x anchored under cursor;
+  left-click -> `OnAimAt` -> `SetControlRotation` HUD-side).
+- **GREEN tab:** slope heatmap (accent -> danger by slope%) + downhill break arrows from a one-time
+  per-hole landscape-trace grid (~1 m cells, bbox-capped), green outline, aim line, and a pulsing
+  "you are here" ring around the ball. **Auto-tab follows play:** HOLE on hole start, GREEN when
+  the ball reaches the matched green polygon (edge-triggered; manual clicks respected between).
+- **Three sizes, persisted** (`HoleMapSize`): chip ("H07 · 412 YD") -> 280 card -> 480 large; M
+  cycles, +/- step, chip click opens. **Manual-shot dialog moved M -> N** (cheat sheet updated).
+- **Polish:** swing-meter verdict now resets to idle dashes 2 s after the ball settles (LM readout
+  keeps the last shot); map area square-cornered + 1 px inset inside the card hairline.
+- **GOL-210:** deleted the 300 px full-width top "legibility gradient" in `RoundHud.cpp` that read
+  as a screen-wide shadow; the glass panels carry their own backing.
+- Deliberately out of scope (no tickets yet): minimap drag-pan; landing-spot marker history.
+
 ## 2026-06-11 — GOL-207: spin-aware ground check — high-spin shots no longer run off after settling (Windows)
 
 Second cause of the "settles then runs away" symptom (GOL-206 was the first): the GOL-39 spin-back

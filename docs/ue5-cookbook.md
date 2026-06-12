@@ -408,3 +408,35 @@ because ExecCmds splits on `;`. For arbitrary console commands use commas:
 (`Golfsim.log`, `Golfsim_2.log`, ...) — when the user's editor is open, a headless run's output is in
 the NUMBERED log, and the unnumbered one is the user's live session (don't spawn a second instance
 while the user is in PIE without asking).
+
+## Custom Slate painting (NativePaint) — conventions learned building the minimap (GOL-209)
+
+`UI/HoleMapView` is the repo's first NativePaint widget; these are the traps it hit:
+
+- **Brushes must outlive the paint call.** `FSlateDrawElement::MakeBox` can reference brush data
+  beyond the call — every `FSlateBrush` used in `NativePaint` is a widget **member**, never a stack
+  local (stack brushes render garbage/white intermittently).
+- **`TArray::Add(Arr[0])` asserts** ("container element which already comes from the container
+  being modified") even when capacity suffices — UE checks aliasing unconditionally. Closing a
+  polyline ring = copy the vert to a local first. This was a hard PIE crash.
+- **Render-transform texture draw:** to draw a world-registered texture so the drawn pixels and a
+  click-inverse share one affine, use `Geo.MakeChild(LocalSize, FSlateLayoutTransform(),
+  FSlateRenderTransform(M, T), FVector2f(0,0))` + `MakeBox`. Slate transforms are ROW-vector
+  (`out = v * M`), and `FMatrix2x2f`'s ctor order is `(m00, m01, m10, m11)` — a column-convention
+  affine `[A B; C D]` lands as `FMatrix2x2f(A, C, B, D)`. The alias is `FMatrix2x2f` (plain
+  `FMatrix2x2` doesn't exist in 5.7).
+- **Live overlays need `ForceVolatile(true)`** (from `NativeConstruct` via `GetCachedWidget()`) so
+  the widget repaints every frame under global invalidation; a free side effect is that
+  `FApp::GetCurrentTime()`-driven pulses animate with zero extra plumbing.
+- **A UUserWidget child inside a procedural tree** is created with `CreateWidget<T>(this)` (not
+  `WidgetTree->ConstructWidget`); give a paint-only widget a transparent `UBorder` root so it has
+  geometry + hit-testing (a SelfHitTestInvisible parent doesn't block children opting in).
+
+## `ResolveCourseDataDir` returns NO trailing slash + post-crash DLL lock (GOL-209)
+
+Two small ones that cost a PIE round-trip: (1) `GolfsimPaths::ResolveCourseDataDir` returns the
+course dir **without** a trailing slash (its header comment used to claim otherwise — now fixed);
+join filenames with the `/` operator (`CourseDir / TEXT("minimap.png")`), never `+`, or you get
+`courses/oldandreminimap.png`. (2) After an editor assert/crash, **CrashReportClientEditor keeps
+`UnrealEditor-Golfsim.dll` locked** — `Build.bat` fails with LNK1104 until the crash dialog is
+closed (`Stop-Process` it if the user already copied the report).

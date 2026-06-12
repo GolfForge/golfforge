@@ -467,6 +467,50 @@ bool FGolfsimGroundRollHighSpinCheckTest::RunTest(const FString& /*Parameters*/)
 	return true;
 }
 
+// --- GOL-207b spin-back direction: a wedge INTO an upslope zips back DOWN it, never up -----------
+// Seen on demo Black's 2nd green: a 9796-rpm lob wedge into a green bank ran UPHILL "into the slope"
+// after checking. Cause: the dying roll creep's only velocity is the fall-line feed, so the heading
+// the spin-back launches against had degraded to "downhill" -> backward leg = uphill. The heading now
+// freezes once the ball drops below the settle floor, and the backward leg runs through the shared
+// fall-line stepper, so it also curls/runs downhill like any rolling ball.
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FGolfsimGroundRollSpinBackDirectionTest, "Golfsim.GroundRoll.SpinBackGoesDownUpslope",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FGolfsimGroundRollSpinBackDirectionTest::RunTest(const FString& /*Parameters*/)
+{
+	auto Green = [](const FVector&) { return EGolfLie::Green; };
+	// Ball travels +X into a face that RISES toward +X (normal leans back toward -X): the fall line
+	// (downhill) points toward -X, the same way the spin-back should go. 6 deg face (the bug report's
+	// "middle of one of the slopes"); the green break clamp caps the feed at 3.5 deg.
+	auto UpslopeN = [](const FVector&) { return FVector(-FMath::Tan(FMath::DegreesToRadians(6.0)), 0.0, 1.0).GetSafeNormal(); };
+
+	const FGroundRollResult R = GolfBallFlight::SimulateGroundRollCrossSurface(
+		MakeLanding(/*speed*/18.0, /*descent*/50.0, /*spin*/9796.0), Green, &GolfBallFlight::SurfaceRollFor, UpslopeN);
+	TestTrue(TEXT("valid"), R.bValid);
+
+	// Rest must be BEHIND the touchdown (back down the slope), and the ball must never climb past its
+	// short forward check distance.
+	double MaxX = 0.0, MaxXAfterPeak = 0.0;
+	bool bPastPeak = false;
+	for (const FTrajectorySample& S : R.RollSamples)
+	{
+		if (S.PositionMeters.X > MaxX) { MaxX = S.PositionMeters.X; }
+	}
+	for (const FTrajectorySample& S : R.RollSamples)
+	{
+		if (S.PositionMeters.X >= MaxX - 1e-9) { bPastPeak = true; }
+		else if (bPastPeak) { MaxXAfterPeak = FMath::Max(MaxXAfterPeak, S.PositionMeters.X); }
+	}
+	TestTrue(TEXT("checks quickly into the face (< 1.0 m forward)"), MaxX < 1.0);
+	TestTrue(TEXT("zips back DOWN the slope (rest behind touchdown)"), R.RestPositionM.X < -0.2);
+	TestTrue(TEXT("never re-climbs after the check"), MaxXAfterPeak <= MaxX + 1e-6);
+	TestTrue(TEXT("doesn't run away downhill either (slope feed is clamped + settles)"), R.RestPositionM.X > -3.0);
+
+	AddInfo(FString::Printf(TEXT("upslope 9796 rpm: fwd peak %.2f m, rest %.2f m"), MaxX, R.RestPositionM.X));
+	return true;
+}
+
 // --- GOL-196 terrain-aware bounce: the outgoing heading reflects off the surface normal ----------
 // Same landing on fairway, four surface normals: flat / down-slope / up-slope / side-slope. The
 // outgoing bounce now depends on the slope (flat reproduces the straight-bounce model, guarded by the

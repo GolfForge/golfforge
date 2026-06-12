@@ -18,9 +18,17 @@ evaluated and rejected as a dependency: its roll model has no spin coupling/chec
 - **Defused spin-back:** gated + scaled on the *decayed* spin, backward speed hard-capped at 2.0 m/s,
   and ramped up at 2x friction accel from ~0 (the residual spin torques the ball back — no instant
   backward launch). Max total zip ~1.4 m.
-- Result at 18 m/s / 48 deg on green: 8000 rpm = +0.43 m forward peak then rest at **-0.65 m**
-  (was ~-4.7); 9500 = -0.96; 6000 = +0.46; 2000 = +2.51 (low spin unchanged). New
-  `HighSpinStaysNearTouchdown` test pins all of it; full suite 97/97.
+- Result at 18 m/s / 48 deg on green: 8000 rpm = +0.43 m forward peak then rest at **-0.72 m**
+  (was ~-4.7); 9500 = -1.04; 6000 = +0.46; 2000 = +2.51 (low spin unchanged). New
+  `HighSpinStaysNearTouchdown` test pins all of it.
+- **2nd pass (direction, same day):** a 9796-rpm lob wedge into a 6-deg green bank (demo Black 2nd)
+  zipped UPHILL "into the slope". Cause: the dying roll creep's only remaining velocity is the
+  fall-line feed, so the heading the spin-back launches against had degraded to "downhill" ->
+  backward = uphill. Fixes: the heading **freezes below the settle floor** (creep can't redefine
+  "backward"), and both roll legs now share one **fall-line stepper** -- the spin-back curls/runs
+  downhill with the same break clamp + settle floor instead of marching in a rigid straight line
+  (`SpinBackDriveFactor` 2->3 so the net ramp stays ~2x friction). `SpinBackGoesDownUpslope` test
+  reproduces the report: 0.21 m forward check, rest -1.28 m back down the face. Full suite 98/98.
 
 ## 2026-06-11 — GOL-206: green-roll 2nd pass — clamp fall-line break + settle floor (Windows)
 

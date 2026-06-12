@@ -48,8 +48,8 @@ namespace
 	constexpr double BounceSpinRetain     = 0.75;   // spin fraction surviving each ground impact
 	constexpr double RollSpinDecayRpmPerS = 4000.0; // ground contact scrubs spin during the roll
 	constexpr double SpinRollBrakeGain    = 1.5;    // extra roll-friction multiplier at full spin (green-like only)
-	constexpr double SpinBackSpeedCapMps  = 2.0;    // hard ceiling on backward speed (max total zip ~1.4 m on a green)
-	constexpr double SpinBackDriveFactor  = 2.0;    // backward spin-up accel = factor * friction accel (the ramp)
+	constexpr double SpinBackSpeedCapMps  = 2.0;    // hard ceiling on PEAK backward speed (max total zip ~1.4 m on a green)
+	constexpr double SpinBackDriveFactor  = 3.0;    // spin-drive accel = factor * friction accel; friction eats 1/factor during the ramp, so net ramp ~= 2x friction
 }
 
 FString LieToProtocol(EGolfLie Lie)
@@ -240,29 +240,39 @@ namespace GolfBallFlight
 			SpinRpm *= BounceSpinRetain;   // GOL-207: each impact consumes spin
 		}
 
-		// --- Roll phase: stepped friction slide that now FOLLOWS THE FALL LINE (GOL-75) -------------
-		// At each step gravity's horizontal component along the slope curves the heading (break) and
-		// modulates speed (uphill slows + stops short, downhill runs on). The heading is carried as a 2D
-		// velocity so it can rotate. On a FLAT normal (0,0,1) the slope accel is zero and this reduces
-		// EXACTLY to the old fixed-heading roll -- the trapezoidal step equals Vh*dt - 0.5*a*dt^2
-		// term-for-term, so Vh^2/(2a) telescoping and all (guarded by the cross-surface-equals-single
-		// equivalence test). Friction still re-samples per step so it changes at a boundary (fairway ->
-		// bunker stops fast in sand); a putt running off the green onto the fringe slows there too.
+		// --- Roll phase: stepped friction slide that FOLLOWS THE FALL LINE (GOL-75) -----------------
+		// One shared stepper for BOTH ground-roll legs (forward trickle and GOL-39 spin-back). At each
+		// step gravity's horizontal slope component curves the heading (break) and modulates speed
+		// (uphill dies short, downhill runs on); an optional spin DRIVE injects speed along DriveDir up
+		// to DrivePeak (the spin-back ramp). On a FLAT normal with no drive this reduces EXACTLY to the
+		// old fixed-heading roll -- the trapezoidal step equals Vh*dt - 0.5*a*dt^2 term-for-term
+		// (guarded by the cross-surface-equals-single equivalence test). Friction re-samples per step so
+		// it changes at a boundary (fairway -> bunker stops fast in sand).
+		// GOL-207b: Dir (the heading the spin-back leg launches against) only updates while the ball
+		// still really rolls (> settle floor). Without that gate the dying creep's only velocity is the
+		// fall-line feed, so Dir degraded to "downhill" and the spin-back ran the ball BACKWARD along
+		// it = straight UP the slope it just landed on (seen on demo Black's 2nd green).
+		auto RollLeg = [&](FVector2D Vel, const FVector2D& DriveDir, double DrivePeak, double DriveAccel)
 		{
-			FVector2D Vel = Dir * Vh;   // carry heading + speed out of the bounce phase
+			bool bDriving = DrivePeak > Tiny;
 			int32 Steps = 0;
-			while (Vel.Size() > RollSettleSpeedMps && Steps < RollStepsMax)
+			while (Steps < RollStepsMax)
 			{
+				const double Speed = Vel.Size();
+				if (!bDriving && Speed <= RollSettleSpeedMps) { break; }
+
 				C = CoefAt(Pos);
-				const double Speed  = Vel.Size();
 				// GOL-207: remaining backspin grips a green-like surface (SpinBackGain > 0 marks it) and
 				// brakes the forward trickle hard -- the check reads immediate instead of "settle, then
-				// warp backward". Spin-free or non-green rolls are untouched (Brake == 1).
+				// warp backward". Spin-free or non-green rolls are untouched (Brake == 1). The spin-back
+				// leg enters with SpinRpm already converted into its drive, so it never self-brakes.
 				const double Brake  = C.SpinBackGain > 0.0
 					? 1.0 + SpinRollBrakeGain * FMath::Clamp(SpinRpm / RefSpinRpm, 0.0, 1.0)
 					: 1.0;
 				const double Accel  = FMath::Max(C.RollFriction, Tiny) * GravityMps2 * Brake;
-				const double DtStep = FMath::Min(RollSampleDt, Speed / Accel);   // clip toward a clean friction stop
+				const double DtStep = bDriving
+					? RollSampleDt
+					: FMath::Min(RollSampleDt, Speed / Accel);   // clip toward a clean friction stop
 
 				// Fall-line (downhill) acceleration: horizontal projection of gravity on the slope. For a
 				// unit normal N (Nz > 0) the downhill horizontal direction is (Nx, Ny) and the horizontal
@@ -279,16 +289,26 @@ namespace GolfBallFlight
 				const double    SlopeAccel = FMath::Min(RollSlopeGain * GravityMps2 * SlopeTerm, RollSlopeAccelCap);
 				const FVector2D SlopeDir   = DownMag > Tiny ? Down / DownMag : FVector2D::ZeroVector;
 
-				// Semi-implicit step: friction first (opposes motion, never reverses it), then add slope.
-				const FVector2D VHat   = Vel / Speed;
-				const double    NewSpd = FMath::Max(Speed - Accel * DtStep, 0.0);
-				const FVector2D NewVel = VHat * NewSpd + SlopeDir * (SlopeAccel * DtStep);
+				// Semi-implicit step: friction first (opposes motion, never reverses it), then the spin
+				// drive (if any), then the slope feed -- so the spin-back leg breaks downhill too.
+				const double    NewSpd = Speed > Tiny ? FMath::Max(Speed - Accel * DtStep, 0.0) : 0.0;
+				FVector2D NewVel = (Speed > Tiny ? Vel / Speed : FVector2D::ZeroVector) * NewSpd;
+				if (bDriving)
+				{
+					NewVel += DriveDir * (DriveAccel * DtStep);
+					if (NewVel.Size() >= DrivePeak)
+					{
+						NewVel *= DrivePeak / NewVel.Size();   // spin spent at the target speed -> coast
+						bDriving = false;
+					}
+				}
+				NewVel += SlopeDir * (SlopeAccel * DtStep);
 
 				Pos += (Vel + NewVel) * 0.5 * DtStep;   // trapezoidal; on flat == Vh*dt - 0.5*a*dt^2 exactly
 				TimeAccum += DtStep;
 				Vel = NewVel;
 				SpinRpm = FMath::Max(SpinRpm - RollSpinDecayRpmPerS * DtStep, 0.0);   // GOL-207: contact scrubs spin
-				if (Vel.Size() > Tiny) { Dir = Vel / Vel.Size(); }   // keep the last heading for the spin-back leg
+				if (Vel.Size() > RollSettleSpeedMps) { Dir = Vel / Vel.Size(); }   // GOL-207b: heading only while really rolling
 
 				FTrajectorySample Sample;
 				Sample.TimeSeconds    = Flight.FlightTimeS + TimeAccum;
@@ -297,13 +317,16 @@ namespace GolfBallFlight
 				R.RollSamples.Add(Sample);
 				++Steps;
 			}
-		}
+		};
+
+		RollLeg(Dir * Vh, FVector2D::ZeroVector, 0.0, 0.0);   // forward trickle out of the bounce phase
 
 		// --- GOL-39 green spin-back: a green ball with enough backspin + steep descent checks forward
-		// (above), then rolls BACKWARD here, along the current heading. Gated on rest surface = Green.
-		// GOL-207: driven by the DECAYED ground spin (not the raw landing spin), speed-capped, and the
-		// backward speed RAMPS UP at SpinBackDriveFactor * friction accel -- the residual spin torques
-		// the ball backward, it doesn't get launched. Kills the "settles, then warps 4.7 m" read.
+		// (above), then rolls BACKWARD against the heading it was checked on. Gated on rest = Green.
+		// GOL-207: driven by the DECAYED ground spin (not the raw landing spin), speed-capped, ramped up
+		// at SpinBackDriveFactor * friction accel (the residual spin torques the ball back, it doesn't
+		// get launched). GOL-207b: runs through the shared fall-line stepper, so on a slope the zip-back
+		// curls downhill and settles instead of marching in a rigid straight line.
 		{
 			const EGolfLie     RestLie = SurfaceAt(FVector(Pos.X, Pos.Y, 0.0));
 			const FSurfaceRoll GC      = CoefsFor(RestLie);
@@ -313,38 +336,9 @@ namespace GolfBallFlight
 				const double SpinFrac  = FMath::Clamp((SpinRpm - SpinBackThresholdRpm) / SpinBackSpinScaleRpm, 0.0, 1.0);
 				const double SteepFrac = FMath::Clamp(Flight.DescentAngleDeg / SpinBackSteepRefDeg, 0.0, 1.0);
 				const double VbackPeak = FMath::Min(GC.SpinBackGain * SpinFrac * SteepFrac, SpinBackSpeedCapMps);
-				const double Accel = FMath::Max(GC.RollFriction, Tiny) * GravityMps2;
-				const double Drive = SpinBackDriveFactor * Accel;
-				double Vback = 0.0;
-				bool bSpinDriving = VbackPeak > Tiny;
-				int32 Steps = 0;
-				while (bSpinDriving || Vback > Tiny)
-				{
-					if (Steps >= RollStepsMax) { break; }
-					double DtStep, S;
-					if (bSpinDriving)
-					{
-						DtStep = FMath::Min(RollSampleDt, (VbackPeak - Vback) / Drive);
-						S      = Vback * DtStep + 0.5 * Drive * DtStep * DtStep;
-						Vback  = FMath::Min(Vback + Drive * DtStep, VbackPeak);
-						if (Vback >= VbackPeak - Tiny) { bSpinDriving = false; }   // spin spent -> friction leg
-					}
-					else
-					{
-						DtStep = FMath::Min(RollSampleDt, Vback / Accel);
-						S      = Vback * DtStep - 0.5 * Accel * DtStep * DtStep;
-						Vback  = FMath::Max(Vback - Accel * DtStep, 0.0);
-					}
-					Pos -= Dir * S;   // backward = back along the current heading
-					TimeAccum += DtStep;
-
-					FTrajectorySample Sample;
-					Sample.TimeSeconds    = Flight.FlightTimeS + TimeAccum;
-					Sample.PositionMeters = FVector(Pos.X, Pos.Y, 0.0);
-					Sample.VelocityMps    = FVector(-Dir.X * Vback, -Dir.Y * Vback, 0.0);
-					R.RollSamples.Add(Sample);
-					++Steps;
-				}
+				const double Drive     = SpinBackDriveFactor * FMath::Max(GC.RollFriction, Tiny) * GravityMps2;
+				SpinRpm = 0.0;   // the remaining spin IS the backward drive; don't let it also brake the leg
+				RollLeg(FVector2D::ZeroVector, -Dir, VbackPeak, Drive);
 			}
 		}
 

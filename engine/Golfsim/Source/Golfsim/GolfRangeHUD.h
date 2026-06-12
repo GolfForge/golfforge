@@ -88,6 +88,11 @@ private:
 	// under menus).
 	void ToggleHoleMap();
 
+	// Swing-meter polish: the verdict stays up through the flight/roll, then resets to the idle
+	// dashes 2 s after the ball settles (whiffs reset 2 s after the whiff -- nothing flies). The
+	// launch-monitor readout keeps the last shot -- only the meter cleans up.
+	void ScheduleSwingMeterCleanup();
+
 	// GOL-65: H toggles the in-range history view (current session only).
 	void ToggleHistoryFromKey() { ToggleHistoryPanel(); }
 
@@ -386,6 +391,7 @@ private:
 	bool bCtpPutting = false;
 	int32 PuttStrokeCount = 0;                               // GOL-75: putts taken on the current putting pin
 	FTimerHandle CtpRespawnTimer;
+	FTimerHandle SwingMeterCleanupTimer;   // GOL-209 polish: reset the meter to idle 2 s after the ball settles
 
 	// GOL-199: course-green putting. When set, pins + the ball spawn ON a real green (PuttingTargetGreen,
 	// world cm) instead of the flat range lane. Deferred entry: BeginPlay (post-OpenLevel) stashes the

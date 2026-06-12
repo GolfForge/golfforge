@@ -299,6 +299,7 @@ void AGolfRangeHUD::Tick(float DeltaSeconds)
 			Panel->UpdateMetrics(AnimClub, AnimSpeedMph, AnimLaunchDeg, AnimSpinRpm,
 				AnimTargetCarryYd, AnimTargetTotalYd, AnimOfflineYd, bAnimSpinEstimated);   // landed + rolled: exact finals
 			bCarryAnimating = false;
+			ScheduleSwingMeterCleanup();   // ball settled (player about to walk up): verdict lingers 2 s more
 
 			// GOL-73: the ball has settled -- if this was a CTP shot, score it now (the settled world
 			// position handles aim + side-offset pins; the launch-frame outcome can't).
@@ -2597,6 +2598,7 @@ void AGolfRangeHUD::OnSpaceForCurrentMode()
 		{
 			SwingMeter->ResetMeter();
 			SwingMeter->SetHintText(TEXT("Whiff — try again"));
+			ScheduleSwingMeterCleanup();
 		}
 		return;
 	}
@@ -2619,6 +2621,8 @@ void AGolfRangeHUD::OnSpaceForCurrentMode()
 		else if (Over <= 0.06)  { Prompt = bRight ? TEXT("Slight fade right") : TEXT("Slight draw left"); }
 		else                    { Prompt = bRight ? TEXT("Pushed right") : TEXT("Pushed left"); }
 		SwingMeter->SetHintText(Prompt);
+		// Cleanup is NOT scheduled here: the verdict stays up through the flight/roll and resets
+		// 2 s after the ball settles (the bCarryAnimating -> false branch in Tick).
 	}
 
 	UE_LOG(LogTemp, Display,
@@ -2628,6 +2632,22 @@ void AGolfRangeHUD::OnSpaceForCurrentMode()
 
 	PublishShotTaken(Res.BallSpeedMps, Res.LaunchAngleDeg, Res.AzimuthDeg,
 		Res.BackspinRpm, Res.SidespinRpm, FString(C.Name), TEXT("keyboard-swing"));
+}
+
+void AGolfRangeHUD::ScheduleSwingMeterCleanup()
+{
+	// Re-setting the same handle cancels any pending cleanup, so back-to-back shots just extend
+	// the window. The Idle guard means a swing already in progress when the timer fires is never
+	// wiped (press 1 calls ResetMeter itself anyway).
+	GetWorldTimerManager().SetTimer(SwingMeterCleanupTimer,
+		FTimerDelegate::CreateWeakLambda(this, [this]()
+		{
+			if (SwingMeter && SwingState.State == GolfsimKeyboardSwing::EState::Idle)
+			{
+				SwingMeter->ResetMeter();
+			}
+		}),
+		2.0f, /*bLoop=*/false);
 }
 
 void AGolfRangeHUD::ToggleCheatSheet()

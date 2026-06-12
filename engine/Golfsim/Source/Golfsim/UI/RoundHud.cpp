@@ -252,7 +252,7 @@ void URoundHud::BuildTree()
 		UOverlay* ImgOverlay = WidgetTree->ConstructWidget<UOverlay>();
 		MapImgBox->SetContent(ImgOverlay);
 		MapView = CreateWidget<UHoleMapView>(this);
-		MapView->SetViewSize(FVector2D(280.0, 280.0));
+		MapView->SetViewSize(FVector2D(278.0, 280.0));   // width minus the 1 px side insets
 		MapView->OnAimAt = [this](FVector2D WorldCm) { if (OnAimAt) { OnAimAt(WorldCm); } };
 		if (UOverlaySlot* MVS = Cast<UOverlaySlot>(ImgOverlay->AddChildToOverlay(MapView))) { MVS->SetHorizontalAlignment(HAlign_Fill); MVS->SetVerticalAlignment(VAlign_Fill); }
 		UBorder* PinTag = WidgetTree->ConstructWidget<UBorder>();
@@ -265,7 +265,9 @@ void URoundHud::BuildTree()
 		MapPinText->SetColorAndOpacity(FSlateColor(Color::Text()));
 		PinTag->SetContent(MapPinText);
 		if (UOverlaySlot* PTS = Cast<UOverlaySlot>(ImgOverlay->AddChildToOverlay(PinTag))) { PTS->SetHorizontalAlignment(HAlign_Right); PTS->SetVerticalAlignment(VAlign_Top); PTS->SetPadding(FMargin(0, 11.f, 11.f, 0)); }
-		MapCol->AddChildToVerticalBox(MapImgBox);
+		// 1 px side inset: the card border (MakeGlassPanel) draws a 1 px hairline at its edge, and an
+		// edge-to-edge map overdraws it -- reading a couple px wider than the rows above/below.
+		if (UVerticalBoxSlot* IBS = MapCol->AddChildToVerticalBox(MapImgBox)) { IBS->SetPadding(FMargin(1.f, 0.f)); }
 
 		// footer
 		UBorder* Foot = WidgetTree->ConstructWidget<UBorder>();
@@ -339,7 +341,7 @@ void URoundHud::SetMapSize(int32 Size)
 	const float Px = (MapSize == 2) ? 480.f : 280.f;
 	if (MapWidthBox) { MapWidthBox->SetWidthOverride(Px); }
 	if (MapImgBox)   { MapImgBox->SetHeightOverride(Px); }
-	if (MapView)     { MapView->SetViewSize(FVector2D(Px, Px)); }
+	if (MapView)     { MapView->SetViewSize(FVector2D(Px - 2.0, Px)); }   // width minus the 1 px side insets
 	if (MapEnlargeBtn) { MapEnlargeBtn->SetVisibility(MapSize == 2 ? ESlateVisibility::Collapsed : ESlateVisibility::Visible); }
 }
 

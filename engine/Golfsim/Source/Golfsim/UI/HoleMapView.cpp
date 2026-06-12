@@ -36,7 +36,9 @@ void UHoleMapView::NativeOnInitialized()
 	SetVisibility(ESlateVisibility::Visible);
 
 	using namespace GolfUI;
-	FallbackBrush = RoundedBrush(Color::Surface2(), Radius::Sm);   // the pre-GOL-209 placeholder fill
+	// Square, not rounded: the map strip sits edge-to-edge between the tabs row and the footer,
+	// so rounded corners on the fill read as a floating chip instead of a sandwiched map area.
+	FallbackBrush = RoundedBrush(Color::Surface2(), 0.f);
 	WhiteBrush = FSlateBrush();                                    // default brush draws solid white; tint per call
 	PinDotBrush = RoundedBrush(Color::Accent(), 999.f);
 	BallDotBrush = RoundedBrush(Color::Text(), 999.f);

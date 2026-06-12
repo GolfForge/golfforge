@@ -2,6 +2,37 @@
 
 > Dated milestone summaries, newest on top. The durable outcome + the committed artifact, not the blow-by-blow — process detail lives in git history, `docs/ue5-cookbook.md`, and the scripts themselves.
 
+## 2026-06-11 — GOL-205: OldAndre links vibe pass + rebuilt as a full playable course (Windows)
+
+OldAndre went from a putting-only green to a **full 18-hole playable links**, with a links vibe pass.
+
+- **Cleared inherited demo dressing + vibe pass.** OldAndre was duplicated from GolfForgeDemoBlack;
+  cleaned the 10 stale demo `Water_*` actors (the by-exact-id water script orphans the source
+  course's water on a duplicated map -- prefix-clean by hand), re-ran water (5 real OSM Swilcan-Burn
+  hazards), ambient (`place_ambient_sfx.py` now recognizes `OldAndre`; birds on its trees + wind bed),
+  lighting (`AGolfEnvironment` -> Afternoon x Clear, bright warm afternoon), and branched the material:
+  **new `MIC_GolfsimLinks`** (a 2nd Material Instance of the shared `M_GolfsimCourse`, links-tuned
+  tints/roughness/stripes via new `engine/scripts/build_oldandre_material.py`) assigned to OldAndre's
+  landscape only -- demo maps untouched. Trees already world-up (GOL-204).
+- **Rebuilt the map with a loop-inclusive bbox.** The original GOL-199 bbox (maxlat 56.3595, framed on
+  the 18th) clipped the Old Course's far loop -- holes 7-9,11 sat up to 136 m off the north edge. Re-ran
+  the pipeline at a ~2.2 km square bbox `-2.8318,56.342,-2.7962,56.3618` (cog backend,
+  NO41NE+NO51NW phase-5 DTM), re-imported heightmap (Z-scale 5.76) + splats into OldAndre.umap, and
+  re-applied the whole vibe pass on the new terrain (13.1k world-up trees, 5 water, ambient). Now **all
+  18 Old Course holes are on-terrain, par 72**, incl. the real hole 8 "Short" (way 294611910, which the
+  old bbox excluded).
+- **Made it a playable full round.** Added the `oldandre` card to `GolfCourseRegistry` (Links, 18, par 72,
+  bAvailable). The whole-complex `hole.geojson` (89 holes across the St Andrews courses) is filtered to
+  the Old Course's 18 by `course:name="Old"`: taught `ParseHoleScheduleJson` to read `course:name` as a
+  fallback to `golf:course:name`, and `DeriveTrackName("oldandre") -> "Old"` (dashless id). Round tests
+  19/19 (incl. new `course:name` + `oldandre` coverage). PIE: selecting OldAndre starts an 18-hole round
+  teeing off at the 1st ("Burn").
+- **Known issue deferred to a 2nd pass (GOL-195-adjacent):** approach shots break hard on steep green
+  spots -- a ball landing on a ~6 deg green slope rolls ~3 m down the fall line ("phantom putt to a
+  random spot"). Diagnosed (logged land/rest/slope/zipBack) as **real slope-driven fall-line break**, not
+  a teleport/spin-back. The greens have 6 deg (~10.5%) spots and the break gain runs balls down them. Fix
+  (clamp the break-driving slope; revisit the normal-smoothing kernel) is a follow-up.
+
 ## 2026-06-11 — GOL-204: PCG trees orient to world-up, not the surface normal (Windows)
 
 PCG-scattered trees leaned with the terrain on slopes (trunk perpendicular to the ground)

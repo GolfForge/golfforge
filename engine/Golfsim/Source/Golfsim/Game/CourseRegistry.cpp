@@ -19,6 +19,12 @@ namespace GolfCourseRegistry
 		Out.Add({ TEXT("golfforge-demo-green"),  TEXT("GolfForge Demo Green"),  TEXT("GolfForge demo course"), TEXT("Parkland"), 18, 71, TEXT("6,200"), 2, true });
 		Out.Add({ TEXT("golfforge-demo-yellow"), TEXT("GolfForge Demo Yellow"), TEXT("GolfForge demo course"), TEXT("Parkland"), 18, 67, TEXT("6,300"), 2, true });
 
+		// OldAndre -- the historic Scottish links the putting drill is built from (GOL-199), now a
+		// full playable course (GOL-205). Trademark-neutral name per GOL-20; the round filters the
+		// whole-complex hole.geojson down to the Old Course's 18 via the "Old" track tag. Built + cooked.
+		Out.Add({ TEXT("oldandre"), TEXT("OldAndre Links"),
+			TEXT("Historic coastal links, Scotland"), TEXT("Links"), 18, 72, TEXT("7,300"), 5, true });
+
 		return Out;
 	}
 }

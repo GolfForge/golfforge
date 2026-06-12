@@ -93,6 +93,10 @@ namespace GolfsimRound
 
 	FString DeriveTrackName(const FString& CourseId)
 	{
+		// OldAndre's hole.geojson covers the whole St Andrews complex (Old/New/Jubilee/...); the
+		// Old Course holes are tagged course:name="Old". The id has no "-<track>" suffix to derive
+		// from, so map it explicitly so a round filters to the Old's 18, not all 80+ holes. (GOL-205.)
+		if (CourseId == TEXT("oldandre")) { return TEXT("Old"); }
 		int32 LastDash = INDEX_NONE;
 		if (!CourseId.FindLastChar('-', LastDash)) { return FString(); }
 		FString Suffix = CourseId.Mid(LastDash + 1);
@@ -161,6 +165,9 @@ namespace GolfsimRound
 
 			FString HoleTrack;
 			Tags->TryGetStringField(TEXT("golf:course:name"), HoleTrack);
+			// Fallback: many multi-course OSM extracts tag holes with course:name instead of
+			// golf:course:name (e.g. St Andrews / OldAndre, where the Old holes are course:name="Old").
+			if (HoleTrack.IsEmpty()) { Tags->TryGetStringField(TEXT("course:name"), HoleTrack); }
 			const bool bMatchesTrack = TrackName.IsEmpty()
 				|| HoleTrack.Equals(TrackName, ESearchCase::IgnoreCase);
 

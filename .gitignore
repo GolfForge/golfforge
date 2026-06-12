@@ -120,3 +120,6 @@ pipeline/_*.py
 *.swp
 *.swo
 *~
+
+# pipeline scratch output (committed course data lives in courses/<id>/)
+pipeline/out/

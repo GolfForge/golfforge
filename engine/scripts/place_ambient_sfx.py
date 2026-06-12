@@ -44,10 +44,11 @@ import unreal
 
 # ---------------------------------------------------------------- parameters
 LEVEL_RANGE  = "PracticeRange"
-# Prefix-match so every demo course level qualifies (GolfForgeDemoBlack/Blue/Red/
-# Green/Yellow). Bird zones are placed on each level's own scattered trees, so the
-# same course path serves them all.
-LEVEL_COURSE = "GolfForgeDemo"
+# Substring-match any course level: every demo tee variant (GolfForgeDemoBlack/
+# Blue/Red/Green/Yellow) + the OldAndre links. Bird zones are placed on each
+# level's own scattered trees, so one course path serves them all. Add a new
+# course's umap name here to give it the same outdoor bed.
+LEVEL_COURSES = ["GolfForgeDemo", "OldAndre"]
 
 AUDIO_DIR = "/Game/Audio/Ambient"
 SRC_DIR   = (r"C:\Users\pucho\code\golfsim\engine\Golfsim"
@@ -410,12 +411,12 @@ def main():
         _log("=== IMPORT-ONLY DONE ===")
         return
 
-    is_range  = LEVEL_RANGE.lower()  in world_name.lower()
-    is_course = LEVEL_COURSE.lower() in world_name.lower()
+    is_range  = LEVEL_RANGE.lower() in world_name.lower()
+    is_course = any(c.lower() in world_name.lower() for c in LEVEL_COURSES)
     if not (is_range or is_course) and not globals().get("AMBIENT_FORCE", False):
-        _log("ABORT placement: '%s' is neither %s nor %s. Open a target map, set "
-             "AMBIENT_FORCE=True, or use AMBIENT_MODE='import'."
-             % (world_name, LEVEL_RANGE, LEVEL_COURSE))
+        _log("ABORT placement: '%s' is neither %s nor any of %s. Open a target map, "
+             "set AMBIENT_FORCE=True, or use AMBIENT_MODE='import'."
+             % (world_name, LEVEL_RANGE, LEVEL_COURSES))
         return
 
     _log("killed %d prior Ambient_* actor(s)" % _kill_prior())
@@ -426,7 +427,7 @@ def main():
         pass
     _log("placed %d ambient actor(s) on %s" % (placed, world_name))
     _log("PERSISTENT: SAVE %s.umap or the actors are lost. Layer: '%s'."
-         % (LEVEL_RANGE if is_range else LEVEL_COURSE, LAYER_NAME))
+         % (LEVEL_RANGE if is_range else world_name, LAYER_NAME))
     _log("=== DONE ===")
 
 

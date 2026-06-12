@@ -213,6 +213,8 @@ bool FGolfsimRoundTrackFilterTest::RunTest(const FString&)
 	TestTrue(TEXT("Derive Black"), DeriveTrackName(TEXT("golfforge-demo-black")) == TEXT("Black"));
 	TestTrue(TEXT("Derive Red"),   DeriveTrackName(TEXT("golfforge-demo-red"))   == TEXT("Red"));
 	TestTrue(TEXT("Derive empty for no-hyphen"), DeriveTrackName(TEXT("augusta")).IsEmpty());
+	// GOL-205: oldandre is dashless but its whole-complex hole.geojson needs the Old track filter.
+	TestTrue(TEXT("Derive Old for oldandre"), DeriveTrackName(TEXT("oldandre")) == TEXT("Old"));
 
 	// 2 Black + 2 Red + 1 untagged. Same ref 1+2 across tracks (this is the real demo course shape).
 	const FString Json = TEXT(R"({
@@ -281,6 +283,31 @@ bool FGolfsimRoundTrackFilterTest::RunTest(const FString&)
 		const bool bOK = ParseHoleScheduleJson(Json, MinLon, MinLat, MaxLon, MaxLat, TEXT("Yellow"), Out, Err);
 		TestTrue(TEXT("Unmatched filter still ok (fallback)"), bOK);
 		TestEqual(TEXT("Fallback yields all 5"), Out.Num(), 5);
+	}
+
+	// GOL-205: course:name is honored as a fallback for golf:course:name (OldAndre/St Andrews tag
+	// the Old Course holes with course:name="Old"). One Old + one New -> "Old" filter yields just the Old.
+	{
+		const FString J2 = TEXT(R"({
+			"type": "FeatureCollection",
+			"features": [
+				{
+					"type": "Feature",
+					"properties": { "osm_tags": { "golf": "hole", "course:name": "Old", "ref": "1", "par": "4", "name": "Burn" } },
+					"geometry": { "type": "LineString", "coordinates": [[-73.455, 40.743], [-73.451, 40.745]] }
+				},
+				{
+					"type": "Feature",
+					"properties": { "osm_tags": { "golf": "hole", "course:name": "New", "ref": "1", "par": "4", "name": "New 1" } },
+					"geometry": { "type": "LineString", "coordinates": [[-73.450, 40.744], [-73.448, 40.746]] }
+				}
+			]
+		})");
+		TArray<FHoleSpec> Out; FString Err;
+		const bool bOK = ParseHoleScheduleJson(J2, MinLon, MinLat, MaxLon, MaxLat, TEXT("Old"), Out, Err);
+		TestTrue(TEXT("course:name filter ok"), bOK);
+		TestEqual(TEXT("course:name=Old yields 1"), Out.Num(), 1);
+		TestTrue(TEXT("course:name=Old picks Burn"), Out[0].Name == TEXT("Burn"));
 	}
 	return true;
 }

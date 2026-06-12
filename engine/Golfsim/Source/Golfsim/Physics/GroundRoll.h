@@ -42,6 +42,7 @@ struct FSurfaceRoll
 	double BounceHorizontalKeep = 0.55;    // horizontal-speed retention per bounce, 0..1 (GOL-38)
 	double SpinCheck = 0.20;               // how strongly landing backspin kills the initial scrape (0 = none, 1 = full at RefSpin)
 	double SpinBackGain = 0.0;             // GOL-39: backward launch speed (m/s) at full spin once checked; >0 only on Green
+	double BreakSlopeMaxDeg = 45.0;        // GOL-206: cap on the slope angle feeding the roll fall-line term (break + run-out); 45 = effectively uncapped
 };
 
 /** Result of the ground-roll pass. RollSamples is the post-bounce ground polyline for the visualizer. */

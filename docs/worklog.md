@@ -2,6 +2,25 @@
 
 > Dated milestone summaries, newest on top. The durable outcome + the committed artifact, not the blow-by-blow — process detail lives in git history, `docs/ue5-cookbook.md`, and the scripts themselves.
 
+## 2026-06-11 — GOL-206: green-roll 2nd pass — clamp fall-line break + settle floor (Windows)
+
+Fixed the "ball settles then runs 1-2 m to a random spot" on greens (the GOL-205 deferred issue:
+real fall-line break on 6 deg LIDAR bank/false-front cells classified green, not a teleport).
+
+- **Per-surface break-slope clamp.** New `FSurfaceRoll::BreakSlopeMaxDeg` (default 45 = uncapped):
+  the roll fall-line term's `Nz*|(Nx,Ny)|` (= sin*cos of the slope) is clamped at that angle's value
+  per step in `GroundRoll.cpp`. Green = **3.5 deg** -- a 6 deg cell now breaks 0.106 m (same as 3.5
+  deg; was ~3 m of run-off), 2 deg still breaks progressively (0.060 m). Other lies unchanged (45).
+  **Putts deliberately keep full break** (`PutterSurfaceRoll` stays at 45: 6 deg breaks 3.69 m vs
+  1.56 m at 3.5 deg -- authentic steep-feature swing). Field rides the GOL-195 data-asset promotion.
+- **Low-speed settle floor.** Roll loop exits at `RollSettleSpeedMps = 0.05` instead of 1e-6 -- the
+  slope feed can no longer re-energize a friction-stopped ball into a creep tail (worst case was the
+  4000-step / 240-simulated-second cap at putter friction). Rest shift vs before: sub-mm.
+- **Kernel kept at 0.75 m / 5-point** (documented in `CourseSurfaceSubsystem.cpp`): GOL-205's 2.5-5 m
+  widening experiment bled collar/bank slope into green readings; the clamp bounds steep cells instead.
+- 3 new automation tests (`GreenBreakSlopeClamp`, `PutterBreakUnclamped`, `SettleFloor`); full
+  Golfsim suite green.
+
 ## 2026-06-11 — GOL-205: OldAndre links vibe pass + rebuilt as a full playable course (Windows)
 
 OldAndre went from a putting-only green to a **full 18-hole playable links**, with a links vibe pass.

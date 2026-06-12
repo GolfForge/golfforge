@@ -102,7 +102,11 @@ void UCourseSurfaceSubsystem::OnWorldBeginPlay(UWorld& InWorld)
 
 		const double Xcm = LandingLocalSIm.X * 100.0;
 		const double Ycm = LandingLocalSIm.Y * 100.0;
-		constexpr double Rcm = 75.0;   // ~0.75 m kernel radius: above triangle size, below green scale
+		// ~0.75 m kernel radius: above triangle size, below green scale. GOL-206 revisited and KEPT this
+		// width: widening to 2.5-5 m was tried in GOL-205 and reverted -- it bleeds collar/bank slope
+		// into the green reading. Steep single-cell LIDAR relief is instead bounded by the per-surface
+		// BreakSlopeMaxDeg clamp in GroundRoll.cpp.
+		constexpr double Rcm = 75.0;
 		const double Offsets[5][2] = { {0.0, 0.0}, {Rcm, 0.0}, {-Rcm, 0.0}, {0.0, Rcm}, {0.0, -Rcm} };
 		FVector Sum = FVector::ZeroVector;
 		int32 Hits = 0;

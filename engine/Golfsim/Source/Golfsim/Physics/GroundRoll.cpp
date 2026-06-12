@@ -17,6 +17,13 @@ namespace
 	constexpr int32  RollStepsMax     = 4000;     // safety cap on the stepped roll (no infinite loop on ~0 friction)
 	constexpr double RollSlopeAccelCap = GravityMps2;   // GOL-75: defensive cap on fall-line accel (the projection self-limits to ~g/2)
 
+	// GOL-206 low-speed settle floor: below this the ball is at rest. Real greens aren't frictionless
+	// at a crawl (grass imperfections hold a sub-5-cm/s ball). Without it the fall-line feed
+	// re-energizes a friction-stopped ball every step -- at putter friction on a steep bank the roll
+	// can creep until RollStepsMax (240 simulated seconds). Rest shift vs a v->0 stop is v^2/(2a),
+	// sub-mm on a green.
+	constexpr double RollSettleSpeedMps = 0.05;
+
 	// GOL-75 fall-line strength. A uniform sphere ROLLING (not sliding) down an incline accelerates at
 	// (5/7)*g*sin(theta) -- the rotational inertia eats 2/7 of the drive vs a frictionless slide. Real
 	// greens break a touch less still (grain + rolling hysteresis), so the remaining 0.5 is a
@@ -67,6 +74,9 @@ namespace GolfBallFlight
 		// Stimpmeter math: stimp reading IS rollout in feet at ~2 m/s release.
 		//   v^2 = 2 * mu * g * d  -> mu = v^2 / (2 * g * d) = 4 / (19.62 * StimpFt * 0.3048) ≈ 0.67 / StimpFt
 		// Putt scrape: no bounce, no spin check (residual putt spin doesn't bite the scrape).
+		// GOL-206: BreakSlopeMaxDeg stays at the 45-deg default -- putts deliberately keep FULL break
+		// (a putt across a steep famous-green feature should swing hard); only approach-shot roll on
+		// Green is clamped, in SurfaceRollFor.
 		const double Safe = FMath::Max(StimpFt, 1.0);   // clamp; sub-1-stimp is unphysical
 		FSurfaceRoll C;
 		C.RollFriction         = 0.67 / Safe;
@@ -79,17 +89,21 @@ namespace GolfBallFlight
 
 	FSurfaceRoll SurfaceRollFor(EGolfLie Lie)
 	{
-		// { RollFriction, Restitution (V-COR), BounceHorizontalKeep, SpinCheck, SpinBackGain }.
+		// { RollFriction, Restitution (V-COR), BounceHorizontalKeep, SpinCheck, SpinBackGain,
+		//   BreakSlopeMaxDeg (defaults 45 = uncapped when omitted) }.
 		// GOL-38: Restitution is the vertical bounce coefficient, BounceHorizontalKeep the per-bounce
 		// horizontal decay. Hand-checked driver lands ~280 yd fairway total (carry ~264 + 3 hops +
 		// short roll). GOL-39: added SpinBackGain (green-only backward roll) and raised Green SpinCheck
 		// 0.55 -> 0.70 so a high-spin wedge's forward roll is small enough for the spin-back to dominate
-		// (real greens check hard). Magnitudes stay provisional until Square Omni LM data lands.
+		// (real greens check hard). GOL-206: Green caps the fall-line slope at 3.5 deg -- LIDAR greens
+		// have 6-deg+ bank/false-front cells classified "green" and an uncapped break ran a settling
+		// ball ~3 m "to a random spot"; normal pin-area slope (<3.5 deg) still breaks in full.
+		// Magnitudes stay provisional until Square Omni LM data lands.
 		switch (Lie)
 		{
 		case EGolfLie::Fairway:  return { 0.30, 0.35, 0.55, 0.20, 0.0 };  // 3 visible hops then a few m of roll
 		case EGolfLie::Rough:    return { 0.65, 0.20, 0.40, 0.15, 0.0 };  // grass grabs -> 1-2 small hops, short roll
-		case EGolfLie::Green:    return { 0.22, 0.30, 0.50, 0.70, 4.5 };  // smooth; backspin checks hard + spins back
+		case EGolfLie::Green:    return { 0.22, 0.30, 0.50, 0.70, 4.5, 3.5 };  // smooth; backspin checks hard + spins back; break capped
 		case EGolfLie::Bunker:   return { 3.00, 0.05, 0.10, 0.10, 0.0 };  // plugs -> essentially no hops, no roll
 		case EGolfLie::Tee:      return { 0.32, 0.35, 0.55, 0.20, 0.0 };
 		case EGolfLie::CartPath: return { 0.05, 0.65, 0.85, 0.00, 0.0 };  // hardpan -> high hops and a long run
@@ -217,7 +231,7 @@ namespace GolfBallFlight
 		{
 			FVector2D Vel = Dir * Vh;   // carry heading + speed out of the bounce phase
 			int32 Steps = 0;
-			while (Vel.Size() > Tiny && Steps < RollStepsMax)
+			while (Vel.Size() > RollSettleSpeedMps && Steps < RollStepsMax)
 			{
 				C = CoefAt(Pos);
 				const double Speed  = Vel.Size();
@@ -227,11 +241,16 @@ namespace GolfBallFlight
 				// Fall-line (downhill) acceleration: horizontal projection of gravity on the slope. For a
 				// unit normal N (Nz > 0) the downhill horizontal direction is (Nx, Ny) and the horizontal
 				// accel magnitude is g * Nz * |(Nx, Ny)| (self-limits to ~g/2 near 45 deg). Flat -> zero.
+				// GOL-206: the Nz * |(Nx,Ny)| product is sin(theta)*cos(theta) -- monotonic below 45 deg --
+				// so clamping it at BreakSlopeMaxDeg's value caps the break-driving slope angle per surface
+				// (Green = 3.5 deg: a 6-deg LIDAR bank cell can't run a settling ball yards downhill).
 				FVector N = NormalAt(FVector(Pos.X, Pos.Y, 0.0));
 				if (!N.Normalize() || N.Z <= 0.0) { N = FVector::UpVector; }
 				const FVector2D Down(N.X, N.Y);
-				const double    DownMag   = Down.Size();
-				const double    SlopeAccel = FMath::Min(RollSlopeGain * GravityMps2 * N.Z * DownMag, RollSlopeAccelCap);
+				const double    DownMag    = Down.Size();
+				const double    MaxRad     = FMath::DegreesToRadians(C.BreakSlopeMaxDeg);
+				const double    SlopeTerm  = FMath::Min(N.Z * DownMag, FMath::Sin(MaxRad) * FMath::Cos(MaxRad));
+				const double    SlopeAccel = FMath::Min(RollSlopeGain * GravityMps2 * SlopeTerm, RollSlopeAccelCap);
 				const FVector2D SlopeDir   = DownMag > Tiny ? Down / DownMag : FVector2D::ZeroVector;
 
 				// Semi-implicit step: friction first (opposes motion, never reverses it), then add slope.

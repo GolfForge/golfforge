@@ -487,6 +487,101 @@ bool FGolfsimGroundRollFallLineTest::RunTest(const FString& /*Parameters*/)
 	return true;
 }
 
+// --- GOL-206 green break clamp: a 6-deg "green" cell breaks no more than a 3.5-deg one -----------
+// LIDAR greens have steep bank/false-front cells classified green; the per-surface BreakSlopeMaxDeg
+// (Green = 3.5 deg) caps the fall-line feed so a settling approach can't run yards downhill, while
+// sub-clamp slope (2 deg vs 3.5 deg) still breaks progressively.
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FGolfsimGroundRollBreakClampTest, "Golfsim.GroundRoll.GreenBreakSlopeClamp",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FGolfsimGroundRollBreakClampTest::RunTest(const FString& /*Parameters*/)
+{
+	auto Green = [](const FVector&) { return EGolfLie::Green; };
+	auto SideNDeg = [](double Deg)
+	{
+		return [Deg](const FVector&) { return FVector(0.0, FMath::Tan(FMath::DegreesToRadians(Deg)), 1.0).GetSafeNormal(); };
+	};
+
+	// Low spin so GOL-39 spin-back stays out of the picture; zero descent -> pure roll, travels +X.
+	const FBallTrajectory Land = MakeLanding(/*speed*/3.0, /*descent*/0.0, /*spin*/100.0);
+
+	const FGroundRollResult S2  = GolfBallFlight::SimulateGroundRollCrossSurface(Land, Green, &GolfBallFlight::SurfaceRollFor, SideNDeg(2.0));
+	const FGroundRollResult S35 = GolfBallFlight::SimulateGroundRollCrossSurface(Land, Green, &GolfBallFlight::SurfaceRollFor, SideNDeg(3.5));
+	const FGroundRollResult S6  = GolfBallFlight::SimulateGroundRollCrossSurface(Land, Green, &GolfBallFlight::SurfaceRollFor, SideNDeg(6.0));
+
+	// Non-green literals omit the field; C++14 aggregate init takes the NSDMI (45), NOT zero-init.
+	TestTrue(TEXT("omitted BreakSlopeMaxDeg falls back to the uncapped 45-deg default"),
+		FMath::IsNearlyEqual(GolfBallFlight::SurfaceRollFor(EGolfLie::Fairway).BreakSlopeMaxDeg, 45.0, 1e-9));
+
+	TestTrue(TEXT("all valid"), S2.bValid && S35.bValid && S6.bValid);
+	TestTrue(TEXT("sub-clamp slope still breaks (2 deg < 3.5 deg)"), S2.RestPositionM.Y < S35.RestPositionM.Y - 0.01);
+	TestTrue(TEXT("3.5 deg breaks visibly"), S35.RestPositionM.Y > 0.05);
+	TestTrue(TEXT("6 deg is clamped to the 3.5-deg break"), FMath::Abs(S6.RestPositionM.Y - S35.RestPositionM.Y) < 1e-3);
+	TestTrue(TEXT("6 deg break is bounded (no multi-meter run-off)"), S6.RestPositionM.Y < 0.6);
+
+	AddInfo(FString::Printf(TEXT("green break Y: 2deg %.3f, 3.5deg %.3f, 6deg %.3f"),
+		S2.RestPositionM.Y, S35.RestPositionM.Y, S6.RestPositionM.Y));
+	return true;
+}
+
+// --- GOL-206 putter keeps FULL break: no clamp on PutterSurfaceRoll ------------------------------
+// Deliberate asymmetry: a putt across a steep famous-green feature should swing harder at 6 deg than
+// at 3.5 deg (BreakSlopeMaxDeg stays at the 45-deg default in the putter coefficients).
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FGolfsimGroundRollPutterBreakTest, "Golfsim.GroundRoll.PutterBreakUnclamped",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FGolfsimGroundRollPutterBreakTest::RunTest(const FString& /*Parameters*/)
+{
+	auto Green     = [](const FVector&) { return EGolfLie::Green; };
+	auto PuttCoefs = [](EGolfLie) { return GolfBallFlight::PutterSurfaceRoll(11.0); };
+	auto SideNDeg  = [](double Deg)
+	{
+		return [Deg](const FVector&) { return FVector(0.0, FMath::Tan(FMath::DegreesToRadians(Deg)), 1.0).GetSafeNormal(); };
+	};
+
+	const FBallTrajectory Putt = MakeLanding(/*speed*/3.0, /*descent*/0.0, /*spin*/100.0);
+
+	const FGroundRollResult P35 = GolfBallFlight::SimulateGroundRollCrossSurface(Putt, Green, PuttCoefs, SideNDeg(3.5));
+	const FGroundRollResult P6  = GolfBallFlight::SimulateGroundRollCrossSurface(Putt, Green, PuttCoefs, SideNDeg(6.0));
+
+	TestTrue(TEXT("both valid"), P35.bValid && P6.bValid);
+	TestTrue(TEXT("a putt across 6 deg breaks MORE than across 3.5 deg (unclamped)"),
+		P6.RestPositionM.Y > P35.RestPositionM.Y + 0.2);
+
+	AddInfo(FString::Printf(TEXT("putter break Y: 3.5deg %.2f, 6deg %.2f"),
+		P35.RestPositionM.Y, P6.RestPositionM.Y));
+	return true;
+}
+
+// --- GOL-206 low-speed settle floor: a slow ball on a gentle slope STOPS -------------------------
+// The fall-line feed re-energizes a friction-stopped ball each step; the settle floor cuts the creep
+// tail so the roll terminates promptly with a near-zero final speed (not at the RollStepsMax cap).
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FGolfsimGroundRollSettleFloorTest, "Golfsim.GroundRoll.SettleFloor",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FGolfsimGroundRollSettleFloorTest::RunTest(const FString& /*Parameters*/)
+{
+	auto Green = [](const FVector&) { return EGolfLie::Green; };
+	auto DownN = [](const FVector&) { return FVector(FMath::Tan(FMath::DegreesToRadians(2.0)), 0.0, 1.0).GetSafeNormal(); };   // descends toward +X (the travel direction)
+
+	const FBallTrajectory Land = MakeLanding(/*speed*/3.0, /*descent*/0.0, /*spin*/100.0);
+	const FGroundRollResult R  = GolfBallFlight::SimulateGroundRollCrossSurface(Land, Green, &GolfBallFlight::SurfaceRollFor, DownN);
+
+	TestTrue(TEXT("valid"), R.bValid);
+	TestTrue(TEXT("has roll samples"), R.RollSamples.Num() > 0);
+	TestTrue(TEXT("settles in a sane number of steps (not the 4000-step cap)"), R.RollSamples.Num() < 500);
+	if (R.RollSamples.Num() > 0)
+	{
+		const FTrajectorySample& LastS = R.RollSamples.Last();
+		TestTrue(TEXT("final speed is at/below the settle floor"), LastS.VelocityMps.Size() < 0.06);
+		TestTrue(TEXT("settles within seconds, no minutes-long creep"), LastS.TimeSeconds < 5.0);
+	}
+	return true;
+}
+
 // --- Lie <-> protocol string round-trips -------------------------------------------------------
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FGolfsimGroundRollLieStringTest, "Golfsim.GroundRoll.LieStringRoundTrip",

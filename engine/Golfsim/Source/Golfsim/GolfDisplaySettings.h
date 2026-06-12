@@ -76,12 +76,10 @@ namespace GolfDisplay
 	int32 ReadHandicap();
 	void WriteHandicap(int32 Handicap);
 
-	// Hole-map card state (GOL-209). Same [GolfForge.Round] section, keys HoleMapSize + HoleMapTab.
-	// Size: 0 = collapsed chip (default), 1 = card (280), 2 = large (480, for reading breaks),
-	// clamped [0,2]. Tab defaults 0 (HOLE), clamped [0,1]. Persisted so the card opens how the
-	// player left it across holes and sessions.
+	// Hole-map card size (GOL-209). Same [GolfForge.Round] section, key HoleMapSize: 0 = collapsed
+	// chip (default), 1 = card (280), 2 = large (480, for reading breaks), clamped [0,2]. Persisted
+	// so the card opens how the player left it. The HOLE/GREEN tab is NOT persisted -- it follows
+	// play (HOLE on hole start, GREEN when the ball reaches the green).
 	int32 ReadHoleMapSize();
 	void WriteHoleMapSize(int32 Size);
-	int32 ReadHoleMapTab();
-	void WriteHoleMapTab(int32 Tab);
 }

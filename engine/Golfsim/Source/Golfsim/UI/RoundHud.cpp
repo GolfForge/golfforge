@@ -234,7 +234,6 @@ void URoundHud::BuildTree()
 		MapTabs->OnChanged = [this](int32 Idx)
 		{
 			if (MapView) { MapView->SetTab(static_cast<EHoleMapTab>(Idx)); }
-			if (OnMapTabChanged) { OnMapTabChanged(Idx); }
 		};
 		if (UHorizontalBoxSlot* TS = TabRow->AddChildToHorizontalBox(MapTabs)) { TS->SetSize(FSlateChildSize(ESlateSizeRule::Fill)); TS->SetVerticalAlignment(VAlign_Center); }
 		MapEnlargeBtn = MakeGhostButton(WidgetTree, TEXT("+"));

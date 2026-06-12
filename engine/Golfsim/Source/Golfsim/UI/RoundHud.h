@@ -61,13 +61,13 @@ public:
 	void SetMapSize(int32 Size);
 	/** M hotkey: cycle chip -> card -> large -> chip; reports through OnMapSizeChanged. */
 	void CycleMapSize();
-	/** Select HOLE (0) / GREEN (1) (no broadcast -- seeding). Falls back to HOLE if GREEN is disabled. */
+	/** Select HOLE (0) / GREEN (1). Not persisted -- the HUD drives it from play (HOLE on hole
+	 *  start, GREEN when the ball reaches the green); the tabs stay manually clickable between. */
 	void SetMapTab(int32 Index);
 
 	TFunction<void()> OnMenu;                      // Menu button -> HUD leave-to-menu path
 	TFunction<void(FVector2D)> OnAimAt;            // minimap click -> world XY cm (HUD owns the aim)
 	TFunction<void(int32)> OnMapSizeChanged;       // HUD persists
-	TFunction<void(int32)> OnMapTabChanged;        // HUD persists
 
 protected:
 	virtual void NativeOnInitialized() override;

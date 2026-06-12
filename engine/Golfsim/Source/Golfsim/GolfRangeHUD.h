@@ -355,6 +355,8 @@ private:
 	FString HoleMapGreensCourseId;
 	FString HoleMapCourseId;                                                  // payload cache keys
 	int32 HoleMapHoleIndex = INDEX_NONE;
+	int32 HoleMapMatchedGreenIdx = INDEX_NONE;   // this hole's polygon in HoleMapGreens
+	bool bHoleMapBallOnGreen = false;            // edge-tracked: drives the HOLE<->GREEN auto-tab
 	EInputMode CurrentInputMode = EInputMode::Game;                           // default Game (renamed to avoid shadowing FInputModeGameAndUI local)
 	GolfsimKeyboardSwing::FState SwingState;
 	GolfsimKeyboardSwing::FConfig SwingConfig;

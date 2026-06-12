@@ -470,9 +470,9 @@ namespace GolfDisplay
 		GConfig->Flush(/*bRead=*/false, GGameUserSettingsIni);
 	}
 
-	// GOL-209 hole-map card state. Same [GolfForge.Round] section.
+	// GOL-209 hole-map card size. Same [GolfForge.Round] section. (The HOLE/GREEN tab is not
+	// persisted -- it follows play: HOLE on hole start, GREEN when the ball reaches the green.)
 	static const TCHAR* HoleMapSizeKey = TEXT("HoleMapSize");
-	static const TCHAR* HoleMapTabKey = TEXT("HoleMapTab");
 
 	int32 ReadHoleMapSize()
 	{
@@ -485,20 +485,6 @@ namespace GolfDisplay
 	{
 		if (!GConfig) { return; }
 		GConfig->SetInt(PlayerNameSection, HoleMapSizeKey, FMath::Clamp(Size, 0, 2), GGameUserSettingsIni);
-		GConfig->Flush(/*bRead=*/false, GGameUserSettingsIni);
-	}
-
-	int32 ReadHoleMapTab()
-	{
-		int32 V = 0;
-		if (GConfig) { GConfig->GetInt(PlayerNameSection, HoleMapTabKey, V, GGameUserSettingsIni); }
-		return FMath::Clamp(V, 0, 1);
-	}
-
-	void WriteHoleMapTab(int32 Tab)
-	{
-		if (!GConfig) { return; }
-		GConfig->SetInt(PlayerNameSection, HoleMapTabKey, FMath::Clamp(Tab, 0, 1), GGameUserSettingsIni);
 		GConfig->Flush(/*bRead=*/false, GGameUserSettingsIni);
 	}
 }

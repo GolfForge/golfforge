@@ -1083,11 +1083,10 @@ void AGolfRangeHUD::EnsureRoundHud()
 		const double Yaw = FMath::RadiansToDegrees(FMath::Atan2(To.Y, To.X));
 		PC->SetControlRotation(FRotator(0.0, Yaw, 0.0));
 	};
-	// GOL-209: persisted card state (default collapsed chip / HOLE tab).
+	// GOL-209: persisted card size (default collapsed chip). The tab isn't persisted -- it follows
+	// play (HOLE on hole start, GREEN on reaching the green; see UpdateInRoundHud).
 	RoundHud->OnMapSizeChanged = [](int32 Size) { GolfDisplay::WriteHoleMapSize(Size); };
-	RoundHud->OnMapTabChanged = [](int32 Tab) { GolfDisplay::WriteHoleMapTab(Tab); };
 	RoundHud->SetMapSize(GolfDisplay::ReadHoleMapSize());
-	RoundHud->SetMapTab(GolfDisplay::ReadHoleMapTab());
 
 	RoundHud->AddToViewport(20);   // above the legacy panel (0) + swing meter (15), below modals (30+)
 	RoundHud->SetVisibility(ESlateVisibility::Collapsed);
@@ -1221,6 +1220,19 @@ void AGolfRangeHUD::UpdateInRoundHud()
 	// (CourseId, HoleIndex) changed -- which also covers HUD recreation after the GOL-199 map travel.
 	PushHoleMapStatic(S);
 
+	// Auto-tab: the map follows play -- GREEN when the ball reaches this hole's green, back to
+	// HOLE if it leaves (manual tab clicks still work between transitions). Edge-triggered so a
+	// manual selection isn't fought every tick.
+	if (HoleMapGreens.IsValidIndex(HoleMapMatchedGreenIdx) && !D.BallWorldCm.IsZero())
+	{
+		const bool bOnGreen = GolfsimRound::PointInPolygonCm(D.BallWorldCm, HoleMapGreens[HoleMapMatchedGreenIdx]);
+		if (bOnGreen != bHoleMapBallOnGreen)
+		{
+			bHoleMapBallOnGreen = bOnGreen;
+			RoundHud->SetMapTab(bOnGreen ? 1 : 0);
+		}
+	}
+
 	// conditions: real sky + time from the env director if one exists on this map (find-only, no spawn
 	// -- spawning on the course map would re-light it). Wind + temp stay seams ("--") for GOL-154.
 	if (UWorld* World = GetWorld())
@@ -1295,6 +1307,7 @@ void AGolfRangeHUD::PushHoleMapStatic(const GolfsimRound::FRoundState& S)
 	Data.MinimapTexture = HoleMapTexture;
 
 	const int32 GreenIdx = GolfsimRound::MatchGreenToHole(Hole, HoleMapGreens);
+	HoleMapMatchedGreenIdx = GreenIdx;
 	if (HoleMapGreens.IsValidIndex(GreenIdx))
 	{
 		const GolfsimRound::FGreenPolygon& Poly = HoleMapGreens[GreenIdx];
@@ -1352,6 +1365,11 @@ void AGolfRangeHUD::PushHoleMapStatic(const GolfsimRound::FRoundState& S)
 	}
 
 	RoundHud->SetHoleMapStatic(Data);
+
+	// New hole: open on the HOLE tab (the GREEN tab takes over when the ball reaches the green --
+	// the auto-tab edge tracker in UpdateInRoundHud).
+	bHoleMapBallOnGreen = false;
+	RoundHud->SetMapTab(0);
 }
 
 void AGolfRangeHUD::ApplyPinDistance(double Yards)

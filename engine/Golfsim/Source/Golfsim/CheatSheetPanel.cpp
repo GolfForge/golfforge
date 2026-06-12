@@ -34,7 +34,7 @@ namespace
 		{ TEXT("← →"), TEXT("Aim left / right") },
 		{ TEXT("C"),          TEXT("Toggle camera (Tee / Follow)") },
 		{ TEXT("RMB drag"),   TEXT("Orbit the follow camera") },
-		{ TEXT("M"),          TEXT("Hole map (in round): expand / collapse") },
+		{ TEXT("M"),          TEXT("Hole map (in round): chip / card / large") },
 		{ TEXT("N"),          TEXT("Manual-shot dialog") },
 		{ TEXT("H"),          TEXT("Session shot history") },
 		{ TEXT("Tab"),        TEXT("This cheat sheet") },

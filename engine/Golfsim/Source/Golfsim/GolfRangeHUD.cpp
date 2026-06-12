@@ -1083,10 +1083,10 @@ void AGolfRangeHUD::EnsureRoundHud()
 		const double Yaw = FMath::RadiansToDegrees(FMath::Atan2(To.Y, To.X));
 		PC->SetControlRotation(FRotator(0.0, Yaw, 0.0));
 	};
-	// GOL-209: persisted card state (default collapsed / HOLE tab).
-	RoundHud->OnMapExpandedChanged = [](bool bExpanded) { GolfDisplay::WriteHoleMapExpanded(bExpanded); };
+	// GOL-209: persisted card state (default collapsed chip / HOLE tab).
+	RoundHud->OnMapSizeChanged = [](int32 Size) { GolfDisplay::WriteHoleMapSize(Size); };
 	RoundHud->OnMapTabChanged = [](int32 Tab) { GolfDisplay::WriteHoleMapTab(Tab); };
-	RoundHud->SetMapExpanded(GolfDisplay::ReadHoleMapExpanded());
+	RoundHud->SetMapSize(GolfDisplay::ReadHoleMapSize());
 	RoundHud->SetMapTab(GolfDisplay::ReadHoleMapTab());
 
 	RoundHud->AddToViewport(20);   // above the legacy panel (0) + swing meter (15), below modals (30+)
@@ -1248,7 +1248,7 @@ void AGolfRangeHUD::ToggleHoleMap()
 	{
 		return;
 	}
-	RoundHud->ToggleMapExpanded();   // broadcasts OnMapExpandedChanged -> persisted
+	RoundHud->CycleMapSize();   // chip -> card -> large -> chip; broadcasts -> persisted
 }
 
 void AGolfRangeHUD::PushHoleMapStatic(const GolfsimRound::FRoundState& S)

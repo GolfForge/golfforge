@@ -212,13 +212,13 @@ void URoundHud::BuildTree()
 		MS->SetOffsets(FMargin(0.f, 28.f, 28.f, 0.f));
 	}
 	{
-		USizeBox* MapBox = WidgetTree->ConstructWidget<USizeBox>();
-		MapBox->SetWidthOverride(248.f);
-		MapCard->SetContent(MapBox);
+		MapWidthBox = WidgetTree->ConstructWidget<USizeBox>();
+		MapWidthBox->SetWidthOverride(248.f);
+		MapCard->SetContent(MapWidthBox);
 		UVerticalBox* MapCol = WidgetTree->ConstructWidget<UVerticalBox>();
-		MapBox->SetContent(MapCol);
+		MapWidthBox->SetContent(MapCol);
 
-		// tabs row: HOLE / GREEN segmented control + collapse button
+		// tabs row: HOLE / GREEN segmented control + enlarge/collapse buttons
 		UHorizontalBox* TabRow = WidgetTree->ConstructWidget<UHorizontalBox>();
 		MapTabs = CreateWidget<USegmentedControl>(this);
 		MapTabs->SetOptions({ TEXT("HOLE"), TEXT("GREEN") });
@@ -228,16 +228,19 @@ void URoundHud::BuildTree()
 			if (OnMapTabChanged) { OnMapTabChanged(Idx); }
 		};
 		if (UHorizontalBoxSlot* TS = TabRow->AddChildToHorizontalBox(MapTabs)) { TS->SetSize(FSlateChildSize(ESlateSizeRule::Fill)); TS->SetVerticalAlignment(VAlign_Center); }
+		MapEnlargeBtn = MakeGhostButton(WidgetTree, TEXT("+"));
+		MapEnlargeBtn->OnClicked.AddDynamic(this, &URoundHud::HandleMapEnlargeClicked);
+		if (UHorizontalBoxSlot* ES = TabRow->AddChildToHorizontalBox(MapEnlargeBtn)) { ES->SetVerticalAlignment(VAlign_Center); ES->SetPadding(FMargin(8.f, 0, 0, 0)); }
 		UButton* CollapseBtn = MakeGhostButton(WidgetTree, TEXT("-"));
 		CollapseBtn->OnClicked.AddDynamic(this, &URoundHud::HandleMapCollapseClicked);
-		if (UHorizontalBoxSlot* CS = TabRow->AddChildToHorizontalBox(CollapseBtn)) { CS->SetVerticalAlignment(VAlign_Center); CS->SetPadding(FMargin(8.f, 0, 0, 0)); }
+		if (UHorizontalBoxSlot* CS = TabRow->AddChildToHorizontalBox(CollapseBtn)) { CS->SetVerticalAlignment(VAlign_Center); CS->SetPadding(FMargin(4.f, 0, 0, 0)); }
 		if (UVerticalBoxSlot* TRS = MapCol->AddChildToVerticalBox(TabRow)) { TRS->SetPadding(FMargin(10.f, 10.f, 10.f, 8.f)); }
 
 		// map area (square so the projection math frames against a fixed view) + pin tag
-		USizeBox* ImgBox = WidgetTree->ConstructWidget<USizeBox>();
-		ImgBox->SetHeightOverride(248.f);
+		MapImgBox = WidgetTree->ConstructWidget<USizeBox>();
+		MapImgBox->SetHeightOverride(248.f);
 		UOverlay* ImgOverlay = WidgetTree->ConstructWidget<UOverlay>();
-		ImgBox->SetContent(ImgOverlay);
+		MapImgBox->SetContent(ImgOverlay);
 		MapView = CreateWidget<UHoleMapView>(this);
 		MapView->SetViewSize(FVector2D(248.0, 248.0));
 		MapView->OnAimAt = [this](FVector2D WorldCm) { if (OnAimAt) { OnAimAt(WorldCm); } };
@@ -252,7 +255,7 @@ void URoundHud::BuildTree()
 		MapPinText->SetColorAndOpacity(FSlateColor(Color::Text()));
 		PinTag->SetContent(MapPinText);
 		if (UOverlaySlot* PTS = Cast<UOverlaySlot>(ImgOverlay->AddChildToOverlay(PinTag))) { PTS->SetHorizontalAlignment(HAlign_Right); PTS->SetVerticalAlignment(VAlign_Top); PTS->SetPadding(FMargin(0, 11.f, 11.f, 0)); }
-		MapCol->AddChildToVerticalBox(ImgBox);
+		MapCol->AddChildToVerticalBox(MapImgBox);
 
 		// footer
 		UBorder* Foot = WidgetTree->ConstructWidget<UBorder>();
@@ -290,7 +293,7 @@ void URoundHud::BuildTree()
 		CS->SetOffsets(FMargin(0.f, 28.f, 28.f, 0.f));
 	}
 
-	SetMapExpanded(bMapExpanded);   // default collapsed; HUD seeds the persisted state after create
+	SetMapSize(MapSize);   // default chip; HUD seeds the persisted state after create
 }
 
 void URoundHud::SetHoleMapStatic(const FHoleMapStaticData& Data)
@@ -311,19 +314,31 @@ void URoundHud::SetHoleMapStatic(const FHoleMapStaticData& Data)
 	}
 }
 
-void URoundHud::SetMapExpanded(bool bExpanded)
+void URoundHud::SetMapSize(int32 Size)
 {
-	bMapExpanded = bExpanded;
+	MapSize = FMath::Clamp(Size, 0, 2);
+	const bool bExpanded = MapSize > 0;
 	if (MapCard) { MapCard->SetVisibility(bExpanded ? ESlateVisibility::Visible : ESlateVisibility::Collapsed); }
 	if (MapChip) { MapChip->SetVisibility(bExpanded ? ESlateVisibility::Collapsed : ESlateVisibility::Visible); }
+	if (!bExpanded)
+	{
+		return;
+	}
+	// Card (1) vs large (2). The large view exists to read greens/breaks; SetViewSize re-frames
+	// the projections (and resets the wheel zoom) so the map fills the new area exactly.
+	const float Px = (MapSize == 2) ? 480.f : 248.f;
+	if (MapWidthBox) { MapWidthBox->SetWidthOverride(Px); }
+	if (MapImgBox)   { MapImgBox->SetHeightOverride(Px); }
+	if (MapView)     { MapView->SetViewSize(FVector2D(Px, Px)); }
+	if (MapEnlargeBtn) { MapEnlargeBtn->SetVisibility(MapSize == 2 ? ESlateVisibility::Collapsed : ESlateVisibility::Visible); }
 }
 
-void URoundHud::ToggleMapExpanded()
+void URoundHud::CycleMapSize()
 {
-	SetMapExpanded(!bMapExpanded);
-	if (OnMapExpandedChanged)
+	SetMapSize((MapSize + 1) % 3);
+	if (OnMapSizeChanged)
 	{
-		OnMapExpandedChanged(bMapExpanded);
+		OnMapSizeChanged(MapSize);
 	}
 }
 
@@ -338,12 +353,20 @@ void URoundHud::SetMapTab(int32 Index)
 
 void URoundHud::HandleMapChipClicked()
 {
-	ToggleMapExpanded();
+	SetMapSize(1);   // chip -> card
+	if (OnMapSizeChanged) { OnMapSizeChanged(MapSize); }
 }
 
 void URoundHud::HandleMapCollapseClicked()
 {
-	ToggleMapExpanded();
+	SetMapSize(MapSize - 1);   // large -> card -> chip
+	if (OnMapSizeChanged) { OnMapSizeChanged(MapSize); }
+}
+
+void URoundHud::HandleMapEnlargeClicked()
+{
+	SetMapSize(2);   // card -> large
+	if (OnMapSizeChanged) { OnMapSizeChanged(MapSize); }
 }
 
 void URoundHud::SetData(const FRoundHudData& Data)

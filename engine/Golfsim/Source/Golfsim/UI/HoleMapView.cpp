@@ -303,6 +303,15 @@ void UHoleMapView::PaintGreenTab(const FGeometry& Geo, FSlateWindowElementList& 
 		FSlateDrawElement::MakeLines(Out, LayerId + 4, Geo.ToPaintGeometry(), Outline,
 			ESlateDrawEffect::None, Color::Text().CopyWithNewOpacity(0.9f), true, 1.5f);
 	}
+
+	// Aim line here too: reading a putt = your line vs the break arrows. Same ray as the HOLE
+	// tab (the ball dot comes from PaintMarkers); a ball just off the framed green still shows
+	// its line crossing the view.
+	const double YawRad = FMath::DegreesToRadians(AimYawDeg);
+	const FVector2D AimEnd = BallCm + FVector2D(FMath::Cos(YawRad), FMath::Sin(YawRad)) * AimLineLengthCm;
+	const TArray<FVector2f> AimPts = { FVector2f(P.WorldToWidget(BallCm)), FVector2f(P.WorldToWidget(AimEnd)) };
+	FSlateDrawElement::MakeLines(Out, LayerId + 4, Geo.ToPaintGeometry(), AimPts,
+		ESlateDrawEffect::None, Color::Accent(), true, 1.5f);
 }
 
 void UHoleMapView::PaintMarkers(const FGeometry& Geo, FSlateWindowElementList& Out, int32 LayerId,

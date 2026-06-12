@@ -20,6 +20,7 @@
 class UButton;
 class UBorder;
 class UTextBlock;
+class USizeBox;
 class USegmentedControl;
 class UHoleMapView;
 struct FHoleMapStaticData;
@@ -54,16 +55,17 @@ public:
 	/** Per-hole payload (tee/pin/green, basemap texture, green outline + slope grid). Disables the
 	 *  GREEN tab when there's no green outline for the hole. */
 	void SetHoleMapStatic(const FHoleMapStaticData& Data);
-	/** Visual swap card <-> chip (no broadcast -- use for seeding from persisted settings). */
-	void SetMapExpanded(bool bExpanded);
-	/** Swap card <-> chip and report through OnMapExpandedChanged (hotkey / chip click path). */
-	void ToggleMapExpanded();
+	/** Map size: 0 = chip, 1 = card (248), 2 = large (480, reads breaks better). No broadcast --
+	 *  use for seeding from persisted settings. */
+	void SetMapSize(int32 Size);
+	/** M hotkey: cycle chip -> card -> large -> chip; reports through OnMapSizeChanged. */
+	void CycleMapSize();
 	/** Select HOLE (0) / GREEN (1) (no broadcast -- seeding). Falls back to HOLE if GREEN is disabled. */
 	void SetMapTab(int32 Index);
 
 	TFunction<void()> OnMenu;                      // Menu button -> HUD leave-to-menu path
 	TFunction<void(FVector2D)> OnAimAt;            // minimap click -> world XY cm (HUD owns the aim)
-	TFunction<void(bool)> OnMapExpandedChanged;    // HUD persists
+	TFunction<void(int32)> OnMapSizeChanged;       // HUD persists
 	TFunction<void(int32)> OnMapTabChanged;        // HUD persists
 
 protected:
@@ -71,6 +73,7 @@ protected:
 	UFUNCTION() void HandleMenuClicked();
 	UFUNCTION() void HandleMapChipClicked();
 	UFUNCTION() void HandleMapCollapseClicked();
+	UFUNCTION() void HandleMapEnlargeClicked();
 
 private:
 	void BuildTree();
@@ -94,9 +97,12 @@ private:
 	UPROPERTY(Transient) TObjectPtr<UTextBlock>        MapChipText; // "H07 · 412 YD"
 	UPROPERTY(Transient) TObjectPtr<USegmentedControl> MapTabs;     // HOLE / GREEN
 	UPROPERTY(Transient) TObjectPtr<UHoleMapView>      MapView;
+	UPROPERTY(Transient) TObjectPtr<USizeBox>          MapWidthBox;  // card width: 248 / 480
+	UPROPERTY(Transient) TObjectPtr<USizeBox>          MapImgBox;    // map area height: 248 / 480
+	UPROPERTY(Transient) TObjectPtr<UButton>           MapEnlargeBtn;// "+" (hidden at large)
 	UPROPERTY(Transient) TObjectPtr<UTextBlock>        MapPinText;
 	UPROPERTY(Transient) TObjectPtr<UTextBlock>        MapTitleText;
 	UPROPERTY(Transient) TObjectPtr<UTextBlock>        MapYdsText;
 
-	bool bMapExpanded = false;
+	int32 MapSize = 0;   // 0 = chip, 1 = card, 2 = large
 };

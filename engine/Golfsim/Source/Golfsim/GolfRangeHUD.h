@@ -84,7 +84,8 @@ private:
 	void ToggleManualDialog();
 	void FireManualShot(const FManualShotValues& Values);
 
-	// GOL-209: M expands/collapses the in-round hole-map card (no-op on the range / under menus).
+	// GOL-209: M cycles the in-round hole-map card chip -> card -> large (no-op on the range /
+	// under menus).
 	void ToggleHoleMap();
 
 	// GOL-65: H toggles the in-range history view (current session only).

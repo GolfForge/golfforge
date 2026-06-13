@@ -2,6 +2,50 @@
 
 > Dated milestone summaries, newest on top. The durable outcome + the committed artifact, not the blow-by-blow — process detail lives in git history, `docs/ue5-cookbook.md`, and the scripts themselves.
 
+## 2026-06-13 — GOL-203: elevate the putting experience (+ GOL-202/198 UI gating) (Windows)
+
+Putting now reads like real putting, user-validated in PIE ("this looks perfect"). Six pieces plus
+the practice-UI cleanup, all under GOL-203:
+
+- **Hole-out toast** — new pure-C++ `UI/HoleOutToast` (GolfUITheme glass card, pop/hold/fade driven
+  from `NativeTick`) replaces the file-static `DrawHUD` text banner. Generalized `ShowText(eyebrow,
+  title, detail)`: putting-drill sink ("HOLED IT!"/"HOLED OUT" + putt count), **round hole-outs**
+  (new `hole.complete` subscription → score-flavored ACE/ALBATROSS/EAGLE/BIRDIE/PAR/BOGEY/… + the
+  cup rattle), and CTP putt-outs. ZOrder 25.
+- **Cup-drop animation + SFX** — `AGolfBallActor::StartCupDrop` (XY ease + accelerating Z sink, then
+  hide) replaces the teleport-to-cup; `SW_CupDrop` imported (`engine/scripts/import_cup_drop_sfx.py`;
+  Freesound "Drop ball in cup" by AGFX, **CC-BY 4.0** — first non-CC0 audio, ATTRIBUTION.md updated
+  with a required-attribution section). The hole-out resolves the **instant cup capture is detected
+  mid-roll** (stops the roll at the cup, doesn't wait for a natural settle a foot past).
+- **Auto putt camera** — low behind-the-ball framing down the line, terrain-Z-clamped (links swales
+  on OldAndre buried the cam → "sky"); rides the player's arrow-key aim while addressing with a live
+  ground aim line; locks + tracks the ball while rolling. Now also a third **"Putt"** entry in the
+  Camera dropdown, hides the first-person pawn model while active, and restores the chosen mode on
+  hole-out. Explicit Tee/Follow pick (or C) overrides — the auto behavior is a default, not a lock.
+- **Ground-hugging putt tracer** — putts draw a thin pale roll line instead of the yellow flight arc
+  (`AGolfBallActor::bPuttTracer`).
+- **In-world break grid (flowing dots)** — new `Range/GreenBreakGridActor` (terrain-draped procedural
+  mesh over the green's slope-grid footprint) + `UI/GreenFlowTexture` (pure NX×NY flow-field encoder,
+  3 new automation tests) + `engine/scripts/build_green_flow_material.py` (`M_GreenFlow`: unlit
+  translucent two-phase flow-map, world-XY dot lattice drifting downhill, slope-tinted; authored
+  first-try). `BuildGreenSlopeGrid` extracted from `PushHoleMapStatic` so the minimap GREEN tab and
+  the overlay share one trace burst; the practice path (`EnterPuttingOnGreen`) builds it too. Shows
+  while putting a course green / when the round ball reaches the green; **G** toggles. Dots tuned
+  calmer + smaller over two PIE passes (1.5/m, FlowSpeed 0.45, ~13 cm).
+- **Real-cup-only hole-out on course greens** — a course-green putt only holes via genuine cup
+  capture (rolling over the hole), not the drill's 3-ft gimme; short putts stay out + re-putt. Flat
+  range green keeps the gimme (no real cup). Round play still completes via gimme (conceded → toast +
+  rattle, no sink).
+- **GOL-202/198 UI gating** — root cause was `UpdateInRoundHud` re-showing the range pin-spinner row
+  every tick; now mode-aware, so CTP/Putting no longer leak the free-range dev controls. CTP/putting
+  PIN tile shows the live putt length in feet during play-out.
+- **Focus traps fixed** — spinboxes (`OnValueCommitted`), the minimap +/−/chip buttons, and the
+  HOLE/GREEN tabs (opt-in `USegmentedControl::bReturnFocusToGameOnPick`) all hand keyboard focus back
+  to the game so the next Space swings instead of being eaten by the clicked widget.
+
+Follow-up filed: **GOL-211** real 3D cup (the flat black disc floats on undulating greens). Suite
+green incl. 3 new GreenFlow tests.
+
 ## 2026-06-12 — GOL-209: real round-HUD minimap (+ GOL-210 top-gradient removal) (Windows)
 
 The hole-map card is a real minimap, PIE-validated by the user ("looks amazing"). Map source is a

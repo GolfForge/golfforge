@@ -1,6 +1,10 @@
 #include "UI/SegmentedControl.h"
 #include "UI/GolfUITheme.h"
 
+#include "Engine/World.h"
+#include "Framework/Application/SlateApplication.h"   // GOL-203: opt-in post-pick focus return
+#include "TimerManager.h"
+
 #include "Blueprint/WidgetTree.h"
 #include "Components/Border.h"
 #include "Components/Button.h"
@@ -122,6 +126,23 @@ void USegmentedControl::HandleOptionClicked()
 		{
 			if (OptionDisabled.IsValidIndex(i) && OptionDisabled[i]) { return; }   // ignore disabled option
 			SetSelectedIndex(i, /*bBroadcast*/ true);
+
+			// GOL-203 polish (opt-in, HUD uses only): hand keyboard focus back to the game so the
+			// next Space swings instead of re-pressing the focused tab. Deferred a tick, after the
+			// button's own post-click focus handling (the UGolfRangePanel idiom).
+			if (bReturnFocusToGameOnPick)
+			{
+				if (UWorld* World = GetWorld())
+				{
+					World->GetTimerManager().SetTimerForNextTick([]()
+					{
+						if (FSlateApplication::IsInitialized())
+						{
+							FSlateApplication::Get().SetAllUserFocusToGameViewport();
+						}
+					});
+				}
+			}
 			return;
 		}
 	}

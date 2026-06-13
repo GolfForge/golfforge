@@ -40,8 +40,27 @@ FVector AGolfBallActor::SampleToWorld(const FTrajectorySample& Sample, int32 Sam
 		BallRestHeightUU, PostLandingGroundCacheUU);
 }
 
+void AGolfBallActor::StartCupDrop(const FVector& CupCenterUU, TFunction<void()> OnDone, float DurationSec)
+{
+	bPlaying = false;   // a holed putt is done rolling -- the drop owns the ball now
+	bCupDropping = true;
+	CupDropSeconds = 0.f;
+	CupDropDuration = FMath::Max(DurationSec, 0.05f);
+	CupDropFrom = GetActorLocation();
+	// Sink to the cup center, two ball-heights below the lip -- enough that the ball reads as
+	// swallowed without poking through the landscape under the cup decal.
+	CupDropTo = FVector(CupCenterUU.X, CupCenterUU.Y, CupDropFrom.Z - 2.f * BallRestHeightUU);
+	CupDropOnDone = MoveTemp(OnDone);
+	SetActorHiddenInGame(false);
+}
+
 void AGolfBallActor::PlayTrajectory(const FBallTrajectory& InTrajectory)
 {
+	// A new shot cancels any in-flight cup-drop animation (and un-hides the swallowed ball).
+	bCupDropping = false;
+	CupDropOnDone = nullptr;
+	SetActorHiddenInGame(false);
+
 	Trajectory = InTrajectory;
 	LaunchOriginUU = GetActorLocation();
 	LaunchRotation = GetActorRotation();
@@ -104,6 +123,35 @@ void AGolfBallActor::ResetAndReplay()
 void AGolfBallActor::Tick(float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
+
+	// GOL-203: holed putt sinking into the cup. XY eases out toward the cup center (the ball is
+	// nearly there already), Z accelerates down like a real drop. Hide at the bottom -- the ball
+	// is "in the hole" until the next address/shot un-hides it.
+	if (bCupDropping)
+	{
+		CupDropSeconds += DeltaSeconds;
+		const float T = FMath::Clamp(CupDropSeconds / CupDropDuration, 0.f, 1.f);
+		const float AlphaXY = FMath::Sin(T * UE_HALF_PI);   // ease-out
+		const float AlphaZ = T * T;                          // accelerating fall
+		FVector P;
+		P.X = FMath::Lerp(CupDropFrom.X, CupDropTo.X, AlphaXY);
+		P.Y = FMath::Lerp(CupDropFrom.Y, CupDropTo.Y, AlphaXY);
+		P.Z = FMath::Lerp(CupDropFrom.Z, CupDropTo.Z, AlphaZ);
+		SetActorLocation(P);
+		if (T >= 1.f)
+		{
+			bCupDropping = false;
+			SetActorHiddenInGame(true);   // swallowed by the cup
+			if (CupDropOnDone)
+			{
+				TFunction<void()> Done = MoveTemp(CupDropOnDone);
+				CupDropOnDone = nullptr;
+				Done();
+			}
+		}
+		return;
+	}
+
 	if (!bPlaying)
 	{
 		return;
@@ -143,13 +191,16 @@ void AGolfBallActor::Tick(float DeltaSeconds)
 	SetActorLocation(NewPos);
 
 	// Grow the tracer trail behind the ball (Toptracer-style): one persistent segment per frame,
-	// so the full arc remains on screen after landing.
+	// so the full arc remains on screen after landing. Putts (GOL-203) draw thinner + pale --
+	// the trail follows the roll, so it reads as the break line on the green, not a flight arc.
 	if (bDrawDebugArc)
 	{
 		if (UWorld* World = GetWorld())
 		{
-			DrawDebugLine(World, PrevDrawPos, NewPos, FColor::Yellow, /*bPersistentLines=*/true,
-				/*LifeTime=*/-1.f, /*DepthPriority=*/0, /*Thickness=*/2.f);
+			const FColor TraceColor = bPuttTracer ? FColor(225, 233, 228) : FColor::Yellow;
+			const float TraceThickness = bPuttTracer ? 1.4f : 2.f;
+			DrawDebugLine(World, PrevDrawPos, NewPos, TraceColor, /*bPersistentLines=*/true,
+				/*LifeTime=*/-1.f, /*DepthPriority=*/0, TraceThickness);
 		}
 	}
 	PrevDrawPos = NewPos;

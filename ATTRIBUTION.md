@@ -68,6 +68,13 @@ Courtesy credit (not legally required) for the clips in use:
 | `SW_AmbientMurmur_Distant` | Parisian Ring Road #2 (s3027) | https://bigsoundbank.com/parisian-ring-road-2-s3027.html |
 | `SW_BallStrike` (ball-strike SFX, trimmed to ~0.55 s around the impact) | Golf Swing with a Wooden Club (s0455) | https://bigsoundbank.com/golf-swing-with-a-wooden-club-s0455.html |
 
+One gameplay clip is **CC-BY 4.0** (attribution **required** -- here and in distributed builds'
+credits; commercial use + redistribution allowed, so AGPL-compatible per the sourcing rule):
+
+| Asset | Attribution | License | URL |
+|---|---|---|---|
+| `SW_CupDrop` (GOL-203 hole-out SFX; Freesound's HQ preview encode of the original) | "Drop ball in cup-1.wav" by **AGFX** (freesound.org) | CC-BY 4.0 | https://freesound.org/people/AGFX/sounds/20428/ |
+
 ## Carrying attribution in distributed builds
 
 A packaged GolfForge build that ships course data must surface the OpenStreetMap attribution and

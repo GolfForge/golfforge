@@ -220,6 +220,7 @@ void UGolfRangePanel::BuildTree()
 		PinBox->SetMinFractionalDigits(0);
 		PinBox->SetMaxFractionalDigits(0);
 		PinBox->OnValueChanged.AddDynamic(this, &UGolfRangePanel::HandlePinValueChanged);
+	PinBox->OnValueCommitted.AddDynamic(this, &UGolfRangePanel::HandleSpinCommitted);   // GOL-203 focus-return
 		if (UHorizontalBoxSlot* PBS = RangeControlsRow->AddChildToHorizontalBox(PinBox))
 		{
 			PBS->SetPadding(FMargin(0.f, 0.f, 8.f, 0.f));
@@ -273,6 +274,8 @@ void UGolfRangePanel::BuildTree()
 		S->SetMinDesiredWidth(Width);
 		S->SetMinFractionalDigits(0);
 		S->SetMaxFractionalDigits(0);
+		// Commit (Enter/Esc) hands focus back to the game -- see HandleSpinCommitted (GOL-203 polish).
+		S->OnValueCommitted.AddDynamic(this, &UGolfRangePanel::HandleSpinCommitted);
 		return S;
 	};
 
@@ -621,6 +624,17 @@ void UGolfRangePanel::HandleEndPracticeClicked()
 {
 	if (OnEndPractice) { OnEndPractice(); }
 	ReturnFocusToGameViewport();
+}
+
+void UGolfRangePanel::HandleSpinCommitted(float /*Value*/, ETextCommit::Type CommitMethod)
+{
+	// A click into a spinbox enters text-edit mode and traps keyboard focus (Space types a space
+	// instead of swinging) -- Enter/Esc now hand focus back to the game. A commit caused by the
+	// user clicking ANOTHER control (OnUserMovedFocus) is a deliberate move; leave that focus alone.
+	if (CommitMethod != ETextCommit::OnUserMovedFocus)
+	{
+		ReturnFocusToGameViewport();
+	}
 }
 
 void UGolfRangePanel::HandleClubSelectionChanged(FString, ESelectInfo::Type SelectionType)

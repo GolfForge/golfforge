@@ -29,6 +29,8 @@
 #include "Round/RoundState.h"              // GolfsimRound::IsWithinGimme (CTP putt-out hole-out, GOL-73)
 #include "Course/CourseLevelMap.h"         // GOL-199: course-id -> level for putt-on-a-real-green
 #include "Practice/PracticeModeSubsystem.h"// GOL-73: CTP config/session/scoring + practice.shot_scored
+#include "UI/HoleOutToast.h"               // GOL-203: hole-out celebration toast
+#include "Range/GreenBreakGridActor.h"     // GOL-203: in-world flowing-dot break grid
 
 #include "DrawDebugHelpers.h"              // GOL-73: ball->pin result line
 #include "EngineUtils.h"
@@ -104,6 +106,11 @@ namespace
 	static constexpr float FollowInterpSpeed = 4.f;  // position smoothing (VInterpTo)
 	static constexpr float FollowViewBlend = 0.25f;  // SetViewTargetWithBlend time, s
 
+	// GOL-203 putt-cam framing: low and close behind the ball, looking down the line to the cup --
+	// reads like crouching behind the putt instead of the full-swing chase.
+	static constexpr float PuttCamBackUU = 250.f;    // behind the addressed ball
+	static constexpr float PuttCamUpUU = 70.f;       // barely above the turf
+
 	// Ball-center launch height above the traced ground -- single source of truth lives on
 	// AGolfBallActor (GOL-110). Aliased here for the file-scope launch trace code below.
 	static constexpr float BallRestHeightUU = AGolfBallActor::BallRestHeightUU;
@@ -136,11 +143,6 @@ AGolfRangeHUD::AGolfRangeHUD()
 	PrimaryActorTick.bStartWithTickEnabled = true;
 }
 
-// GOL-199: transient "holed out" banner (file-static -- single-player, ephemeral DrawHUD state; a
-// later pass can promote to members alongside the GOL-202 practice-UI cleanup).
-static double GPuttHoledMsgUntilSec = 0.0;
-static int32  GPuttHoledMsgPutts    = 0;
-
 void AGolfRangeHUD::BeginPlay()
 {
 	Super::BeginPlay();
@@ -171,8 +173,21 @@ void AGolfRangeHUD::EndPlay(const EEndPlayReason::Type EndPlayReason)
 	}
 	OutcomeSub = FGolfEventSubscription{};
 	RoundCompleteSub = FGolfEventSubscription{};
+	HoleCompleteSub = FGolfEventSubscription{};
 	EventBusWeak = nullptr;
 	Super::EndPlay(EndPlayReason);
+}
+
+void AGolfRangeHUD::PlayCupDropSoundAt(const FVector& WorldLoc)
+{
+	if (!CupDropSound)
+	{
+		CupDropSound = LoadObject<USoundBase>(nullptr, TEXT("/Game/Audio/CupDrop/SW_CupDrop.SW_CupDrop"));
+	}
+	if (CupDropSound)
+	{
+		UGameplayStatics::PlaySoundAtLocation(GetWorld(), CupDropSound, WorldLoc);
+	}
 }
 
 void AGolfRangeHUD::UpdateAmbientPlayback()
@@ -286,7 +301,18 @@ void AGolfRangeHUD::Tick(float DeltaSeconds)
 						const double DistCm = FVector2D(BallLoc.X - P.X, BallLoc.Y - P.Y).Size();
 						if (SpeedMps < CupCaptureSpeedMps && DistCm < CupCaptureRadiusCm)
 						{
+							// GOL-203: hole out the INSTANT capture is detected -- stop the roll right
+							// at the cup (OnPuttingShotSettled -> StartCupDrop clears bPlaying) and
+							// pop the toast, instead of letting the ball trickle to a natural stop a
+							// foot past the hole before resolving.
 							bPuttCaptured = true;
+							bCarryAnimating = false;
+							ScheduleSwingMeterCleanup();
+							if (bCtpScorePending)
+							{
+								bCtpScorePending = false;
+								OnPuttingShotSettled(Ball);
+							}
 						}
 					}
 					PuttPrevBallLoc = BallLoc;
@@ -401,9 +427,10 @@ void AGolfRangeHUD::EnsureInputBound()
 			Panel->SetSelectedClubIndex(ActiveClub);
 			Panel->UpdateMetrics(GBag[ActiveClub].Name, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0);   // "-" until first shot
 
-			// Camera dropdown: Tee (fixed pawn view) / Follow (chase cam). Defaults to Tee so the
-			// current view is unchanged unless the user opts in.
-			Panel->SetCameraOptions({ TEXT("Tee"), TEXT("Follow") });
+			// Camera dropdown: Tee (fixed pawn view) / Follow (chase cam) / Putt (GOL-203 low
+			// down-the-line; auto-engages at putt address, pickable any time there's a ball + pin).
+			// Defaults to Tee so the current view is unchanged unless the user opts in.
+			Panel->SetCameraOptions({ TEXT("Tee"), TEXT("Follow"), TEXT("Putt") });
 			Panel->SetSelectedCameraIndex(0);
 			Panel->OnCameraChosen = [WeakThis](int32 Idx)
 			{
@@ -535,6 +562,40 @@ void AGolfRangeHUD::EnsureInputBound()
 						for (const GolfsimRound::FHoleSpec& H : S.Schedule) { Pars.Add(H.Par); }
 					}
 					HUD->OpenScorecardForState(Pars, RC.PerHoleStrokes);
+				});
+			// GOL-203: hole.complete -> score-flavored toast + the cup rattle, so round hole-outs
+			// get the same celebration the putting drill has. The gimme hole-out is a CONCEDED
+			// putt, so no sink animation -- the ball reads as picked up; just the sound + score.
+			HoleCompleteSub = EBus->Subscribe(EEventKind::HoleComplete,
+				[WeakThis](const FGolfEvent& Event)
+				{
+					AGolfRangeHUD* HUD = WeakThis.Get();
+					if (!HUD || Event.Kind != EEventKind::HoleComplete) { return; }
+					const FHoleCompleteEvent& HC = static_cast<const FHoleCompleteEvent&>(Event);
+
+					FString Title;
+					if (HC.StrokesUsed == 1)      { Title = TEXT("ACE!"); }
+					else if (HC.ScoreVsPar <= -3) { Title = TEXT("ALBATROSS"); }
+					else if (HC.ScoreVsPar == -2) { Title = TEXT("EAGLE"); }
+					else if (HC.ScoreVsPar == -1) { Title = TEXT("BIRDIE"); }
+					else if (HC.ScoreVsPar == 0)  { Title = TEXT("PAR"); }
+					else if (HC.ScoreVsPar == 1)  { Title = TEXT("BOGEY"); }
+					else if (HC.ScoreVsPar == 2)  { Title = TEXT("DOUBLE BOGEY"); }
+					else                          { Title = FString::Printf(TEXT("+%d"), HC.ScoreVsPar); }
+
+					HUD->EnsureHoleOutToast();
+					if (HUD->HoleOutToast)
+					{
+						HUD->HoleOutToast->ShowText(
+							FString::Printf(TEXT("HOLE %d"), HC.HoleRef), Title,
+							FString::Printf(TEXT("%d STROKE%s"), HC.StrokesUsed,
+								HC.StrokesUsed == 1 ? TEXT("") : TEXT("S")));
+					}
+					// Rattle at the settled ball (it lies within the cup's gimme).
+					if (AGolfBallActor* Ball = HUD->AnimBall.Get())
+					{
+						HUD->PlayCupDropSoundAt(Ball->GetActorLocation());
+					}
 				});
 			EventBusWeak = EBus;   // cache for a reliable Unsubscribe in EndPlay
 
@@ -714,6 +775,7 @@ void AGolfRangeHUD::EnsureInputBound()
 	InputComponent->BindKey(EKeys::M,        IE_Pressed,  this, &AGolfRangeHUD::ToggleHoleMap);       // GOL-209 (manual dialog moved to N)
 	InputComponent->BindKey(EKeys::N,        IE_Pressed,  this, &AGolfRangeHUD::ToggleManualDialog);
 	InputComponent->BindKey(EKeys::C,        IE_Pressed,  this, &AGolfRangeHUD::ToggleCameraMode);       // GOL-73 camera flip
+	InputComponent->BindKey(EKeys::G,        IE_Pressed,  this, &AGolfRangeHUD::ToggleBreakGrid);        // GOL-203 green break grid
 	InputComponent->BindKey(EKeys::H,        IE_Pressed,  this, &AGolfRangeHUD::ToggleHistoryFromKey);   // GOL-65
 	// Settings/credits menu. Escape works in packaged builds + PIE (the editor's Escape-stops-play
 	// only applies when the viewport hasn't captured focus); golfsim.Credits also opens it.
@@ -1167,7 +1229,10 @@ void AGolfRangeHUD::UpdateInRoundHud()
 	if (Panel)
 	{
 		Panel->SetVisibility(bManualOpen ? ESlateVisibility::Collapsed : ESlateVisibility::SelfHitTestInvisible);
-		Panel->SetRangeControlsVisible(!bRound);
+		// GOL-198/202: the free-play pin spinner + putt-from-green are dev controls for the FREE range
+		// only -- a practice drill (CTP / Putting, incl. course-green putting) owns the pin, so this
+		// per-tick refresh must not undo SetPracticeMode's hide.
+		Panel->SetRangeControlsVisible(!bRound && CtpMode == GolfsimPractice::EPracticeMode::Free);
 		Panel->SetMenuButtonVisible(!bRound && !bMenuOpen);   // GOL-147: range-only; RoundHud provides the in-round Menu, the main menu hides it
 	}
 
@@ -1231,6 +1296,7 @@ void AGolfRangeHUD::UpdateInRoundHud()
 		{
 			bHoleMapBallOnGreen = bOnGreen;
 			RoundHud->SetMapTab(bOnGreen ? 1 : 0);
+			UpdateBreakGridVisibility();   // GOL-203: the in-world break grid follows the same edge
 		}
 	}
 
@@ -1314,55 +1380,18 @@ void AGolfRangeHUD::PushHoleMapStatic(const GolfsimRound::FRoundState& S)
 		const GolfsimRound::FGreenPolygon& Poly = HoleMapGreens[GreenIdx];
 		Data.GreenVertsCm = Poly.VertsCm;
 
-		// Slope grid for the GREEN tab's break arrows: green bbox + 2 m margin, ~1 m cells (coarser
-		// on huge double greens so the trace count stays bounded). Corner heights come from the same
-		// landscape trace SnapToGround uses; GolfMap::ComputeSlopeGrid derives slope + fall lines.
-		// One-time per hole (a few-ms burst of ~1-3k traces), not per frame.
-		if (UWorld* World = GetWorld(); World && Poly.VertsCm.Num() >= 3)
+		// Slope grid for the GREEN tab's break arrows AND the GOL-203 in-world break overlay --
+		// one trace burst per hole, shared via the BreakGrid* cache (BuildGreenSlopeGrid).
+		bBreakGridDataValid = BuildGreenSlopeGrid(Poly, BreakGridSlope, BreakGridCorners);
+		if (bBreakGridDataValid)
 		{
-			FVector2D Min(TNumericLimits<double>::Max(), TNumericLimits<double>::Max());
-			FVector2D Max(-TNumericLimits<double>::Max(), -TNumericLimits<double>::Max());
-			for (const FVector2D& V : Poly.VertsCm)
-			{
-				Min.X = FMath::Min(Min.X, V.X); Min.Y = FMath::Min(Min.Y, V.Y);
-				Max.X = FMath::Max(Max.X, V.X); Max.Y = FMath::Max(Max.Y, V.Y);
-			}
-			Min -= FVector2D(200.0, 200.0);
-			Max += FVector2D(200.0, 200.0);
-
-			GolfMap::FGreenSlopeGrid& Grid = Data.Slope;
-			const double SpanMax = FMath::Max(Max.X - Min.X, Max.Y - Min.Y);
-			Grid.CellCm = FMath::Max(100.0, SpanMax / 48.0);   // <= ~50x50 cells even on a double green
-			Grid.NX = FMath::Max(1, FMath::CeilToInt32((Max.X - Min.X) / Grid.CellCm));
-			Grid.NY = FMath::Max(1, FMath::CeilToInt32((Max.Y - Min.Y) / Grid.CellCm));
-			Grid.OriginCm = Min + FVector2D(Grid.CellCm * 0.5, Grid.CellCm * 0.5);
-
-			Grid.bInGreen.SetNum(Grid.NX * Grid.NY);
-			for (int32 J = 0; J < Grid.NY; ++J)
-			{
-				for (int32 I = 0; I < Grid.NX; ++I)
-				{
-					const FVector2D Center = Grid.OriginCm + FVector2D(I * Grid.CellCm, J * Grid.CellCm);
-					Grid.bInGreen[J * Grid.NX + I] = GolfsimRound::PointInPolygonCm(Center, Poly);
-				}
-			}
-
-			TArray<double> Corners;
-			Corners.SetNum((Grid.NX + 1) * (Grid.NY + 1));
-			FCollisionQueryParams TraceParams(SCENE_QUERY_STAT(GolfsimHoleMapSlopeTrace), /*bTraceComplex=*/true);
-			for (int32 J = 0; J <= Grid.NY; ++J)
-			{
-				for (int32 I = 0; I <= Grid.NX; ++I)
-				{
-					const FVector2D C = Grid.OriginCm + FVector2D((I - 0.5) * Grid.CellCm, (J - 0.5) * Grid.CellCm);
-					FHitResult Hit;
-					const bool bHit = World->LineTraceSingleByChannel(Hit,
-						FVector(C.X, C.Y, 200000.0), FVector(C.X, C.Y, -200000.0), ECC_WorldStatic, TraceParams);
-					Corners[J * (Grid.NX + 1) + I] = bHit ? Hit.ImpactPoint.Z : GolfMap::InvalidHeightCm;
-				}
-			}
-			GolfMap::ComputeSlopeGrid(Corners, Grid);
+			Data.Slope = BreakGridSlope;
+			RebuildBreakGridActor();
 		}
+	}
+	else
+	{
+		bBreakGridDataValid = false;
 	}
 
 	RoundHud->SetHoleMapStatic(Data);
@@ -1371,6 +1400,118 @@ void AGolfRangeHUD::PushHoleMapStatic(const GolfsimRound::FRoundState& S)
 	// the auto-tab edge tracker in UpdateInRoundHud).
 	bHoleMapBallOnGreen = false;
 	RoundHud->SetMapTab(0);
+	UpdateBreakGridVisibility();   // GOL-203: new hole -> ball is off the new green again
+}
+
+bool AGolfRangeHUD::BuildGreenSlopeGrid(const GolfsimRound::FGreenPolygon& Poly,
+	GolfMap::FGreenSlopeGrid& OutGrid, TArray<double>& OutCornerHeightsCm) const
+{
+	// Green bbox + 2 m margin, ~1 m cells (coarser on huge double greens so the trace count stays
+	// bounded). Corner heights come from the same landscape trace SnapToGround uses; GolfMap::
+	// ComputeSlopeGrid derives slope + fall lines. One-time per green (a few-ms burst of ~1-3k
+	// traces), not per frame. (GOL-209, extracted for GOL-203 so the minimap GREEN tab and the
+	// in-world break grid share one burst + the corner heights drape the overlay mesh for free.)
+	UWorld* World = GetWorld();
+	if (!World || Poly.VertsCm.Num() < 3)
+	{
+		return false;
+	}
+
+	FVector2D Min(TNumericLimits<double>::Max(), TNumericLimits<double>::Max());
+	FVector2D Max(-TNumericLimits<double>::Max(), -TNumericLimits<double>::Max());
+	for (const FVector2D& V : Poly.VertsCm)
+	{
+		Min.X = FMath::Min(Min.X, V.X); Min.Y = FMath::Min(Min.Y, V.Y);
+		Max.X = FMath::Max(Max.X, V.X); Max.Y = FMath::Max(Max.Y, V.Y);
+	}
+	Min -= FVector2D(200.0, 200.0);
+	Max += FVector2D(200.0, 200.0);
+
+	OutGrid = GolfMap::FGreenSlopeGrid();
+	const double SpanMax = FMath::Max(Max.X - Min.X, Max.Y - Min.Y);
+	OutGrid.CellCm = FMath::Max(100.0, SpanMax / 48.0);   // <= ~50x50 cells even on a double green
+	OutGrid.NX = FMath::Max(1, FMath::CeilToInt32((Max.X - Min.X) / OutGrid.CellCm));
+	OutGrid.NY = FMath::Max(1, FMath::CeilToInt32((Max.Y - Min.Y) / OutGrid.CellCm));
+	OutGrid.OriginCm = Min + FVector2D(OutGrid.CellCm * 0.5, OutGrid.CellCm * 0.5);
+
+	OutGrid.bInGreen.SetNum(OutGrid.NX * OutGrid.NY);
+	for (int32 J = 0; J < OutGrid.NY; ++J)
+	{
+		for (int32 I = 0; I < OutGrid.NX; ++I)
+		{
+			const FVector2D Center = OutGrid.OriginCm + FVector2D(I * OutGrid.CellCm, J * OutGrid.CellCm);
+			OutGrid.bInGreen[J * OutGrid.NX + I] = GolfsimRound::PointInPolygonCm(Center, Poly);
+		}
+	}
+
+	OutCornerHeightsCm.SetNum((OutGrid.NX + 1) * (OutGrid.NY + 1));
+	FCollisionQueryParams TraceParams(SCENE_QUERY_STAT(GolfsimHoleMapSlopeTrace), /*bTraceComplex=*/true);
+	for (int32 J = 0; J <= OutGrid.NY; ++J)
+	{
+		for (int32 I = 0; I <= OutGrid.NX; ++I)
+		{
+			const FVector2D C = OutGrid.OriginCm + FVector2D((I - 0.5) * OutGrid.CellCm, (J - 0.5) * OutGrid.CellCm);
+			FHitResult Hit;
+			const bool bHit = World->LineTraceSingleByChannel(Hit,
+				FVector(C.X, C.Y, 200000.0), FVector(C.X, C.Y, -200000.0), ECC_WorldStatic, TraceParams);
+			OutCornerHeightsCm[J * (OutGrid.NX + 1) + I] = bHit ? Hit.ImpactPoint.Z : GolfMap::InvalidHeightCm;
+		}
+	}
+	GolfMap::ComputeSlopeGrid(OutCornerHeightsCm, OutGrid);
+	return true;
+}
+
+void AGolfRangeHUD::RebuildBreakGridActor()
+{
+	if (!bBreakGridDataValid)
+	{
+		if (AGreenBreakGridActor* Existing = BreakGrid.Get()) { Existing->SetGridVisible(false); }
+		return;
+	}
+	AGreenBreakGridActor* Grid = BreakGrid.Get();
+	if (!Grid)
+	{
+		UWorld* World = GetWorld();
+		if (!World) { return; }
+		// Find-or-spawn, mirroring the pin: one overlay actor per world, moved between greens.
+		for (TActorIterator<AGreenBreakGridActor> It(World); It; ++It) { Grid = *It; break; }
+		if (!Grid)
+		{
+			FActorSpawnParameters Sp;
+			Sp.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+			Grid = World->SpawnActor<AGreenBreakGridActor>(AGreenBreakGridActor::StaticClass(),
+				FVector::ZeroVector, FRotator::ZeroRotator, Sp);
+		}
+		BreakGrid = Grid;
+	}
+	if (Grid)
+	{
+		Grid->BuildFromGrid(BreakGridSlope, BreakGridCorners);
+		Grid->SetGridVisible(false);   // UpdateBreakGridVisibility owns the show decision
+	}
+}
+
+void AGolfRangeHUD::UpdateBreakGridVisibility()
+{
+	AGreenBreakGridActor* Grid = BreakGrid.Get();
+	if (!Grid)
+	{
+		return;
+	}
+	// The overlay is a green-reading aid: show while putting a real green (course-green practice,
+	// or in a round once the ball reaches the green), unless the player has G-toggled it away.
+	const bool bGreenContext = bPuttingOnCourseGreen || (RoundIsActive() && bHoleMapBallOnGreen);
+	Grid->SetGridVisible(bBreakGridDataValid && bGreenContext && !bBreakGridUserHidden);
+}
+
+void AGolfRangeHUD::ToggleBreakGrid()
+{
+	if (InputGated())
+	{
+		return;
+	}
+	bBreakGridUserHidden = !bBreakGridUserHidden;
+	UpdateBreakGridVisibility();
 }
 
 void AGolfRangeHUD::ApplyPinDistance(double Yards)
@@ -1554,6 +1695,7 @@ void AGolfRangeHUD::SetPracticeMode(GolfsimPractice::EPracticeMode Mode)
 	bCtpAwaitingRespawn = false;
 	bCtpScorePending = false;
 	PuttStrokeCount = 0;
+	ReleasePuttCam();   // GOL-203: leaving/entering a drill always drops the auto putt framing
 	if (bCtpPutting) { EndCtpPuttSequence(); }   // restore the tee pose if we were mid-putt-out
 
 	CtpMode = Mode;
@@ -1615,6 +1757,8 @@ void AGolfRangeHUD::SetPracticeMode(GolfsimPractice::EPracticeMode Mode)
 		CurrentPinSideYd = 0.0;
 		ApplyPinDistance(CurrentPinYd);
 	}
+
+	UpdateBreakGridVisibility();   // GOL-203: the course-green context may have just changed
 }
 
 void AGolfRangeHUD::ApplyCtpConfig(double MinYd, double MaxYd, bool bSideOffset, bool bPuttOut, double WithinYd)
@@ -1728,6 +1872,11 @@ void AGolfRangeHUD::EnterPuttingOnGreen(const FString& CourseId, int32 HoleRef)
 	UE_LOG(LogTemp, Display, TEXT("Putting on %s green (way %lld, %d verts)"),
 		*CourseId, PuttingTargetGreen.OsmWayId, PuttingTargetGreen.VertsCm.Num());
 
+	// GOL-203: slope grid + break overlay for THIS green (the round path builds it per hole in
+	// PushHoleMapStatic; the practice path owes its own one-time trace burst -- pin moves are free).
+	bBreakGridDataValid = BuildGreenSlopeGrid(PuttingTargetGreen, BreakGridSlope, BreakGridCorners);
+	RebuildBreakGridActor();
+
 	SetPracticeMode(EPracticeMode::Putting);   // common putting setup + spawns the first pin (on the green)
 
 	// Belt-and-suspenders: if the startup greet slipped in before BeginPlay set the skip flag, drop it
@@ -1837,9 +1986,16 @@ void AGolfRangeHUD::AddressPuttAt(const FVector2D& BallXYcm, const FVector2D& Pi
 	const FVector AddressBallLoc(BallXYcm.X, BallXYcm.Y, BallZ + BallRestHeightUU);
 	if (AGolfBallActor* AddressBall = GetOrSpawnBallAt(World, AddressBallLoc, Dir.Rotation()))
 	{
+		AddressBall->SetActorHiddenInGame(false);   // GOL-203: may still be swallowed by the last cup
 		AnimBall = AddressBall;
 	}
 	bTeeCached = false;   // green putting doesn't use the range tee-pose cache (no standoff to restore)
+
+	// GOL-203: low down-the-line putt cam at address (the dropdown stays live -- a pick overrides).
+	double PinZ = BallZ;
+	TraceGroundZ(PinXYcm.X, PinXYcm.Y, PinZ);
+	EngagePuttCam(AddressBallLoc, FVector(PinXYcm.X, PinXYcm.Y, PinZ));
+	UpdateBreakGridVisibility();   // GOL-203: addressing on the green is the overlay's moment
 }
 
 void AGolfRangeHUD::SpawnNextCtpPin()
@@ -1899,12 +2055,19 @@ void AGolfRangeHUD::OnCtpShotSettled(AGolfBallActor* Ball)
 		// lets the player finish the hole for realism, then the next pin spawns.
 		if (GolfsimRound::IsWithinGimme(BallWorld, PinWorld, Cfg.GimmeRadiusFt))
 		{
+			// GOL-203: same celebration beats as the putting drill (gimme = conceded, so no sink).
+			PlayCupDropSoundAt(PinWorld);
+			EnsureHoleOutToast();
+			if (HoleOutToast) { HoleOutToast->ShowText(TEXT("CLOSEST TO PIN"), TEXT("HOLED OUT"), FString()); }
+			ReleasePuttCam();
 			EndCtpPuttSequence();
 			StartCtpRespawnTimer();
 		}
 		else
 		{
 			TeleportPawnForPutt(BallWorld, PinWorld);   // putt again from the new lie
+			// Remaining putt length in the PIN tile (feet) -- "how far is this putt" (user ask).
+			if (Panel) { Panel->SetPuttingPinInfo(DistM / MetersPerFoot); }
 		}
 		return;
 	}
@@ -1917,6 +2080,9 @@ void AGolfRangeHUD::OnCtpShotSettled(AGolfBallActor* Ball)
 	{
 		TeleportPawnForPutt(BallWorld, PinWorld);   // close enough to putt -> play it out (not scored)
 		bCtpPutting = true;
+		// The approach is scored; the PIN tile now reads the putt-out length in feet so the player
+		// knows the putt they face (it flips back to approach yards at the next pin spawn).
+		if (Panel) { Panel->SetPuttingPinInfo(DistM / MetersPerFoot); }
 	}
 	else
 	{
@@ -1956,23 +2122,36 @@ void AGolfRangeHUD::OnPuttingShotSettled(AGolfBallActor* Ball)
 		return;
 	}
 
-	// Hole-out scoring: the ball is holed if it rolled over the cup at drop speed (GOL-199 capture) or
-	// settled inside it. Then score putts-to-hole.
-	if (bPuttCaptured || GolfsimRound::IsWithinGimme(BallWorld, PinWorld, Cfg.GimmeRadiusFt))
+	// Hole-out scoring. On a REAL green (GOL-199) the only way in is the cup capture -- the ball
+	// must roll over the cup below drop speed; a putt dying 2 ft short stays out (re-putt), so the
+	// celebration always means a genuine hole-out (user feedback 2026-06-12). The flat range green
+	// has no real cup, so the drill's tight gimme still finishes putts there.
+	const bool bHoled = bPuttingOnCourseGreen
+		? bPuttCaptured
+		: (bPuttCaptured || GolfsimRound::IsWithinGimme(BallWorld, PinWorld, Cfg.GimmeRadiusFt));
+	if (bHoled)
 	{
-		if (Ball) { Ball->SetActorLocation(FVector(PinWorld.X, PinWorld.Y, BallWorld.Z)); }   // drop it in the cup
-		Sub->RecordHoleOut(PuttStrokeCount, DistM);
-		RefreshCtpScoreboard();
-
-		// Clean up the holed putt's tracer + flash a "holed out" banner (drawn in DrawHUD).
-		if (UWorld* W = GetWorld())
+		// GOL-203: clean the holed putt's tracer, rattle the cup, and SINK the ball (a short
+		// animated drop instead of a teleport). The toast pops when the ball disappears.
+		if (UWorld* W = GetWorld()) { FlushPersistentDebugLines(W); }
+		PlayCupDropSoundAt(PinWorld);
+		const int32 PuttsTaken = PuttStrokeCount;
+		TWeakObjectPtr<AGolfRangeHUD> WeakThis(this);
+		const auto ShowToast = [WeakThis, PuttsTaken]()
 		{
-			FlushPersistentDebugLines(W);
-			GPuttHoledMsgPutts    = PuttStrokeCount;
-			GPuttHoledMsgUntilSec = W->GetTimeSeconds() + 2.5;
-		}
+			if (AGolfRangeHUD* HUD = WeakThis.Get())
+			{
+				HUD->EnsureHoleOutToast();
+				if (HUD->HoleOutToast) { HUD->HoleOutToast->Show(PuttsTaken); }
+			}
+		};
+		if (Ball) { Ball->StartCupDrop(PinWorld, ShowToast); }
+		else      { ShowToast(); }
 
+		Sub->RecordHoleOut(PuttsTaken, DistM);
+		RefreshCtpScoreboard();
 		PuttStrokeCount = 0;
+		ReleasePuttCam();       // back to the player's chosen camera while the next pin spawns
 		EndCtpPuttSequence();   // restore the tee pose for the next pin (no-op if we holed the first putt)
 		StartCtpRespawnTimer();
 	}
@@ -1988,6 +2167,7 @@ void AGolfRangeHUD::OnPuttingShotSettled(AGolfBallActor* Ball)
 			TeleportPawnForPutt(BallWorld, PinWorld);   // flat-range standoff (Phase A range putting)
 			bCtpPutting = true;                         // pawn stands behind the lie; EndCtpPuttSequence restores
 		}
+		if (Panel) { Panel->SetPuttingPinInfo(DistM / MetersPerFoot); }   // remaining putt, feet
 	}
 }
 
@@ -2021,6 +2201,7 @@ void AGolfRangeHUD::TeleportPawnForPutt(const FVector& BallWorld, const FVector&
 	PC->SetControlRotation(Dir.Rotation());
 
 	SelectPutterIfAvailable();
+	EngagePuttCam(BallWorld, PinWorld);   // GOL-203: re-putt standoffs frame down the line too
 }
 
 void AGolfRangeHUD::EndCtpPuttSequence()
@@ -2789,6 +2970,24 @@ void AGolfRangeHUD::DismissMainMenu()
 	}
 }
 
+void AGolfRangeHUD::EnsureHoleOutToast()
+{
+	if (HoleOutToast)
+	{
+		return;
+	}
+	APlayerController* PC = GetOwningPlayerController();
+	if (!PC)
+	{
+		return;
+	}
+	HoleOutToast = CreateWidget<UHoleOutToast>(PC, UHoleOutToast::StaticClass());
+	if (HoleOutToast)
+	{
+		HoleOutToast->AddToViewport(25);   // above the swing meter (15) / round HUD (20), below modals (30+)
+	}
+}
+
 void AGolfRangeHUD::OnShotOutcome(const FGolfEvent& Event)
 {
 	if (Event.Kind != EEventKind::ShotOutcome)
@@ -2832,6 +3031,8 @@ void AGolfRangeHUD::OnShotOutcome(const FGolfEvent& Event)
 		Ball = GetOrSpawnBallAt(World, Loc, Rot);
 		if (Ball)
 		{
+			// GOL-203: putts trade the yellow flight arc for a thin pale roll line on the turf.
+			Ball->bPuttTracer = Out.Club.Equals(TEXT("Putter"), ESearchCase::IgnoreCase);
 			Ball->PlayTrajectory(Out.Trajectory);
 		}
 
@@ -2947,6 +3148,25 @@ ACameraActor* AGolfRangeHUD::GetOrSpawnFollowCam()
 
 void AGolfRangeHUD::SetCameraMode(int32 Index)
 {
+	// GOL-203: index 2 = the Putt cam picked explicitly -- engage from the live ball + active pin
+	// (falls through to Tee if either is missing, so the dropdown never strands the view).
+	if (Index == 2)
+	{
+		AGolfBallActor* Ball = AnimBall.Get();
+		FVector PinWorld;
+		if (Ball && GetActivePinWorld(PinWorld))
+		{
+			EngagePuttCam(Ball->GetActorLocation(), PinWorld);
+			return;
+		}
+		Index = 0;
+		if (Panel) { Panel->SetSelectedCameraIndex(0); }
+	}
+
+	// Any explicit Tee/Follow pick (dropdown / C key / programmatic re-anchor) dismisses the auto
+	// putt cam -- the player's choice wins until the next putt address re-engages it.
+	ClearPuttCamState();
+
 	bFollowCam = (Index == 1);
 	APlayerController* PC = GetOwningPlayerController();
 	if (!PC)
@@ -3031,8 +3251,150 @@ void AGolfRangeHUD::OnOrbitPitch(float Value)
 	if (bOrbiting) { PendingOrbitDY += Value; }
 }
 
+void AGolfRangeHUD::EngagePuttCam(const FVector& BallWorld, const FVector& PinWorld)
+{
+	APlayerController* PC = GetOwningPlayerController();
+	ACameraActor* Cam = GetOrSpawnFollowCam();
+	if (!PC || !Cam)
+	{
+		return;
+	}
+	FVector ToPin = PinWorld - BallWorld;
+	ToPin.Z = 0.0;
+	const FVector Dir = ToPin.IsNearlyZero() ? FVector::ForwardVector : ToPin.GetSafeNormal();
+	FVector CamLoc = BallWorld - Dir * PuttCamBackUU + FVector::UpVector * PuttCamUpUU;
+	// Links greens sit in swales (OldAndre 18th): 2.5 m behind the ball the ground can rise past
+	// the 70 cm cam height, burying the camera in the hillside (backface-culled landscape = "sky").
+	// Clamp to the traced ground under the camera so it always hovers over the turf.
+	double CamGroundZ = 0.0;
+	if (TraceGroundZ(CamLoc.X, CamLoc.Y, CamGroundZ))
+	{
+		CamLoc.Z = FMath::Max(CamLoc.Z, CamGroundZ + PuttCamUpUU);
+	}
+	// Look at the cup (just above the turf): the ball sits low in frame with the whole line ahead.
+	const FVector LookAt = PinWorld + FVector::UpVector * 10.f;
+	Cam->SetActorLocationAndRotation(CamLoc, (LookAt - CamLoc).Rotation());
+	PC->SetViewTargetWithBlend(Cam, FollowViewBlend);
+	bPuttCamActive = true;
+	PuttCamPinWorld = PinWorld;
+	// The putt cam owns the framing; suspend the follow chase/park logic until released.
+	bFollowChasing = false;
+	bFollowParked = false;
+	// The first-person pawn model stands AT the lie -- at 70 cm cam height it fills the frame.
+	if (APawn* Pawn = PC->GetPawn())
+	{
+		Pawn->SetActorHiddenInGame(true);
+	}
+	if (Panel) { Panel->SetSelectedCameraIndex(2); }   // dropdown mirrors the active framing
+}
+
+void AGolfRangeHUD::ClearPuttCamState()
+{
+	if (!bPuttCamActive)
+	{
+		return;
+	}
+	bPuttCamActive = false;
+	if (APlayerController* PC = GetOwningPlayerController())
+	{
+		if (APawn* Pawn = PC->GetPawn())
+		{
+			Pawn->SetActorHiddenInGame(false);   // the model is back once the camera leaves the turf
+		}
+	}
+}
+
+void AGolfRangeHUD::ReleasePuttCam()
+{
+	if (!bPuttCamActive)
+	{
+		return;
+	}
+	ClearPuttCamState();
+	if (Panel) { Panel->SetSelectedCameraIndex(bFollowCam ? 1 : 0); }
+	RefreshActiveCamera();    // blend back to the player's chosen Tee/Follow framing
+}
+
+bool AGolfRangeHUD::GetActivePinWorld(FVector& OutPin) const
+{
+	// In a round the pin is URoundPinSubsystem's (from the schedule); the HUD's practice pin is
+	// range/drill-only. Either way the caller gets a world-space cup location for framing.
+	if (RoundIsActive())
+	{
+		if (const URoundSubsystem* Round = URoundSubsystem::Get(this))
+		{
+			const GolfsimRound::FRoundState& S = Round->GetState();
+			if (S.Schedule.IsValidIndex(S.HoleIndex))
+			{
+				OutPin = S.Schedule[S.HoleIndex].PinWorldLoc;
+				return true;
+			}
+		}
+		return false;
+	}
+	if (const AGolfPinActor* PinA = Pin.Get())
+	{
+		OutPin = PinA->GetActorLocation();
+		return true;
+	}
+	return false;
+}
+
 void AGolfRangeHUD::UpdateFollowCam(float DeltaSeconds)
 {
+	// GOL-203 putt cam. While ADDRESSING it rides the player's aim (arrow keys), re-posing behind
+	// the ball along the aim line with a one-frame aim line on the turf -- that's how putts are
+	// aimed (the pin-locked v1 made aiming invisible). While the putt ROLLS it holds position and
+	// eases the look-at along the ball->cup line. Active regardless of the dropdown mode.
+	if (bPuttCamActive)
+	{
+		ACameraActor* Cam = FollowCam.Get();
+		AGolfBallActor* Ball = AnimBall.Get();
+		if (!Cam || !Ball)
+		{
+			return;
+		}
+		const FVector BallPos = Ball->GetActorLocation();
+		if (!Ball->IsPlaying())
+		{
+			APlayerController* PC = GetOwningPlayerController();
+			if (!PC)
+			{
+				return;
+			}
+			FRotator AimR = PC->GetControlRotation();
+			AimR.Pitch = 0.f;
+			AimR.Roll = 0.f;
+			const FVector Aim = AimR.Vector();
+			FVector CamLoc = BallPos - Aim * PuttCamBackUU + FVector::UpVector * PuttCamUpUU;
+			double GroundZ = 0.0;
+			if (TraceGroundZ(CamLoc.X, CamLoc.Y, GroundZ))
+			{
+				CamLoc.Z = FMath::Max(CamLoc.Z, GroundZ + PuttCamUpUU);   // never inside a swale wall
+			}
+			const double PinDist = FVector::Dist2D(BallPos, PuttCamPinWorld);
+			const FVector LookAt = BallPos + Aim * FMath::Clamp(PinDist * 0.65, 200.0, 800.0);
+			const FVector NewLoc = FMath::VInterpTo(Cam->GetActorLocation(), CamLoc, DeltaSeconds, 8.f);
+			Cam->SetActorLocationAndRotation(NewLoc, (LookAt - NewLoc).Rotation());
+
+			// One-frame aim line, ball -> aim, capped at the cup distance (re-drawn every tick, so
+			// it tracks the arrows live; the flight tracer's persistent lines are untouched).
+			if (UWorld* World = GetWorld())
+			{
+				const double LineLen = FMath::Min(PinDist, 400.0);
+				DrawDebugLine(World, BallPos, BallPos + Aim * LineLen + FVector::UpVector * 1.f,
+					FColor(225, 233, 228), /*persistent=*/false, /*life=*/0.f, 0, 1.2f);
+			}
+		}
+		else
+		{
+			const FVector LookAt = FMath::Lerp(BallPos, PuttCamPinWorld, 0.65) + FVector::UpVector * 10.f;
+			const FRotator Desired = (LookAt - Cam->GetActorLocation()).Rotation();
+			Cam->SetActorRotation(FMath::RInterpTo(Cam->GetActorRotation(), Desired, DeltaSeconds, 6.f));
+		}
+		return;
+	}
+
 	if (!bFollowCam)
 	{
 		return;   // Tee mode -> the pawn is the view target
@@ -3164,20 +3526,8 @@ void AGolfRangeHUD::DrawHUD()
 			(int32)Canvas->SizeX, (int32)Canvas->SizeY);
 		DrawText(Res, FLinearColor(1.0f, 0.92f, 0.35f), 20.0f, 20.0f);
 
-		// GOL-199: "holed out" banner -- a brief centered flash after a putt drops (set in OnPuttingShotSettled).
-		if (GetWorld() && GetWorld()->GetTimeSeconds() < GPuttHoledMsgUntilSec)
-		{
-			const FString Msg = (GPuttHoledMsgPutts == 1)
-				? TEXT("Holed it!  (1 putt)")
-				: FString::Printf(TEXT("Holed out!  (%d putts)"), GPuttHoledMsgPutts);
-			constexpr float Scale = 2.4f;
-			float TW = 0.f, TH = 0.f;
-			GetTextSize(Msg, TW, TH, GEngine ? GEngine->GetLargeFont() : nullptr, Scale);
-			const float X = (Canvas->SizeX - TW) * 0.5f;
-			const float Y = Canvas->SizeY * 0.22f;
-			DrawText(Msg, FLinearColor(0.43f, 0.89f, 0.46f), X, Y,
-				GEngine ? GEngine->GetLargeFont() : nullptr, Scale);
-		}
+		// GOL-203: the "holed out" flash is now the themed UHoleOutToast widget (UI/HoleOutToast),
+		// shown by OnPuttingShotSettled when the cup-drop animation completes.
 
 		// GOL-167: on-HUD FPS counter (top-left, under the resolution) so perf is
 		// glanceable while playtesting heavy scenes (e.g. the mixed-forest scatter).

@@ -79,6 +79,11 @@ protected:
 private:
 	void BuildTree();
 
+	// GOL-203 polish: the map's +/- size buttons (and chip) kept Slate focus after a click, so the
+	// next Space re-pressed the button instead of swinging. Same deferred focus-return idiom as
+	// UGolfRangePanel; the Menu button is excluded (the settings modal it opens owns focus).
+	void ReturnFocusToGameViewport();
+
 	// round panel
 	UPROPERTY(Transient) TObjectPtr<UBorder>    AvatarFill;
 	UPROPERTY(Transient) TObjectPtr<UTextBlock> AvatarText;

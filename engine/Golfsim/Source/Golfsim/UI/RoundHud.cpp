@@ -3,6 +3,10 @@
 #include "UI/HoleMapView.h"
 #include "UI/SegmentedControl.h"
 
+#include "Engine/World.h"
+#include "Framework/Application/SlateApplication.h"   // GOL-203: post-click focus return
+#include "TimerManager.h"
+
 #include "Blueprint/WidgetTree.h"
 #include "Components/Border.h"
 #include "Components/Button.h"
@@ -230,6 +234,7 @@ void URoundHud::BuildTree()
 		};
 		UHorizontalBox* TabRow = WidgetTree->ConstructWidget<UHorizontalBox>();
 		MapTabs = CreateWidget<USegmentedControl>(this);
+		MapTabs->bReturnFocusToGameOnPick = true;   // in-game HUD tabs: a pick must not eat the next Space
 		MapTabs->SetOptions({ TEXT("HOLE"), TEXT("GREEN") });
 		MapTabs->OnChanged = [this](int32 Idx)
 		{
@@ -367,18 +372,36 @@ void URoundHud::HandleMapChipClicked()
 {
 	SetMapSize(1);   // chip -> card
 	if (OnMapSizeChanged) { OnMapSizeChanged(MapSize); }
+	ReturnFocusToGameViewport();
 }
 
 void URoundHud::HandleMapCollapseClicked()
 {
 	SetMapSize(MapSize - 1);   // large -> card -> chip
 	if (OnMapSizeChanged) { OnMapSizeChanged(MapSize); }
+	ReturnFocusToGameViewport();
 }
 
 void URoundHud::HandleMapEnlargeClicked()
 {
 	SetMapSize(2);   // card -> large
 	if (OnMapSizeChanged) { OnMapSizeChanged(MapSize); }
+	ReturnFocusToGameViewport();
+}
+
+void URoundHud::ReturnFocusToGameViewport()
+{
+	// Deferred a tick so it runs after the clicked button's own focus handling (GolfRangePanel idiom).
+	if (UWorld* World = GetWorld())
+	{
+		World->GetTimerManager().SetTimerForNextTick([]()
+		{
+			if (FSlateApplication::IsInitialized())
+			{
+				FSlateApplication::Get().SetAllUserFocusToGameViewport();
+			}
+		});
+	}
 }
 
 void URoundHud::SetData(const FRoundHudData& Data)

@@ -16,6 +16,7 @@
 #include "Game/GolfDifficulty.h"
 #include "Practice/PracticeMode.h"          // GOL-73: EPracticeMode + FCtpConfig (CTP practice)
 #include "Round/RoundState.h"               // GOL-199: FGreenPolygon (putt-on-a-real-green target)
+#include "UI/HoleMapProjection.h"           // GOL-203: FGreenSlopeGrid cache (break grid + minimap share it)
 #include "GolfRangeHUD.generated.h"
 
 class UManualShotDialog;
@@ -30,8 +31,10 @@ class UCheatSheetPanel;
 class USwingMeterWidget;
 class URoundHud;
 class ULeaveConfirmDialog;
+class UHoleOutToast;
 class AGolfBallActor;
 class AGolfPinActor;
+class AGreenBreakGridActor;
 class ACameraActor;
 class UTexture2D;
 struct FManualShotValues;
@@ -62,6 +65,11 @@ private:
 
 	// Ball-strike one-shot SFX (CC0 SW_BallStrike), lazy-loaded on first shot; played in OnShotOutcome.
 	UPROPERTY(Transient) TObjectPtr<class USoundBase> StrikeSound;
+
+	// GOL-203: cup-drop one-shot SFX (CC-BY SW_CupDrop), lazy-loaded on first hole-out; played at
+	// the cup for every hole-out flavor (putting drill sink, CTP putt-out, round hole.complete).
+	UPROPERTY(Transient) TObjectPtr<class USoundBase> CupDropSound;
+	void PlayCupDropSoundAt(const FVector& WorldLoc);
 
 	void EnsureInputBound();
 	void SelectClub(int32 Index);
@@ -255,6 +263,16 @@ private:
 	void UpdateFollowCam(float DeltaSeconds);
 	ACameraActor* GetOrSpawnFollowCam();
 
+	// GOL-203 putt camera: a low, behind-the-ball framing down the putt line. Auto-engages whenever
+	// a putt is addressed (course-green address + range re-putt standoffs) AND is pickable as the
+	// dropdown's third "Putt" option; an explicit Tee/Follow pick (or C) wins until the next address
+	// re-engages. Hides the first-person pawn model while active (it blocks the low view). Reuses
+	// the find-or-spawned follow-cam actor.
+	void EngagePuttCam(const FVector& BallWorld, const FVector& PinWorld);
+	void ReleasePuttCam();        // restore the player's chosen camera mode (no-op if not engaged)
+	void ClearPuttCamState();     // drop the state + un-hide the pawn (no camera blend)
+	bool GetActivePinWorld(FVector& OutPin) const;   // round pin in a round, else the practice pin
+
 	// Follow-cam orbit: hold right mouse + drag to circle the camera around the ball (Follow mode only).
 	void OrbitPressed();
 	void OrbitReleased();
@@ -287,6 +305,7 @@ private:
 	TWeakObjectPtr<UEventBusSubsystem> EventBusWeak;
 	FGolfEventSubscription OutcomeSub;   // shot.outcome subscription; released in EndPlay
 	FGolfEventSubscription RoundCompleteSub;   // GOL-120: round.complete -> open scorecard
+	FGolfEventSubscription HoleCompleteSub;    // GOL-203: hole.complete -> score toast + cup SFX
 
 	bool bManualOpen = false;            // is the manual-shot dialog showing (auto-fire panel hidden)
 	bool bSettingsOpen = false;          // is the settings/credits modal showing (gameplay keys gated)
@@ -327,6 +346,11 @@ private:
 	float FollowIdleSeconds = 0.0f;
 	static constexpr float FollowIdleReturnSeconds = 3.0f;
 
+	// GOL-203 putt-cam state. While active the follow-cam actor holds the low down-the-line pose
+	// and Tick keeps the look-at tracking the rolling ball; any explicit camera pick clears it.
+	bool bPuttCamActive = false;
+	FVector PuttCamPinWorld = FVector::ZeroVector;
+
 	// Orbit state (right-mouse drag around the ball). Angles are spherical about the ball; pending
 	// deltas accumulate from the mouse axes between Tick consumes.
 	bool bOrbiting = false;
@@ -349,6 +373,8 @@ private:
 	UPROPERTY(Transient) TObjectPtr<USwingMeterWidget> SwingMeter;            // GOL-67 (Game mode only)
 	UPROPERTY(Transient) TObjectPtr<URoundHud> RoundHud;                      // GOL-144 in-round top HUD
 	UPROPERTY(Transient) TObjectPtr<ULeaveConfirmDialog> LeaveDialog;         // GOL-147 leave/quit confirm
+	UPROPERTY(Transient) TObjectPtr<UHoleOutToast> HoleOutToast;              // GOL-203 hole-out celebration
+	void EnsureHoleOutToast();
 
 	// GOL-209 hole-map caches. Texture + greens are per-course (null/empty results cached too, so a
 	// course without minimap.png / green.geojson doesn't retry every hole); the static payload is
@@ -408,6 +434,20 @@ private:
 	bool bPendingEnterGreen = false;
 	FString PendingGreenCourseId;
 	int32 PendingGreenHoleRef = 0;
+
+	// GOL-203 in-world break grid: flowing-dot slope overlay on the active green. The slope grid +
+	// corner heights are cached so the minimap (PushHoleMapStatic) and the overlay share one trace
+	// burst; EnterPuttingOnGreen builds the same data for practice greens. G toggles (user override).
+	TWeakObjectPtr<AGreenBreakGridActor> BreakGrid;
+	GolfMap::FGreenSlopeGrid BreakGridSlope;
+	TArray<double> BreakGridCorners;
+	bool bBreakGridDataValid = false;
+	bool bBreakGridUserHidden = false;
+	bool BuildGreenSlopeGrid(const GolfsimRound::FGreenPolygon& Poly, GolfMap::FGreenSlopeGrid& OutGrid,
+		TArray<double>& OutCornerHeightsCm) const;   // trace burst -> slope grid (shared minimap/overlay)
+	void RebuildBreakGridActor();        // push the cached grid into the (find-or-spawned) actor
+	void UpdateBreakGridVisibility();    // context show/hide: a green is active + not user-hidden
+	void ToggleBreakGrid();              // G key flips the user-hidden override
 
 	void EnterPuttingOnGreen(const FString& CourseId, int32 HoleRef);   // load green + start the drill on it
 	void PlacePuttOnGreen();                                            // pick a new pin + address the ball on the green

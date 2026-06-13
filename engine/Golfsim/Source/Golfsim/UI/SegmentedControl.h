@@ -34,6 +34,11 @@ public:
 
 	TFunction<void(int32)> OnChanged;
 
+	/** GOL-203 polish: hand keyboard focus back to the game viewport after a pick. Opt-in for
+	 *  in-game HUD uses (the hole-map tabs) -- modal hosts (settings, round wizard) own focus
+	 *  themselves and must leave this false, or a tab pick would yank focus out of the modal. */
+	bool bReturnFocusToGameOnPick = false;
+
 protected:
 	virtual void NativeOnInitialized() override;
 	UFUNCTION() void HandleOptionClicked();   // bound to every option; resolves which via IsHovered()

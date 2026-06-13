@@ -157,6 +157,13 @@ protected:
 	UFUNCTION() void HandlePuttMaxChanged(float Value);
 	UFUNCTION() void HandlePuttScoreChanged(bool bChecked);
 
+	// GOL-203 polish: a bare click on a spinbox enters its text-edit mode and traps keyboard focus
+	// (the next Space types into the box instead of swinging) -- and no OnValueChanged fires until
+	// the value actually changes, so the Emit* focus-return never runs. Every spinbox binds its
+	// commit (Enter / Esc / focus-out) here to hand focus back to the game; deliberate moves to
+	// another control (OnUserMovedFocus) are left alone.
+	UFUNCTION() void HandleSpinCommitted(float Value, ETextCommit::Type CommitMethod);
+
 private:
 	void BuildTree();
 	void EmitCtpConfig();   // read all CTP controls -> OnCtpConfigChanged (no-op while suppressed)

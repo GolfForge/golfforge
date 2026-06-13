@@ -35,6 +35,7 @@ namespace
 		{ TEXT("C"),          TEXT("Toggle camera (Tee / Follow)") },
 		{ TEXT("RMB drag"),   TEXT("Orbit the follow camera") },
 		{ TEXT("M"),          TEXT("Hole map (in round): chip / card / large") },
+		{ TEXT("G"),          TEXT("Green break grid (on the green)") },
 		{ TEXT("N"),          TEXT("Manual-shot dialog") },
 		{ TEXT("H"),          TEXT("Session shot history") },
 		{ TEXT("Tab"),        TEXT("This cheat sheet") },

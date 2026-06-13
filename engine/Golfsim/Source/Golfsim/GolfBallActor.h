@@ -30,6 +30,16 @@ public:
 	// carry readout up in sync, then snap to the exact final once this goes false.
 	bool IsPlaying() const { return bPlaying; }
 
+	// GOL-203: animate the holed putt sinking into the cup (ease XY to the cup center while the
+	// ball accelerates ~12 cm down) instead of teleporting. OnDone (optional) fires once the ball
+	// has disappeared below the lip -- the HUD hangs the toast/score off it. Cancels any playback.
+	void StartCupDrop(const FVector& CupCenterUU, TFunction<void()> OnDone = nullptr,
+		float DurationSec = 0.35f);
+
+	// GOL-203: putt styling for the tracer trail. Set by the HUD before the trajectory plays:
+	// putts draw a thin pale ground line (the roll path IS the line); full shots keep the yellow arc.
+	bool bPuttTracer = false;
+
 	// Live downrange distance (launch-local +X), SI meters, at the current playback time -- grows from
 	// ~0 at launch to the final carry. Source for the panel's counting-up carry number.
 	float GetCurrentCarryMeters() const { return CurrentCarryMeters; }
@@ -64,6 +74,15 @@ private:
 	bool bPlaying = false;
 	float CurrentCarryMeters = 0.f;              // live downrange distance, updated each Tick
 	FVector PrevDrawPos = FVector::ZeroVector;   // last point of the growing tracer trail
+
+	// GOL-203 cup-drop state (StartCupDrop). Runs in Tick when bCupDropping; mutually exclusive
+	// with bPlaying (starting the drop cancels playback, a new trajectory cancels the drop).
+	bool bCupDropping = false;
+	float CupDropSeconds = 0.f;
+	float CupDropDuration = 0.35f;
+	FVector CupDropFrom = FVector::ZeroVector;
+	FVector CupDropTo = FVector::ZeroVector;
+	TFunction<void()> CupDropOnDone;
 
 	// Per-sample landscape Z in world UU for Trajectory.Samples[LandingSampleIndex..end], populated
 	// in PlayTrajectory via a downward line trace. Empty (or sentinel-filled) means "no terrain

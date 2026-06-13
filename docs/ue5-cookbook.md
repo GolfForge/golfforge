@@ -108,6 +108,21 @@ editor). Fix: add the directory to always-cook in `Config/DefaultGame.ini`:
 General rule: any `/Game/...` asset reached only by a runtime string (LoadObject/StaticLoadObject,
 soft paths built at runtime, console-driven loads) needs an always-cook directory or an explicit hard ref.
 
+## Windows release: cook + stage + zip recipe — and why NOT bsdtar (GOL-86)
+
+The repeatable Windows packaging steps (editor closed). Endgame is a real installer; until then, zips.
+
+1. **Bump + cook config** (`Config/DefaultGame.ini`): set `ProjectVersion=X.Y.Z-alpha`, and confirm **every selectable course in `CourseRegistry` has a matching `+MapsToCook=(FilePath="/Game/Maps/<Map>")`** line. A course that's registered-but-uncooked appears in the menu and then **fails to load** when picked (this bit OldAndre at v0.0.7 — it was selectable but absent from `MapsToCook`).
+2. **Cook — Win64 `Development`, NOT Shipping** (the putt aim line + flight tracers use `DrawDebug*`, which is stripped in Shipping; see the DrawDebug note above):
+   `D:\ue57\UE_5.7\Engine\Build\BatchFiles\RunUAT.bat BuildCookRun -project="<repo>\engine\Golfsim\Golfsim.uproject" -noP4 -platform=Win64 -clientconfig=Development -cook -build -stage -pak -package -archive -archivedirectory="C:\Users\pucho\golfforge-build-X.Y.Z" -unversionedcookedcontent -prereqs -nodebuginfo -manifests -utf8output`
+   Stage lands at `<archivedirectory>\Windows\` (`Golfsim.exe` + `Engine/` + `Golfsim/` + manifests).
+3. **Stage the courses tree.** The runtime reads `<stage>/courses/<id>/` (`GolfsimPaths::ResolveCourseDataDir` checks `ProjectDir/..`); UAT can't stage it via ini because `courses/` lives above the project root. robocopy each `courses/<id>/` into `<stage>\Windows\courses\<id>\`, **excluding pipeline intermediates + QA overlays**: `/XD _tilecache /XF qa_overlay_aerial.png qa_overlay_osm.png osm_raw.json dem.tif` (keep everything else incl. `pins/`; `dem.tif` alone is ~65 MB on OldAndre). robocopy rc<8 = success.
+4. **Rename the launcher** `Golfsim.exe` → `GolfForge.exe` in `<stage>\Windows\`.
+5. **Zip with `Compress-Archive`, NOT `bsdtar`/`tar.exe`.** bsdtar writes zips with streaming/data-descriptor (bit-3) flags that **Windows Explorer refuses to open** ("nothing in there / can't extract") even though `tar -tf` lists them fine — this cost a round-trip at v0.0.7. `Compress-Archive` produces an Explorer-compatible archive (the proven method for every prior release; no 7-Zip on the machine):
+   `Compress-Archive -Path "<stage>\Windows\*" -DestinationPath "<stage>\GolfForge-windows-x64-X.Y.Z-alpha.zip" -CompressionLevel Optimal`
+   ~1.75 GB stage → ~1.4 GB zip, a few minutes (run backgrounded). Under the ~2 GB PowerShell 5.1 ceiling; if a future build exceeds it, **install 7-Zip** rather than falling back to bsdtar.
+6. **Validate before handoff:** `[System.IO.Compression.ZipFile]::OpenRead($zip)` opens without error (this is what Explorer uses — NOT `tar -tf`, which happily reads bad bsdtar zips); spot-check `GolfForge.exe` at root + `Golfsim\Content\Paks\pakchunk0-Windows.pak` + `courses\oldandre\heightmap.json` are present. Note Compress-Archive writes entry paths with `\` separators — non-standard but Explorer + the runtime handle it.
+
 ---
 
 ## Marketplace / Fab asset dependencies

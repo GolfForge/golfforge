@@ -37,7 +37,9 @@ namespace
 	constexpr float CollarWidthUU = 60.f;       // fringe band width (cm)
 	constexpr float CollarLiftUU = 1.f;         // just under the green plane (GreenLiftUU = 2)
 	constexpr float HoleCupDiameterUU = 30.f;   // cup disc diameter (cm)
-	constexpr float HoleCupLiftUU = 3.f;        // just above the green plane
+	// GOL-211: the cup is now draped per-vertex onto the terrain, so it only needs a hair of lift to
+	// dodge z-fighting with the landscape -- a bigger lift reads as a floating coin (and a shadow).
+	constexpr float HoleCupLiftUU = 0.5f;
 
 	// Collar disc XY scale for a given green diameter: green + a CollarWidthUU band on every side.
 	float CollarScaleFor(double GreenDiameterM)
@@ -120,10 +122,14 @@ AGolfPinActor::AGolfPinActor()
 	DiscMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	DiscMesh->SetMobility(EComponentMobility::Movable);
 
-	HoleCupMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("HoleCupMesh"));
+	// GOL-211: procedural so BuildHoleCup can drape it over the terrain (per-vertex ground traces),
+	// rather than a flat Plane that clips/floats on sloped greens. Built in local space at the actor
+	// origin (= ground), so RelativeLocation stays zero.
+	HoleCupMesh = CreateDefaultSubobject<UProceduralMeshComponent>(TEXT("HoleCupMesh"));
 	HoleCupMesh->SetupAttachment(Root);
 	HoleCupMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	HoleCupMesh->SetMobility(EComponentMobility::Movable);
+	HoleCupMesh->SetCastShadow(false);   // flat ground decal -- it must not drop a shadow on the turf
 
 	PoleMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("PoleMesh"));
 	PoleMesh->SetupAttachment(Root);
@@ -173,8 +179,7 @@ AGolfPinActor::AGolfPinActor()
 	if (PlaneMesh.Succeeded())
 	{
 		DiscMesh->SetStaticMesh(PlaneMesh.Object);   // flat ground decal -- no thickness, no side wall
-		CollarMesh->SetStaticMesh(PlaneMesh.Object);
-		HoleCupMesh->SetStaticMesh(PlaneMesh.Object);   // FlagMesh + GimmeRingMesh are procedural, built later
+		CollarMesh->SetStaticMesh(PlaneMesh.Object);   // FlagMesh + GimmeRingMesh + HoleCupMesh are procedural, built later
 	}
 	if (CylinderMesh.Succeeded())
 	{
@@ -191,10 +196,8 @@ AGolfPinActor::AGolfPinActor()
 	CollarMesh->SetRelativeScale3D(FVector(CollarXYScale, CollarXYScale, 1.f));
 	CollarMesh->SetRelativeLocation(FVector(0.f, 0.f, CollarLiftUU));
 
-	// Hole cup: small dark disc just ABOVE the green at the pole base (centre).
-	const float CupXYScale = HoleCupDiameterUU / PlaneSizeUU;
-	HoleCupMesh->SetRelativeScale3D(FVector(CupXYScale, CupXYScale, 1.f));
-	HoleCupMesh->SetRelativeLocation(FVector(0.f, 0.f, HoleCupLiftUU));
+	// Hole cup: built later by BuildHoleCup (terrain-draped procedural disc), so no static scale or
+	// Z lift here -- the per-vertex traces place each vertex relative to the actor origin (= ground).
 
 	// Pole: 3 cm thick, 2.4 m tall. Cylinder pivot is mid-height, so base at Z=0 means center = +half.
 	const float PoleZScale = PoleHeightUU / 100.f;
@@ -228,11 +231,9 @@ AGolfPinActor::AGolfPinActor()
 		CollarMID->SetScalarParameterValue(TEXT("GrainTiling"), 36.f);
 		CollarMesh->SetMaterial(0, CollarMID);
 	}
-	// Hole cup: same masked disc, near-black, so the flag reads as standing in a hole.
-	if (UMaterialInstanceDynamic* CupMID = MakeColorMID(GreenSrc, this, FLinearColor(0.02f, 0.02f, 0.02f)))
-	{
-		HoleCupMesh->SetMaterial(0, CupMID);
-	}
+	// Hole cup: same masked disc, near-black, so the flag reads as standing in a hole. Stored as a
+	// member so BuildHoleCup can re-apply it after each CreateMeshSection (GOL-211), like the gimme ring.
+	HoleCupMID = MakeColorMID(GreenSrc, this, FLinearColor(0.02f, 0.02f, 0.02f));
 	// Flagstick: prefer the authored white/black banded M_FlagPole; fall back to a plain white
 	// BasicShapeMaterial pole on a fresh clone (before build_flagpole_material.py has run).
 	if (FlagPoleMat.Succeeded())
@@ -259,6 +260,91 @@ AGolfPinActor::AGolfPinActor()
 
 	// Gimme ring material is the translucent M_GimmeRing, loaded + applied lazily in BuildGimmeRing
 	// (so it picks up a freshly-authored asset at runtime without an editor restart).
+}
+
+void AGolfPinActor::BeginPlay()
+{
+	Super::BeginPlay();
+
+	// GOL-211: re-trace the cup onto the terrain whenever the pin moves. Every placement path
+	// (round SetActiveHole/SpawnAllHolePins, range ApplyPinDistance, putting PlacePuttOnGreen)
+	// moves the actor, so this single hook covers them all -- no call-site changes needed.
+	if (USceneComponent* Root = GetRootComponent())
+	{
+		Root->TransformUpdated.AddUObject(this, &AGolfPinActor::OnPinMoved);
+	}
+	BuildHoleCup();   // initial drape at the spawn location
+}
+
+void AGolfPinActor::OnPinMoved(USceneComponent* /*UpdatedComponent*/, EUpdateTransformFlags /*Flags*/, ETeleportType /*Teleport*/)
+{
+	BuildHoleCup();
+}
+
+void AGolfPinActor::BuildHoleCup()
+{
+	if (!HoleCupMesh) { return; }
+
+	// A small filled disc (triangle fan) draped over the terrain: each rim vertex is traced down to
+	// the landscape so the cup follows green undulation/slope instead of lying flat. Same per-vertex
+	// trace idiom as BuildGimmeRing. (Deferred polish: a real recessed 3D cup + lip ring.)
+	const double Radius = HoleCupDiameterUU * 0.5;
+	constexpr int32 Segs = 24;
+
+	UWorld* World = GetWorld();
+	const FVector ActorLoc = GetActorLocation();
+	FCollisionQueryParams TraceParams(SCENE_QUERY_STAT(GolfsimHoleCupTrace), /*bTraceComplex=*/true);
+	TraceParams.AddIgnoredActor(this);
+
+	auto LocalZAt = [&](double LocalX, double LocalY) -> double
+	{
+		if (!World) { return HoleCupLiftUU; }
+		const double Wx = ActorLoc.X + LocalX, Wy = ActorLoc.Y + LocalY;
+		FHitResult Hit;
+		if (World->LineTraceSingleByChannel(Hit, FVector(Wx, Wy, ActorLoc.Z + 5000.0),
+			FVector(Wx, Wy, ActorLoc.Z - 5000.0), ECC_WorldStatic, TraceParams))
+		{
+			return (Hit.ImpactPoint.Z - ActorLoc.Z) + HoleCupLiftUU;   // local Z (actor origin = ground)
+		}
+		return HoleCupLiftUU;   // flat fallback (off-landscape / not yet streamed -- a later move re-traces)
+	};
+
+	TArray<FVector> Verts;
+	TArray<int32> Tris;
+	TArray<FVector> Normals;
+	TArray<FVector2D> UVs;
+	TArray<FProcMeshTangent> Tangents;
+	const TArray<FLinearColor> NoColors;
+	Verts.Reserve(Segs + 1);
+
+	// Center vertex (index 0). UVs are all the disc center so the M_GolfGreen circular alpha mask
+	// samples fully-opaque everywhere -- the geometry is already a circle, the mask must not clip it.
+	Verts.Add(FVector(0.0, 0.0, LocalZAt(0.0, 0.0)));
+	Normals.Add(FVector::UpVector);
+	UVs.Add(FVector2D(0.5f, 0.5f));
+	Tangents.Add(FProcMeshTangent(1, 0, 0));
+
+	for (int32 s = 0; s < Segs; ++s)
+	{
+		const double A = (2.0 * PI) * ((double)s / Segs);
+		const double X = FMath::Cos(A) * Radius, Y = FMath::Sin(A) * Radius;
+		Verts.Add(FVector(X, Y, LocalZAt(X, Y)));
+		Normals.Add(FVector::UpVector);
+		UVs.Add(FVector2D(0.5f, 0.5f));
+		Tangents.Add(FProcMeshTangent(1, 0, 0));
+	}
+
+	// Fan winding (rim_s, rim_s+1, center) matches BuildGimmeRing's up-facing front face.
+	for (int32 s = 0; s < Segs; ++s)
+	{
+		Tris.Add(1 + s);
+		Tris.Add(1 + ((s + 1) % Segs));
+		Tris.Add(0);
+	}
+
+	HoleCupMesh->ClearAllMeshSections();
+	HoleCupMesh->CreateMeshSection_LinearColor(0, Verts, Tris, Normals, UVs, NoColors, Tangents, /*bCreateCollision=*/false);
+	if (HoleCupMID) { HoleCupMesh->SetMaterial(0, HoleCupMID); }
 }
 
 void AGolfPinActor::SetGreenDiameterMeters(double DiameterM)

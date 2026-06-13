@@ -3378,12 +3378,24 @@ void AGolfRangeHUD::UpdateFollowCam(float DeltaSeconds)
 			Cam->SetActorLocationAndRotation(NewLoc, (LookAt - NewLoc).Rotation());
 
 			// One-frame aim line, ball -> aim, capped at the cup distance (re-drawn every tick, so
-			// it tracks the arrows live; the flight tracer's persistent lines are untouched).
+			// it tracks the arrows live; the flight tracer's persistent lines are untouched). Drape it
+			// over the turf -- sample ground Z in steps and ride a few cm above it -- so on an uphill
+			// putt the line follows the slope instead of diving into it (hard to aim otherwise).
 			if (UWorld* World = GetWorld())
 			{
 				const double LineLen = FMath::Min(PinDist, 400.0);
-				DrawDebugLine(World, BallPos, BallPos + Aim * LineLen + FVector::UpVector * 1.f,
-					FColor(225, 233, 228), /*persistent=*/false, /*life=*/0.f, 0, 1.2f);
+				constexpr double StepUU = 25.0;          // ground sample spacing
+				constexpr double AimLineLiftUU = 2.0;    // sit just above the turf so it reads
+				const int32 Steps = FMath::Max(1, FMath::CeilToInt(LineLen / StepUU));
+				FVector Prev = BallPos;
+				for (int32 i = 1; i <= Steps; ++i)
+				{
+					FVector P = BallPos + Aim * (LineLen * i / Steps);
+					double Gz = 0.0;
+					P.Z = TraceGroundZ(P.X, P.Y, Gz) ? Gz + AimLineLiftUU : BallPos.Z;
+					DrawDebugLine(World, Prev, P, FColor(225, 233, 228), /*persistent=*/false, /*life=*/0.f, 0, 1.2f);
+					Prev = P;
+				}
 			}
 		}
 		else

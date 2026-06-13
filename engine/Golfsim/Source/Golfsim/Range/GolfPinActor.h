@@ -48,7 +48,11 @@ private:
 	// shows around the green's edge (reads as the fringe cut). Tracks the green size.
 	UPROPERTY(VisibleAnywhere, Category = "Golfsim") TObjectPtr<UStaticMeshComponent> CollarMesh;
 	// Hole cup: a small dark disc at the pole base so the flag sits in a hole, not on flat turf.
-	UPROPERTY(VisibleAnywhere, Category = "Golfsim") TObjectPtr<UStaticMeshComponent> HoleCupMesh;
+	// GOL-211: a terrain-draped procedural disc (not a flat Plane) so it lies flush on undulating
+	// greens instead of clipping/floating; rebuilt on every pin move. Same per-vertex ground-trace
+	// idiom as the gimme ring. (A real recessed 3D cup is a deferred polish follow-up.)
+	UPROPERTY(VisibleAnywhere, Category = "Golfsim") TObjectPtr<UProceduralMeshComponent> HoleCupMesh;
+	UPROPERTY(Transient) TObjectPtr<UMaterialInstanceDynamic> HoleCupMID;
 	UPROPERTY(VisibleAnywhere, Category = "Golfsim") TObjectPtr<UStaticMeshComponent> PoleMesh;
 	// GOL-165: a subdivided procedural grid (not the 2-tri engine Plane) so the M_FlagWind material's
 	// World Position Offset can ripple it like cloth.
@@ -64,4 +68,12 @@ private:
 	// Build/refresh the gimme-ring annulus at OuterRadiusUU (cm), terrain-conformed (+ the GIMME label).
 	// Hidden if <= 0.
 	void BuildGimmeRing(double OuterRadiusUU);
+
+	// GOL-211: (re)build the cup disc draped over the terrain at the current actor location, so it
+	// lies flush on sloped/undulating greens. Called once at BeginPlay and on every pin move.
+	void BuildHoleCup();
+
+	virtual void BeginPlay() override;
+	// Bound to RootComponent->TransformUpdated: a pin move re-traces the cup to the new ground.
+	void OnPinMoved(USceneComponent* UpdatedComponent, EUpdateTransformFlags UpdateTransformFlags, ETeleportType Teleport);
 };

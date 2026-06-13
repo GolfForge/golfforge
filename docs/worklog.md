@@ -2,6 +2,33 @@
 
 > Dated milestone summaries, newest on top. The durable outcome + the committed artifact, not the blow-by-blow — process detail lives in git history, `docs/ue5-cookbook.md`, and the scripts themselves.
 
+## 2026-06-13 — GOL-211 (partial) cup terrain-conform + putt aim line drape; v0.0.7-alpha cook (Windows)
+
+Two PIE-validated putting polish fixes, then a release cook.
+
+- **GOL-211 (minimal increment): cup disc conforms to terrain.** The cup was a flat horizontal
+  `HoleCupMesh` Plane pinned to the actor's single ground-Z — on undulating greens it clipped the
+  uphill turf and floated downhill (+ cast a shadow). Converted it to a terrain-draped
+  `UProceduralMeshComponent` built by a new `BuildHoleCup()` (24-seg triangle fan, per-vertex
+  `ECC_WorldStatic` down-traces, same idiom as `BuildGimmeRing`), rebuilt on every pin move via a
+  `RootComponent->TransformUpdated` hook (covers round/range/putting placement with no call-site
+  changes; self-heals if the first trace precedes landscape streaming). Lift cut 3cm→0.5cm and
+  `SetCastShadow(false)` so it reads as flush, not a floating coin. `GolfPinActor.{h,cpp}` only.
+  The **real recessed 3D cup is deferred** to a polish follow-up (true below-grade geometry needs a
+  runtime landscape hole, which is editor-only; the viable routes — custom-stencil fake hole forcing
+  the whole landscape material to Masked, a lifted apron mound, or a 2.5D dished material — are
+  captured on the follow-up ticket).
+- **Putt-cam aim line drapes the terrain.** The GOL-203 one-frame aim line was a single flat
+  (yaw-only) `DrawDebugLine` at ball height, so an uphill putt buried it in the slope. Now it
+  samples ground Z every 25cm along the aim and rides 2cm above the turf, following the rise
+  (`GolfRangeHUD.cpp` `UpdateFollowCam`). Still re-drawn each tick → tracks the arrows live.
+  (`DrawDebug*` is Shipping-stripped — works because the project cooks **Development**.)
+- **v0.0.7-alpha cook.** `ProjectVersion` → 0.0.7-alpha. **Added `OldAndre` to `MapsToCook`** — it
+  was selectable in `CourseRegistry` but absent from the cook list, so the St Andrews putting course
+  would have failed to load in a packaged build. Cook = the documented Win64 Development
+  `RunUAT BuildCookRun` flag set; post-cook stages all **7** `courses/<id>/` dirs (incl. `oldandre`),
+  renames `Golfsim.exe`→`GolfForge.exe`, zips. Suite 106/106.
+
 ## 2026-06-13 — GOL-203: elevate the putting experience (+ GOL-202/198 UI gating) (Windows)
 
 Putting now reads like real putting, user-validated in PIE ("this looks perfect"). Six pieces plus

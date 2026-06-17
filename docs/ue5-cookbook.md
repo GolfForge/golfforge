@@ -108,6 +108,18 @@ editor). Fix: add the directory to always-cook in `Config/DefaultGame.ini`:
 General rule: any `/Game/...` asset reached only by a runtime string (LoadObject/StaticLoadObject,
 soft paths built at runtime, console-driven loads) needs an always-cook directory or an explicit hard ref.
 
+**This bit the sim too, not just the UI (GOL-211, v0.0.7).** The same lazy-`LoadObject` pattern is used
+on purpose for several gameplay assets (so a re-authored asset is picked up at runtime without an
+editor restart) — and they were silently absent from the cooked exe: `M_GimmeRing` + `M_GreenFlow`
+(`/Game/Materials`, the gimme ring + break-grid overlay → rendered the **gray-checker** default
+material) and `SW_CupDrop` + `SW_BallStrike` (`/Game/Audio`, → **no sound**). Fix mirrored the UI one:
+`+DirectoriesToAlwaysCook=(Path="/Game/Materials")` and `(Path="/Game/Audio")`. **Classic cook-only
+trap: it all works in PIE** (the editor has the assets loaded) — you only see it in the packaged build,
+so anything reached by `LoadObject("/Game/...")` must be smoke-tested in the cooked exe, not just PIE.
+Contrast: `M_GolfGreen`/`M_FlagWind`/`M_FlagPole`/`M_GolfBall` use `ConstructorHelpers::FObjectFinder`
+(hard refs), so they cooked fine — which is why the green disc/flag/ball looked right but the
+LoadObject ones didn't.
+
 ## Windows release: cook + stage + zip recipe — and why NOT bsdtar (GOL-86)
 
 The repeatable Windows packaging steps (editor closed). Endgame is a real installer; until then, zips.

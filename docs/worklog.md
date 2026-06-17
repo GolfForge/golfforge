@@ -2,6 +2,20 @@
 
 > Dated milestone summaries, newest on top. The durable outcome + the committed artifact, not the blow-by-blow — process detail lives in git history, `docs/ue5-cookbook.md`, and the scripts themselves.
 
+## 2026-06-13 — v0.0.7-alpha cook-asset fix: always-cook /Game/Materials + /Game/Audio (Windows)
+
+Cooked-build smoke test (the still-unpublished v0.0.7-alpha) surfaced three **cook-only** bugs that
+don't repro in PIE: no ball-strike/cup-drop **sound**, the **gimme ring** rendered gray-checker /
+vanished, and the green **break-grid overlay** rendered gray-checker. Root cause = the GOL-148 gotcha
+again: `M_GimmeRing` + `M_GreenFlow` (`/Game/Materials`) and `SW_CupDrop` + `SW_BallStrike`
+(`/Game/Audio`) are reached only by runtime `LoadObject("/Game/...")` path strings (deliberate
+lazy-load), so the cooker silently dropped them — only `/Game/UI` was always-cooked. Fix: added
+`+DirectoriesToAlwaysCook=(Path="/Game/Materials")` + `(Path="/Game/Audio")` to `DefaultGame.ini`
+(config-only; the lazy-load dev workflow is preserved). Re-cut v0.0.7-alpha in place (unpublished):
+re-cook + 7-course stage + `Compress-Archive` zip. Cookbook GOL-148 note extended. The
+`FObjectFinder` hard-ref materials (`M_GolfGreen`/`M_FlagWind`/`M_FlagPole`/`M_GolfBall`) were never
+affected — that's why the disc/flag/ball looked right.
+
 ## 2026-06-13 — GOL-211 (partial) cup terrain-conform + putt aim line drape; v0.0.7-alpha cook (Windows)
 
 Two PIE-validated putting polish fixes, then a release cook.

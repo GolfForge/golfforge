@@ -1,7 +1,11 @@
 {
   "$schema": "https://json.schemastore.org/mcp.json",
-  "_comment": "Per-machine Claude Code MCP config. Copy this file to .mcp.json (gitignored) and edit if needed. Then run `claude` from the repo root. Cross-platform notes: on Mac/Linux change 'py' to 'python3'. Requires engine/UnrealClaudeMCP-upstream/ to be cloned per docs/windows-setup.md, and the UE editor with the UnrealClaudeMCP plugin running so the TCP server on 127.0.0.1:18888 is alive when tools are invoked.",
+  "_comment": "Per-machine Claude Code MCP config. Copy to .mcp.json (gitignored) and run `claude` from the repo root. UE 5.8 (current): use 'unreal-mcp' -- Epic's official in-editor MCP. Enable the 'Unreal MCP' + 'Golfsim Agent Tools' plugins, turn on Editor Prefs > Model Context Protocol > Auto Start Server (binds 127.0.0.1:8000/mcp); our editor automation lives in the GolfsimAgentTools Python toolset (execute_python + helpers). The legacy 'unreal-claude-mcp' server is the UE 5.7 custom plugin bridge (TCP 18888 via py; Mac/Linux: 'python3'), kept for 5.7 checkouts -- it doesn't build on 5.8. Whichever editor is running serves its endpoint; the other shows unavailable.",
   "mcpServers": {
+    "unreal-mcp": {
+      "type": "http",
+      "url": "http://127.0.0.1:8000/mcp"
+    },
     "unreal-claude-mcp": {
       "command": "py",
       "args": [

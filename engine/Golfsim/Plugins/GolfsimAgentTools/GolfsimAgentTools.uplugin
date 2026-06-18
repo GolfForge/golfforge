@@ -1,0 +1,14 @@
+{
+	"FileVersion": 3,
+	"Version": 1,
+	"VersionName": "0.1",
+	"FriendlyName": "Golfsim Agent Tools",
+	"Description": "Python toolset exposing Golfsim editor automation to UE 5.8 Unreal MCP (GOL-215). Content/Python only -- no C++ module, so no compile; the Toolset Registry discovers plugin Content/Python toolsets at startup.",
+	"Category": "Golfsim",
+	"CreatedBy": "Golfsim",
+	"EnabledByDefault": true,
+	"CanContainContent": true,
+	"IsBetaVersion": false,
+	"Installed": false,
+	"Modules": []
+}

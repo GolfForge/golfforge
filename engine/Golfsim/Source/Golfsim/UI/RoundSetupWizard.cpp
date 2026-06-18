@@ -334,7 +334,7 @@ UWidget* URoundSetupWizard::BuildFormatStep()
 		{ TEXT("Static"), TEXT("Random"), TEXT("Tournament") },
 		{ TEXT("set spots"), TEXT("fresh each round"), TEXT("event pins") });
 	PinModeSeg->SetSelectedIndex((int32)RoundConfig.PinMode, false);
-	PinModeSeg->OnChanged = [this](int32 Sel) { RoundConfig.PinMode = (EPinMode)Sel; };
+	PinModeSeg->OnChanged = [this](int32 Sel) { RoundConfig.PinMode = (EGolfPinMode)Sel; };
 	if (UVerticalBoxSlot* PinSlot = Content->AddChildToVerticalBox(PinModeSeg)) { PinSlot->SetHorizontalAlignment(HAlign_Left); }
 
 	// ── Game type (4-up) ──

@@ -129,7 +129,7 @@ void URoundSubsystem::StartRound(const FString& CourseId, EGolfDifficulty Diffic
 	// GOL-191/192: resolve pin positions per the round's PinMode before the schedule is locked in.
 	// Random/Tournament read course data + an RNG; Static leaves the authored endpoints. Best-effort --
 	// any load failure logs and the resolver falls back (Tournament -> green centroid -> static).
-	if (Config.PinMode != EPinMode::Static)
+	if (Config.PinMode != EGolfPinMode::Static)
 	{
 		TArray<GolfsimRound::FGreenPolygon> Greens;
 		FString PinErr;
@@ -141,7 +141,7 @@ void URoundSubsystem::StartRound(const FString& CourseId, EGolfDifficulty Diffic
 
 		GolfsimRound::FPinSheet Sheet;
 		const GolfsimRound::FPinSheet* SheetPtr = nullptr;
-		if (Config.PinMode == EPinMode::Tournament)
+		if (Config.PinMode == EGolfPinMode::Tournament)
 		{
 			if (GolfsimRound::LoadPinSheet(CourseId, Config.PinSetId, Sheet, PinErr))
 			{

@@ -48,7 +48,7 @@ enum class EHoleOutRule : uint8
 // Pin-position mode (GOL-191/192). Resolved at round start (URoundSubsystem::StartRound) into each
 // hole's FHoleSpec.PinWorldLoc; the pure resolver lives in GolfsimRound::ResolvePinPositions.
 UENUM(BlueprintType)
-enum class EPinMode : uint8
+enum class EGolfPinMode : uint8
 {
 	Static     = 0,   // pin at the hole.geojson green endpoint (default; today's behavior)
 	Random     = 1,   // random point inside the hole's green.geojson polygon, fixed for the round
@@ -78,7 +78,7 @@ struct GOLFSIM_API FRoundConfig
 	UPROPERTY() ETurnOrder      TurnOrder = ETurnOrder::PlayItOut;
 	UPROPERTY() EHoleOutRule    HoleOutRule = EHoleOutRule::HoleOut;
 	UPROPERTY() int32           GimmeFeet = 3;
-	UPROPERTY() EPinMode        PinMode = EPinMode::Static;   // GOL-191/192 pin-position mode
+	UPROPERTY() EGolfPinMode        PinMode = EGolfPinMode::Static;   // GOL-191/192 pin-position mode
 	UPROPERTY() FString         PinSetId = TEXT("default");   // pin sheet id, used iff PinMode == Tournament
 	UPROPERTY() int32           PlayerCount = 1;       // 1 live; 2..4 disabled this milestone
 	UPROPERTY() TArray<FRoundPlayer> Players;          // the HUD persists Players[0] at Tee Off

@@ -1,6 +1,6 @@
 {
 	"FileVersion": 3,
-	"EngineAssociation": "5.7",
+	"EngineAssociation": "5.8",
 	"Category": "",
 	"Description": "",
 	"Modules": [
@@ -39,8 +39,7 @@
 		},
 		{
 			"Name": "DLSS",
-			"Enabled": true,
-			"Optional": true,
+			"Enabled": false,
 			"SupportedTargetPlatforms": [
 				"Win64"
 			],
@@ -48,8 +47,7 @@
 		},
 		{
 			"Name": "StreamlineDLSSG",
-			"Enabled": true,
-			"Optional": true,
+			"Enabled": false,
 			"SupportedTargetPlatforms": [
 				"Win64"
 			],
@@ -62,8 +60,7 @@
 		},
 		{
 			"Name": "StreamlineDeepDVC",
-			"Enabled": true,
-			"Optional": true,
+			"Enabled": false,
 			"SupportedTargetPlatforms": [
 				"Win64"
 			],
@@ -71,8 +68,7 @@
 		},
 		{
 			"Name": "StreamlineCore",
-			"Enabled": true,
-			"Optional": true,
+			"Enabled": false,
 			"SupportedTargetPlatforms": [
 				"Win64"
 			],
@@ -80,8 +76,7 @@
 		},
 		{
 			"Name": "XeSS",
-			"Enabled": true,
-			"Optional": true,
+			"Enabled": false,
 			"SupportedTargetPlatforms": [
 				"Win64"
 			],
@@ -93,6 +88,14 @@
 			"SupportedTargetPlatforms": [
 				"Win64"
 			]
+		},
+		{
+			"Name": "UnrealClaudeMCP",
+			"Enabled": false
+		},
+		{
+			"Name": "ModelContextProtocol",
+			"Enabled": true
 		}
 	]
 }

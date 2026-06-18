@@ -453,14 +453,14 @@ namespace GolfsimRound
 		return Best;
 	}
 
-	void ResolvePinPositions(TArray<FHoleSpec>& Schedule, EPinMode Mode,
+	void ResolvePinPositions(TArray<FHoleSpec>& Schedule, EGolfPinMode Mode,
 		const TArray<FGreenPolygon>& Greens, const FPinSheet* Sheet, FRandomStream& Stream)
 	{
-		if (Mode == EPinMode::Static) { return; }   // leave the authored endpoints
+		if (Mode == EGolfPinMode::Static) { return; }   // leave the authored endpoints
 		for (FHoleSpec& H : Schedule)
 		{
 			const int32 Gi = MatchGreenToHole(H, Greens);
-			if (Mode == EPinMode::Random)
+			if (Mode == EGolfPinMode::Random)
 			{
 				if (Gi != INDEX_NONE)
 				{

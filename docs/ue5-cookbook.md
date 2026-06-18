@@ -4,6 +4,45 @@ The engine-side knowledge base: hard-won pitfalls, working recipes, and the curr
 
 ---
 
+## UE 5.7 → 5.8 migration recipe + traps (2026-06-18)
+
+We're on **5.8** (`C:\Program Files\Epic Games\UE_5.8`; 5.7 kept at `D:\ue57` as fallback). The engine
+bump itself was cheap; the friction was all toolchain/asset plumbing. The repeatable recipe:
+
+- **Code/config changes (all that's needed to compile):** `Golfsim.uproject` `EngineAssociation` → `"5.8"`;
+  both `*.Target.cs` → `DefaultBuildSettings = BuildSettingsVersion.V7` **and** `IncludeOrderVersion = Unreal5_8`
+  (5.8 errors if you bump the engine but keep V6 — "modifies UnreachableCode/ReturnType/Dangling warning
+  levels, not allowed, shares build products with UnrealEditor"); rename our `EPinMode` enum →
+  `EGolfPinMode` (**5.8's Mutable plugin added a `UENUM EPinMode`** and UENUM names must be globally
+  unique → UHT error in `RoundConfig.h`). With those four, the game compiles + suite is 106/106 on 5.8.
+- **Deprecation warnings to clean up before the *next* bump** (warnings now, errors later): `FCoreDelegates::OnPostEngineInit`
+  → `GetOnPostEngineInit()`; `UComboBoxString::Font`/`ForegroundColor` → getters; `APawn::GetMovementBase`;
+  `ALandscapeProxy::HasLayersContent` (5.8: non-edit-layer landscapes deprecated — all use edit layers now).
+- **Trap — gitignored Fab content:** a fresh checkout/worktree has no `Content/Fab`, `Megaplant_Library`,
+  `PC3D_Kentucky_Bluegrass_v*` (all gitignored). Symptom: no textures, no trees. Fix: copy them from a
+  populated checkout (or re-download via Fab). A real upgrade re-downloads from Fab natively.
+- **Trap — the "Open a copy" convert dialog:** opening a 5.7 `.uproject` in 5.8 offers Convert. "Open a
+  copy" silently creates a sibling `<Project> 5.8/` half-copy **without** the gitignored Fab content →
+  missing-texture spam. Don't use it; instead edit the config (above) so the `.uproject` is already 5.8
+  and just opens.
+- **Trap — EngineAssociation churn:** on open, the editor rewrites `EngineAssociation` from `"5.8"` to a
+  machine-specific GUID and strips `"Optional"` from plugin entries. **Normalize back to `"5.8"` before
+  committing** (a GUID isn't portable across machines/Mac).
+- **Upscalers (DLSS/Streamline/XeSS):** their 5.7 Marketplace builds are **binary-incompatible with 5.8 —
+  do NOT copy them over**; install the 5.8 builds from Fab (engine `Plugins/Marketplace`, as on 5.7) when
+  NVIDIA/Intel publish them. `Golfsim.Build.cs` already degrades gracefully (`GOLF_WITH_DLSSG=0` when the
+  dir is absent), so the project compiles with them disabled; the game runs on TSR. Only matters before a
+  5.8 *release* that ships upscaling.
+- **MCP:** our custom `UnrealClaudeMCP` plugin does **not** build on 5.8 — 5.8 templated `FJsonObject`
+  (`Values` is now `TMap<FStringType, ...>` for the UTF8/wide-Json split), so `for (const auto& Pair :
+  Obj->Values) { const FString& K = Pair.Key; }` breaks (`Pair.Key` is no longer `const FString&`) across
+  all handlers. Porting it = fix that idiom everywhere (+ any other API breaks). **Epic's official 5.8 MCP**
+  (`ModelContextProtocol` engine plugin; enable in Plugins, Editor Prefs ▸ General ▸ Model Context Protocol
+  ▸ Auto Start Server, binds `http://127.0.0.1:8000/mcp`; `ModelContextProtocol.GenerateClientConfig
+  ClaudeCode` writes an HTTP `.mcp.json` to the **UE project root**) connects + round-trips, but ships
+  **only `AgentSkillToolset`** by default — none of the editor-automation we use — so it's a framework to
+  build C++ toolsets on, not a drop-in for the custom plugin.
+
 ## NVIDIA DLSS Frame Generation (DLSS-FG) — wiring + why it "does nothing" (GOL-189)
 
 The `StreamlineDLSSG` plugin ("NVIDIA DLSS Frame Generation and DLSS Multi Frame Generation") + `StreamlineCore` + `StreamlineReflex` are enabled in `Golfsim.uproject` (Win64, Optional). Control surface (all behind `#if GOLF_WITH_DLSSG`, a define set in `Golfsim.Build.cs` only when the plugin dir exists, so Mac/plugin-less builds still compile):

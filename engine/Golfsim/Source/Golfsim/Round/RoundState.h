@@ -141,7 +141,7 @@ namespace GolfsimRound
 	/** Set each scheduled hole's PinWorldLoc.XY per Mode (Z stays 0 -- snapped at hole.start). Static
 	 *  leaves the endpoint; Random samples in-green; Tournament reads the sheet (fallback: green
 	 *  centroid, then the endpoint). No-ops gracefully when green/sheet data is missing. */
-	GOLFSIM_API void ResolvePinPositions(TArray<FHoleSpec>& Schedule, EPinMode Mode,
+	GOLFSIM_API void ResolvePinPositions(TArray<FHoleSpec>& Schedule, EGolfPinMode Mode,
 		const TArray<FGreenPolygon>& Greens, const FPinSheet* Sheet, FRandomStream& Stream);
 
 	/** Read courses/<id>/green.geojson (+ heightmap.json bbox) -> world-cm green outlines. */

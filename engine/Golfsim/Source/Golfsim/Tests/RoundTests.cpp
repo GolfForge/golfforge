@@ -550,14 +550,14 @@ bool FGolfsimPinResolveTest::RunTest(const FString&)
 	{
 		TArray<FHoleSpec> S = { MakeHole(1) };
 		FRandomStream R(1);
-		ResolvePinPositions(S, EPinMode::Static, Greens, nullptr, R);
+		ResolvePinPositions(S, EGolfPinMode::Static, Greens, nullptr, R);
 		TestEqual(TEXT("static keeps endpoint"), S[0].PinWorldLoc.X, 50000.0);
 	}
 	// Random: pin lands on the green.
 	{
 		TArray<FHoleSpec> S = { MakeHole(1) };
 		FRandomStream R(2);
-		ResolvePinPositions(S, EPinMode::Random, Greens, nullptr, R);
+		ResolvePinPositions(S, EGolfPinMode::Random, Greens, nullptr, R);
 		TestTrue(TEXT("random pin on green"),
 			PointInPolygonCm(FVector2D(S[0].PinWorldLoc.X, S[0].PinWorldLoc.Y), Greens[0]));
 	}
@@ -566,7 +566,7 @@ bool FGolfsimPinResolveTest::RunTest(const FString&)
 		FPinSheet Sheet; Sheet.PinXYByRefCm.Add(1, FVector2D(300, -200));
 		TArray<FHoleSpec> S = { MakeHole(1), MakeHole(2) };
 		FRandomStream R(3);
-		ResolvePinPositions(S, EPinMode::Tournament, Greens, &Sheet, R);
+		ResolvePinPositions(S, EGolfPinMode::Tournament, Greens, &Sheet, R);
 		TestEqual(TEXT("tournament uses the sheet (X)"), S[0].PinWorldLoc.X, 300.0);
 		TestEqual(TEXT("tournament uses the sheet (Y)"), S[0].PinWorldLoc.Y, -200.0);
 		TestTrue(TEXT("missing ref -> centroid fallback"),
@@ -577,7 +577,7 @@ bool FGolfsimPinResolveTest::RunTest(const FString&)
 		TArray<FHoleSpec> S = { MakeHole(1) };
 		FRandomStream R(4);
 		TArray<FGreenPolygon> Empty;
-		ResolvePinPositions(S, EPinMode::Random, Empty, nullptr, R);
+		ResolvePinPositions(S, EGolfPinMode::Random, Empty, nullptr, R);
 		TestEqual(TEXT("no greens -> static fallback"), S[0].PinWorldLoc.X, 50000.0);
 	}
 	return true;

@@ -113,8 +113,8 @@ driver work from us**:
 
 | Launch monitor | Community connector | Lang |
 |---|---|---|
-| Rapsodo MLM2PRO | [springbok/MLM2PRO-GSPro-Connector](https://github.com/springbok/MLM2PRO-GSPro-Connector) (+ OpenGolfSim fork) | Python |
-| FlightScope Mevo+ | [springbok/MLM2PRO-GSPro-Connector](https://github.com/springbok/MLM2PRO-GSPro-Connector) (same) | Python |
+| Rapsodo MLM2PRO | [Duwaynef/MLM2PRO-BT-APP](https://github.com/Duwaynef/MLM2PRO-BT-APP) (MIT) — **validated ✅** (via generic `gsproconnect`; test shot, real-ball pending) | C# |
+| FlightScope Mevo+ | [springbok/MLM2PRO-GSPro-Connector](https://github.com/springbok/MLM2PRO-GSPro-Connector) | Python |
 | SkyTrak | [OpenSkyPlus2/OpenSkyPlus2](https://github.com/OpenSkyPlus2/OpenSkyPlus2) | C# |
 | Garmin Approach R10 | [travislang/gspro-garmin-connect-v2](https://github.com/travislang/gspro-garmin-connect-v2) | — |
 | Square Omni / Square Golf | [brentyates/squaregolf-connector](https://github.com/brentyates/squaregolf-connector) (MIT) — **validated ✅** | Go |
@@ -140,8 +140,12 @@ aware) that handles both. Don't split on `\n`.
   from the shipping dropdown) until it's validated (GOL-181) — the springbok project looks stale and its
   full release expects the GSPro APIv1 connect-window handshake we don't implement yet; likely needs an
   official path with them first. Its profile + parser quirks stay in the driver, so re-enabling is just
-  un-commenting the registration block. **Do not re-add it to the dropdown before then.** Adding
-  `skytrak` / `r10` / `gc2` is one profile each. **The open-source connectors do NOT all implement Open
+  un-commenting the registration block. **Do not re-add it to the dropdown before then.** For the
+  **MLM2PRO** the recommended connector is **[Duwaynef/MLM2PRO-BT-APP](https://github.com/Duwaynef/MLM2PRO-BT-APP)**
+  (MIT, direct BLE), which talks plain Open Connect and **works against the generic `gsproconnect` entry**
+  (newline-framed, no arm model) — validated live via BT-APP's "send test shot," so it needs **no dedicated
+  profile**. (The user supplies BT-APP's Rapsodo "Web Api secret"; nothing proprietary lives in this repo.)
+  Adding `skytrak` / `r10` / `gc2` is one profile each. **The open-source connectors do NOT all implement Open
   Connect identically**, so each connector's quirks live in its profile — tuning one cannot break
   another. Only the **active** entry binds the port.
 
@@ -210,6 +214,7 @@ as worm-burners — that's mock data, not a mapping fault; real-device shots fly
 **Validate with no hardware:** `golfsim.LMSelect gsproconnect` (or `squaregolf`) → `golfsim.LMConnect`
 (binds 921) → `golfsim.LMSimulate` runs a GSPro-shaped canned shot through the parser with no socket. For
 the real wire path, point a connector (or any TCP client) at `127.0.0.1:921`; expect `{"Code":200}` per
-message. **Validated live** end-to-end against `brentyates/squaregolf-connector` (simulate mode), incl.
-continuous arm→fire→re-arm. The remaining community connectors validate against this same listener
-(GOL-181); `log LogTemp Verbose` dumps every raw frame for troubleshooting.
+message. **Validated live** end-to-end against `brentyates/squaregolf-connector` (simulate mode, incl.
+continuous arm→fire→re-arm) and against `Duwaynef/MLM2PRO-BT-APP` (MLM2PRO, "send test shot" → generic
+`gsproconnect`; real-ball still pending). The remaining community connectors validate against this same
+listener (GOL-181); `log LogTemp Verbose` dumps every raw frame for troubleshooting.

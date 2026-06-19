@@ -2,6 +2,21 @@
 
 > Dated milestone summaries, newest on top. The durable outcome + the committed artifact, not the blow-by-blow — process detail lives in git history, `docs/ue5-cookbook.md`, and the scripts themselves.
 
+## 2026-06-19 — GOL-181: Rapsodo MLM2PRO validated via MLM2PRO-BT-APP (docs only)
+
+The MLM2PRO connects to GolfForge with **zero new code**: ran [`Duwaynef/MLM2PRO-BT-APP`](https://github.com/Duwaynef/MLM2PRO-BT-APP)
+(C#, MIT) in GSPro Connect mode → our generic `gsproconnect` server on `127.0.0.1:921`, and its
+"send test shot" flew first try — the GOL-178 "one server inherits many LMs" thesis paying off, and
+AGPL-clean (separate MIT process; nothing proprietary in-repo). Research ruled out building our own
+connector: Rapsodo gates third-party access behind a subscription + an in-app "authorize Awesome Golf"
+step and a **proprietary "Web Api secret"** that can't ship in an AGPL repo, so a homegrown BLE/OCR
+connector is a dead end — interop is the right call. Also **corrected a doc bug**: `docs/launch-monitors.md`
+had claimed MLM2PRO/Mevo+ "validated" via a "Springbok (MLM2PRO / Mevo+)" dropdown entry that is actually
+commented out (not shipping) and never validated. Now: MLM2PRO → **GSPro Connect** + BT-APP (validated,
+test shot; real-ball pending); Mevo+ → unverified. Touched `docs/launch-monitors.md`, `README.md`
+(+ Duwaynef acknowledgement), `engine/.../Drivers/README.md`. Validated only via test shot — real hit-ball
++ Blue Tees Rainmaker remain open under GOL-181.
+
 ## 2026-06-13 — v0.0.7-alpha cook-asset fix: always-cook /Game/Materials + /Game/Audio (Windows)
 
 Cooked-build smoke test (the still-unpublished v0.0.7-alpha) surfaced three **cook-only** bugs that

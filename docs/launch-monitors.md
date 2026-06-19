@@ -12,10 +12,10 @@ guide is for hooking up a real one.
 
 1. **Launch GolfForge → Practice Range.**
 2. **Pick your launch monitor in GolfForge first.** In the range control panel, open the **Launch Monitor**
-   dropdown and select your device/connector (e.g. *Square Golf*, *Springbok (MLM2PRO / Mevo+)*, *GSPro
-   Connect*, *OpenFlight*). GolfForge immediately starts **listening on `127.0.0.1:921`**.
-   Do this **before** starting the connector — some connectors (notably springbok) only dial once and won't
-   retry, so the server has to be up first. Selecting in GolfForge first is the safe order for all of them.
+   dropdown and select your device/connector (e.g. *Square Golf*, *GSPro Connect*, *OpenFlight*).
+   GolfForge immediately starts **listening on `127.0.0.1:921`**.
+   Do this **before** starting the connector — some connectors only dial once and won't retry, so the
+   server has to be up first. Selecting in GolfForge first is the safe order for all of them.
 3. **Start your launch monitor's connector app** and point its GSPro/destination at **`127.0.0.1` port
    `921`** (this is the connector's default — most need no change). Power on / pair your monitor per the
    connector's own instructions.
@@ -34,8 +34,8 @@ from its project page.
 | Launch monitor | GolfForge dropdown entry | Connector to install | Status |
 |---|---|---|---|
 | Square Omni / Square Golf | **Square Golf** | [brentyates/squaregolf-connector](https://github.com/brentyates/squaregolf-connector) | ✅ validated |
-| Rapsodo MLM2PRO | **Springbok (MLM2PRO / Mevo+)** | [springbok/MLM2PRO-GSPro-Connector](https://github.com/springbok/MLM2PRO-GSPro-Connector) | ✅ validated |
-| FlightScope Mevo+ | **Springbok (MLM2PRO / Mevo+)** | [springbok/MLM2PRO-GSPro-Connector](https://github.com/springbok/MLM2PRO-GSPro-Connector) | ✅ validated |
+| Rapsodo MLM2PRO | **GSPro Connect** (generic) | [Duwaynef/MLM2PRO-BT-APP](https://github.com/Duwaynef/MLM2PRO-BT-APP) | ✅ validated (test shot; real-ball pending) |
+| FlightScope Mevo+ | **GSPro Connect** (generic) | [springbok/MLM2PRO-GSPro-Connector](https://github.com/springbok/MLM2PRO-GSPro-Connector) | ⏳ unverified |
 | SkyTrak | **GSPro Connect** (generic) | [OpenSkyPlus2/OpenSkyPlus2](https://github.com/OpenSkyPlus2/OpenSkyPlus2) | ⏳ verifying |
 | Garmin Approach R10 | **GSPro Connect** (generic) | [travislang/gspro-garmin-connect-v2](https://github.com/travislang/gspro-garmin-connect-v2) | ⏳ verifying |
 | Foresight GC2 | **GSPro Connect** (generic) | [matthew-johnston/gspro-gc2-connector](https://github.com/matthew-johnston/gspro-gc2-connector) | ⏳ verifying |
@@ -48,6 +48,24 @@ their own named dropdown entry; more are added over time.
 **Auth-gated monitors are not supported here.** Some vendor connectors (Garmin R50, Bushnell Launch Pro,
 Foresight GCQuad/GC3, possibly Uneekor) do a paid server-side handshake and won't talk to an open server.
 Those need a native GolfForge driver (planned separately), not a GSPro connector.
+
+### Rapsodo MLM2PRO (via MLM2PRO-BT-APP)
+
+The MLM2PRO works through [Duwaynef/MLM2PRO-BT-APP](https://github.com/Duwaynef/MLM2PRO-BT-APP) (a free
+MIT connector that talks to the monitor over Bluetooth). One-time setup:
+
+1. **Authorize third-party access in the Rapsodo app.** You need a Rapsodo third-party subscription; in
+   the Rapsodo MLM2PRO app go to **Play → Third Party → authorize "Awesome Golf."** (This does *not*
+   require an Awesome Golf subscription.) Re-authorize if the device's token later expires.
+2. **Install and configure BT-APP** per its own docs — it needs a "Web Api secret" entered on first run
+   (obtained per BT-APP's instructions; GolfForge does not provide it). Pair the monitor to Windows as
+   `MLM2-<serial>`.
+3. **Point BT-APP's simulator output at GolfForge:** GSPro / GSPro Open Connect, host `127.0.0.1`, port
+   `921`. In GolfForge pick **GSPro Connect** in the Launch Monitor dropdown (do this first — step 2 of
+   the Quick start).
+
+Note: the MLM2PRO reports **ball data only** (no club). GolfForge estimates backspin from the launch
+angle when spin is absent and marks those shots **`est`** in the range panel — expected, not a fault.
 
 ## Troubleshooting
 
@@ -63,7 +81,7 @@ Those need a native GolfForge driver (planned separately), not a GSPro connector
   placeholder numbers (very low launch/spin) that fly like worm-burners — that's the mock data, not
   GolfForge. Real shots from the device fly normally.
 - **Want it to auto-start?** Advanced: set `[LaunchMonitor] ActiveDriver=<id>` and `bAutoConnect=True` in
-  `engine/Golfsim/Config/DefaultGame.ini` (ids: `openflight`, `gsproconnect`, `squaregolf`, `springbok`).
+  `engine/Golfsim/Config/DefaultGame.ini` (ids: `openflight`, `gsproconnect`, `squaregolf`).
 
 No launch monitor? Use **Simulated (no device)** (keyboard swing meter) or the **manual-shot dialog** (press
 `M` in the range) to enter numbers by hand.

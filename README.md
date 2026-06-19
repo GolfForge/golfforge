@@ -94,7 +94,7 @@ In rough priority order:
 - **More real-world courses.** Six cooked tracks ship today — five GolfForge Demo parkland courses (Black / Blue / Red / Green / Yellow) plus **OldAndre Links**, an open-LIDAR cook of a historic coastal links course; the pipeline can produce others — add yours via the [course pipeline](pipeline/README.md).
 - **Course-quality polish.** Course-side lighting bake, 3D grass, night/low-light presets, water caustics. (Bunkers with a depressed floor + raised lip landed in v0.0.6; mowing stripes, distinct mown surfaces, pond water, mixed-species trees and golden-hour atmosphere in v0.0.5.)
 - **Walking integration.** Bluetooth FTMS treadmill driver (build-it-yourself ESP32 reference design or any FTMS-compliant treadmill); compressed walk mode; eventual incline-matching from hole elevation profiles.
-- **More launch monitors.** Bringing up more GSPro Open Connect connectors against GolfForge (Square Omni confirmed so far; others in progress), plus native drivers for auth-gated devices (Rapsodo R50, Foresight Launch Pro, GCQuad).
+- **More launch monitors.** Bringing up more GSPro Open Connect connectors against GolfForge (Square Omni and Rapsodo MLM2PRO confirmed so far; others in progress), plus native drivers for auth-gated devices (Rapsodo R50, Foresight Launch Pro, GCQuad).
 - **Mac/iPadOS GPU acceleration.** MetalFX upscaling for Apple Silicon (currently TSR-only).
 - **Cross-platform pipeline.** Make the Python course pipeline work on Windows (Mac/Linux already supported).
 
@@ -112,8 +112,9 @@ running the same binary. See [`docs/event-protocol.md`](docs/event-protocol.md).
 GolfForge talks to launch monitors through a pluggable driver framework; the sim only ever sees a
 normalized shot event, never the device. It speaks the open **GSPro Open Connect** protocol as a server,
 so the community launch-monitor connectors can talk to it directly — **use your existing connector, no GSPro
-subscription required.** The Square Omni is validated end-to-end today (via the squaregolf connector); other
-community connectors speak the same protocol and are being brought up. The DIY **OpenFlight** radar has a native driver, and a manual-shot
+subscription required.** The Square Omni (via the squaregolf connector) and the Rapsodo MLM2PRO (via the
+MLM2PRO-BT-APP connector) are validated against GolfForge today; other community connectors speak the same
+protocol and are being brought up. The DIY **OpenFlight** radar has a native driver, and a manual-shot
 dialog + keyboard swing let you play with no hardware at all. Walking/treadmill support over BLE FTMS is on
 the roadmap.
 
@@ -170,9 +171,10 @@ GolfForge builds on excellent open-source work:
   community connectors can talk to it directly — no GSPro subscription required. Special thanks to
   **[@brentyates](https://github.com/brentyates)** and the
   [squaregolf-connector](https://github.com/brentyates/squaregolf-connector) (MIT), the first connector
-  validated end-to-end against GolfForge. GolfForge talks to GSPro Open Connect connectors as separate
-  processes over the open protocol (their source is not vendored); bringing up the broader community
-  ecosystem is ongoing.
+  validated end-to-end against GolfForge, and to **[@Duwaynef](https://github.com/Duwaynef)** and
+  [MLM2PRO-BT-APP](https://github.com/Duwaynef/MLM2PRO-BT-APP) (MIT), which brings the Rapsodo MLM2PRO to
+  GolfForge. GolfForge talks to GSPro Open Connect connectors as separate processes over the open protocol
+  (their source is not vendored); bringing up the broader community ecosystem is ongoing.
 - **[OpenFlight](https://github.com/jewbetcha/openflight)** — the open-source DIY Doppler-radar launch
   monitor and GolfForge's first launch-monitor driver.
 - **[Unreal Claude MCP](https://github.com/NAJEMWEHBE/UnrealClaudeMCP)** (MIT) — the UE5 ↔ MCP

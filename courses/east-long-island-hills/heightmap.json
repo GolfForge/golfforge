@@ -1,0 +1,15 @@
+{
+  "course_id": "east-long-island-hills",
+  "bbox_wgs84": [
+    -72.4503,
+    40.8894,
+    -72.4293,
+    40.9042
+  ],
+  "size_px": 2017,
+  "elev_min_m": -0.022329481318593025,
+  "elev_max_m": 31.657384872436523,
+  "elev_range_m": 31.679714353755116,
+  "ue5_z_scale_pct": 6.187444209717796,
+  "backend": "opentopo"
+}

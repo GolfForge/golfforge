@@ -1,0 +1,623 @@
+{
+ "type": "FeatureCollection",
+ "features": [
+  {
+   "type": "Feature",
+   "properties": {
+    "osm_way_id": 923582601,
+    "osm_tags": {
+     "golf": "hole",
+     "par": "4",
+     "ref": "1",
+     "golf:course:name": "EastLongIsland"
+    }
+   },
+   "geometry": {
+    "type": "LineString",
+    "coordinates": [
+     [
+      -72.4404065,
+      40.8941759
+     ],
+     [
+      -72.4424225,
+      40.8946226
+     ],
+     [
+      -72.4424305,
+      40.8946244
+     ],
+     [
+      -72.4425949,
+      40.8946576
+     ],
+     [
+      -72.4429492,
+      40.8947355
+     ],
+     [
+      -72.444183,
+      40.8956276
+     ]
+    ]
+   }
+  },
+  {
+   "type": "Feature",
+   "properties": {
+    "osm_way_id": 923582600,
+    "osm_tags": {
+     "golf": "hole",
+     "par": "3",
+     "ref": "2",
+     "golf:course:name": "EastLongIsland"
+    }
+   },
+   "geometry": {
+    "type": "LineString",
+    "coordinates": [
+     [
+      -72.4449666,
+      40.895009
+     ],
+     [
+      -72.4451406,
+      40.8971319
+     ]
+    ]
+   }
+  },
+  {
+   "type": "Feature",
+   "properties": {
+    "osm_way_id": 880452881,
+    "osm_tags": {
+     "golf": "hole",
+     "par": "4",
+     "ref": "3",
+     "golf:course:name": "EastLongIsland"
+    }
+   },
+   "geometry": {
+    "type": "LineString",
+    "coordinates": [
+     [
+      -72.4461008,
+      40.8966645
+     ],
+     [
+      -72.4452152,
+      40.8991708
+     ],
+     [
+      -72.445352,
+      40.9007197
+     ]
+    ]
+   }
+  },
+  {
+   "type": "Feature",
+   "properties": {
+    "osm_way_id": 880452882,
+    "osm_tags": {
+     "golf": "hole",
+     "par": "4",
+     "ref": "4",
+     "golf:course:name": "EastLongIsland"
+    }
+   },
+   "geometry": {
+    "type": "LineString",
+    "coordinates": [
+     [
+      -72.4451,
+      40.9016191
+     ],
+     [
+      -72.4426188,
+      40.8994608
+     ],
+     [
+      -72.4425164,
+      40.8988972
+     ],
+     [
+      -72.4424849,
+      40.8983555
+     ]
+    ]
+   }
+  },
+  {
+   "type": "Feature",
+   "properties": {
+    "osm_way_id": 880452883,
+    "osm_tags": {
+     "golf": "hole",
+     "par": "5",
+     "ref": "5",
+     "golf:course:name": "EastLongIsland"
+    }
+   },
+   "geometry": {
+    "type": "LineString",
+    "coordinates": [
+     [
+      -72.4422408,
+      40.8976084
+     ],
+     [
+      -72.4412858,
+      40.8994547
+     ],
+     [
+      -72.4405827,
+      40.9002181
+     ],
+     [
+      -72.4401002,
+      40.900742
+     ],
+     [
+      -72.4391266,
+      40.9012793
+     ]
+    ]
+   }
+  },
+  {
+   "type": "Feature",
+   "properties": {
+    "osm_way_id": 880453976,
+    "osm_tags": {
+     "golf": "hole",
+     "par": "4",
+     "ref": "6",
+     "golf:course:name": "EastLongIsland"
+    }
+   },
+   "geometry": {
+    "type": "LineString",
+    "coordinates": [
+     [
+      -72.438966,
+      40.9017915
+     ],
+     [
+      -72.4420857,
+      40.9010021
+     ],
+     [
+      -72.4426793,
+      40.9010937
+     ],
+     [
+      -72.4441314,
+      40.9013178
+     ]
+    ]
+   }
+  },
+  {
+   "type": "Feature",
+   "properties": {
+    "osm_way_id": 880453977,
+    "osm_tags": {
+     "golf": "hole",
+     "par": "3",
+     "ref": "7",
+     "golf:course:name": "EastLongIsland"
+    }
+   },
+   "geometry": {
+    "type": "LineString",
+    "coordinates": [
+     [
+      -72.4449949,
+      40.9010048
+     ],
+     [
+      -72.4448318,
+      40.9006324
+     ],
+     [
+      -72.4444196,
+      40.8996911
+     ],
+     [
+      -72.444399,
+      40.899644
+     ],
+     [
+      -72.4443225,
+      40.8994693
+     ]
+    ]
+   }
+  },
+  {
+   "type": "Feature",
+   "properties": {
+    "osm_way_id": 880453978,
+    "osm_tags": {
+     "golf": "hole",
+     "par": "4",
+     "ref": "8",
+     "golf:course:name": "EastLongIsland"
+    }
+   },
+   "geometry": {
+    "type": "LineString",
+    "coordinates": [
+     [
+      -72.4439615,
+      40.9000551
+     ],
+     [
+      -72.4434235,
+      40.8973532
+     ],
+     [
+      -72.4436819,
+      40.8964142
+     ]
+    ]
+   }
+  },
+  {
+   "type": "Feature",
+   "properties": {
+    "osm_way_id": 880453979,
+    "osm_tags": {
+     "golf": "hole",
+     "par": "4",
+     "ref": "9",
+     "golf:course:name": "EastLongIsland"
+    }
+   },
+   "geometry": {
+    "type": "LineString",
+    "coordinates": [
+     [
+      -72.4443543,
+      40.8963527
+     ],
+     [
+      -72.4416398,
+      40.8948652
+     ],
+     [
+      -72.4411535,
+      40.8947914
+     ],
+     [
+      -72.4397711,
+      40.8945816
+     ]
+    ]
+   }
+  },
+  {
+   "type": "Feature",
+   "properties": {
+    "osm_way_id": 880453980,
+    "osm_tags": {
+     "golf": "hole",
+     "par": "4",
+     "ref": "10",
+     "golf:course:name": "EastLongIsland"
+    }
+   },
+   "geometry": {
+    "type": "LineString",
+    "coordinates": [
+     [
+      -72.4391129,
+      40.8940711
+     ],
+     [
+      -72.4363487,
+      40.8935115
+     ],
+     [
+      -72.4356044,
+      40.893334
+     ],
+     [
+      -72.4355117,
+      40.8933119
+     ],
+     [
+      -72.434756,
+      40.8931316
+     ]
+    ]
+   }
+  },
+  {
+   "type": "Feature",
+   "properties": {
+    "osm_way_id": 880453981,
+    "osm_tags": {
+     "golf": "hole",
+     "par": "3",
+     "ref": "11",
+     "golf:course:name": "EastLongIsland"
+    }
+   },
+   "geometry": {
+    "type": "LineString",
+    "coordinates": [
+     [
+      -72.4339889,
+      40.8929294
+     ],
+     [
+      -72.4340704,
+      40.8932936
+     ],
+     [
+      -72.4342712,
+      40.894191
+     ]
+    ]
+   }
+  },
+  {
+   "type": "Feature",
+   "properties": {
+    "osm_way_id": 880453982,
+    "osm_tags": {
+     "golf": "hole",
+     "par": "5",
+     "ref": "12",
+     "golf:course:name": "EastLongIsland"
+    }
+   },
+   "geometry": {
+    "type": "LineString",
+    "coordinates": [
+     [
+      -72.4345838,
+      40.8937793
+     ],
+     [
+      -72.4351162,
+      40.8952165
+     ],
+     [
+      -72.4352197,
+      40.8954805
+     ],
+     [
+      -72.4351347,
+      40.8970509
+     ],
+     [
+      -72.435294,
+      40.8976074
+     ]
+    ]
+   }
+  },
+  {
+   "type": "Feature",
+   "properties": {
+    "osm_way_id": 880453983,
+    "osm_tags": {
+     "golf": "hole",
+     "par": "4",
+     "ref": "13",
+     "golf:course:name": "EastLongIsland"
+    }
+   },
+   "geometry": {
+    "type": "LineString",
+    "coordinates": [
+     [
+      -72.4362023,
+      40.8972883
+     ],
+     [
+      -72.4369723,
+      40.8953343
+     ],
+     [
+      -72.4380624,
+      40.8947056
+     ]
+    ]
+   }
+  },
+  {
+   "type": "Feature",
+   "properties": {
+    "osm_way_id": 880453984,
+    "osm_tags": {
+     "golf": "hole",
+     "par": "4",
+     "ref": "14",
+     "golf:course:name": "EastLongIsland"
+    }
+   },
+   "geometry": {
+    "type": "LineString",
+    "coordinates": [
+     [
+      -72.4391139,
+      40.8947954
+     ],
+     [
+      -72.4383912,
+      40.8961177
+     ],
+     [
+      -72.4382663,
+      40.8963507
+     ],
+     [
+      -72.4382159,
+      40.8964447
+     ],
+     [
+      -72.4381846,
+      40.8965032
+     ],
+     [
+      -72.438019,
+      40.8965415
+     ],
+     [
+      -72.4378819,
+      40.8970679
+     ],
+     [
+      -72.4366396,
+      40.8980417
+     ]
+    ]
+   }
+  },
+  {
+   "type": "Feature",
+   "properties": {
+    "osm_way_id": 880453985,
+    "osm_tags": {
+     "golf": "hole",
+     "par": "4",
+     "ref": "15",
+     "golf:course:name": "EastLongIsland"
+    }
+   },
+   "geometry": {
+    "type": "LineString",
+    "coordinates": [
+     [
+      -72.4354257,
+      40.8979962
+     ],
+     [
+      -72.4376837,
+      40.899101
+     ],
+     [
+      -72.4383568,
+      40.8999483
+     ],
+     [
+      -72.4386039,
+      40.9002594
+     ]
+    ]
+   }
+  },
+  {
+   "type": "Feature",
+   "properties": {
+    "osm_way_id": 880453986,
+    "osm_tags": {
+     "golf": "hole",
+     "par": "5",
+     "ref": "16",
+     "golf:course:name": "EastLongIsland"
+    }
+   },
+   "geometry": {
+    "type": "LineString",
+    "coordinates": [
+     [
+      -72.4389755,
+      40.9007783
+     ],
+     [
+      -72.4391878,
+      40.8986115
+     ],
+     [
+      -72.4395132,
+      40.8976318
+     ],
+     [
+      -72.4395984,
+      40.8973755
+     ],
+     [
+      -72.4396012,
+      40.8965294
+     ],
+     [
+      -72.4396019,
+      40.8963161
+     ]
+    ]
+   }
+  },
+  {
+   "type": "Feature",
+   "properties": {
+    "osm_way_id": 880453987,
+    "osm_tags": {
+     "golf": "hole",
+     "par": "3",
+     "ref": "17",
+     "golf:course:name": "EastLongIsland"
+    }
+   },
+   "geometry": {
+    "type": "LineString",
+    "coordinates": [
+     [
+      -72.4400903,
+      40.8965756
+     ],
+     [
+      -72.4417042,
+      40.8973595
+     ]
+    ]
+   }
+  },
+  {
+   "type": "Feature",
+   "properties": {
+    "osm_way_id": 880453988,
+    "osm_tags": {
+     "golf": "hole",
+     "par": "4",
+     "ref": "18",
+     "golf:course:name": "EastLongIsland"
+    }
+   },
+   "geometry": {
+    "type": "LineString",
+    "coordinates": [
+     [
+      -72.4428452,
+      40.898033
+     ],
+     [
+      -72.4416036,
+      40.8966025
+     ],
+     [
+      -72.4413664,
+      40.8963239
+     ],
+     [
+      -72.4408973,
+      40.8957731
+     ],
+     [
+      -72.4397005,
+      40.8953944
+     ],
+     [
+      -72.4393329,
+      40.8952781
+     ]
+    ]
+   }
+  }
+ ]
+}

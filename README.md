@@ -5,6 +5,8 @@ integration, and a clean BLE-based hardware story for launch monitors.
 
 > **Status:** early, pre-1.0, and moving fast. **v0.0.8-alpha** lets you **dial in the HUD** — one key (`V`) cycles from the full readout, to a compact left-side metrics **tower** (ball + club speed, smash, launch, spin, carry, total, apex, descent, hang), to a clean hidden mode for screenshots — gives the **shot-history** panel the premium treatment, and surfaces **club-delivery data** (club speed / angle of attack / path / face) when your launch monitor reports it. It adds a new **links course**, **East Long Island Hills** (an open-LIDAR cook of a famous championship venue), bringing the catalog to **seven cooked courses** with a now-scrolling course picker, and validates the **Rapsodo MLM2PRO** over its connector. These sit on top of v0.0.7's real **putting** (auto putt-camera, in-world break grid, terrain-conformed cup with a holed-putt drop), the **OldAndre Links** historic course, and an in-round **minimap**; v0.0.6's **closest-to-pin practice** and **real bunkers** (depressed floor + raised lip); v0.0.5's **art facelift**; and **GSPro Open Connect** launch-monitor support — bring your own monitor over its connector, **no GSPro subscription required**. Play a full **18-hole single-player round on a real LIDAR-cooked course with just a keyboard**. Expect rough edges.
 
+![East Long Island Hills at golden hour — a full 18-hole course cooked from open LIDAR + OpenStreetMap, shown with the HUD hidden (press V)](docs/screenshots/elih-vista.jpg)
+
 ## Why
 
 Three structural weaknesses in the closed-source sim-golf market that an open-source project can
@@ -38,7 +40,11 @@ Round setup is a three-step wizard — pick the course, set the format, add your
 
 Then you're on the course:
 
-![Mid-round on the course under the afternoon sky — glass HUD with the hole panel, conditions strip, hole map, launch-monitor readout and swing meter](docs/screenshots/coursehud.jpg)
+![Mid-round on East Long Island Hills — glass HUD with the hole panel, conditions strip, hole map and swing meter](docs/screenshots/elih-round.jpg)
+
+Press `V` to cycle the HUD — a compact metrics **tower** adds club + ball speed, smash, apex, descent and hang time; press again for a clean, screenshot-ready view:
+
+![Compact HUD — the left metrics tower: ball and club speed, smash, launch, spin, carry, total, apex, descent, hang, offline](docs/screenshots/hud-tower.jpg)
 
 Courses carry **real bunkers** — sculpted sand with a depressed floor and a raised lip, cooked straight from the LIDAR terrain:
 

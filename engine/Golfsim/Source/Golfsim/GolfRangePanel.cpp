@@ -55,30 +55,25 @@ namespace
 		return Val;
 	}
 
-	// GOL-149: one compact tower row -- a faint eyebrow label on the left, a mono value on the right,
-	// in a single line. Denser than BuildTile (no inset cell) so the tower fits many metrics. Returns
-	// the value text block; *OutRow (if given) receives the row widget so the caller can collapse it.
-	UTextBlock* BuildTowerRow(UWidgetTree* Tree, UVerticalBox* Col, const TCHAR* Label,
-		bool bAccent, TObjectPtr<UWidget>* OutRow = nullptr)
+	// GOL-149: one tower tile -- a faint eyebrow label over a mono value, added as a half-width cell so
+	// two tiles split a row evenly (the 2-column tower grid). Returns the value text block; *OutCell (if
+	// given) receives the cell container so the caller can collapse just that half.
+	UTextBlock* BuildTowerTile(UWidgetTree* Tree, UHorizontalBox* Row, const TCHAR* Label,
+		bool bAccent, TObjectPtr<UWidget>* OutCell = nullptr)
 	{
-		UHorizontalBox* Row = Tree->ConstructWidget<UHorizontalBox>();
-		if (UHorizontalBoxSlot* LS = Row->AddChildToHorizontalBox(MakeEyebrow(Tree, Label)))
-		{
-			LS->SetVerticalAlignment(VAlign_Center);
-		}
-		USpacer* Gap = Tree->ConstructWidget<USpacer>();
-		if (UHorizontalBoxSlot* GS = Row->AddChildToHorizontalBox(Gap)) { GS->SetSize(FSlateChildSize(ESlateSizeRule::Fill)); }
+		UVerticalBox* Cell = Tree->ConstructWidget<UVerticalBox>();
+		Cell->AddChildToVerticalBox(MakeEyebrow(Tree, Label));
 		UTextBlock* Val = Tree->ConstructWidget<UTextBlock>();
 		Val->SetText(FText::FromString(TEXT("-")));
-		Val->SetFont(Mono(16, FName(TEXT("Medium"))));
+		Val->SetFont(Mono(20, FName(TEXT("Medium"))));
 		Val->SetColorAndOpacity(FSlateColor(bAccent ? Color::Accent() : Color::Text()));
-		if (UHorizontalBoxSlot* VS = Row->AddChildToHorizontalBox(Val))
+		if (UVerticalBoxSlot* VS = Cell->AddChildToVerticalBox(Val)) { VS->SetPadding(FMargin(0.f, 2.f, 0.f, 0.f)); }
+		if (UHorizontalBoxSlot* CS = Row->AddChildToHorizontalBox(Cell))
 		{
-			VS->SetVerticalAlignment(VAlign_Center);
-			VS->SetPadding(FMargin(16.f, 0.f, 0.f, 0.f));
+			CS->SetSize(FSlateChildSize(ESlateSizeRule::Fill));   // two tiles split the row evenly
+			CS->SetPadding(FMargin(0.f, 12.f, 8.f, 0.f));
 		}
-		if (UVerticalBoxSlot* RS = Col->AddChildToVerticalBox(Row)) { RS->SetPadding(FMargin(0.f, 3.f)); }
-		if (OutRow) { *OutRow = Row; }
+		if (OutCell) { *OutCell = Cell; }
 		return Val;
 	}
 }
@@ -785,37 +780,57 @@ void UGolfRangePanel::BuildTower(UCanvasPanel* Root)
 	UVerticalBox* Col = WidgetTree->ConstructWidget<UVerticalBox>();
 	Tower->SetContent(Col);
 
-	// Header: eyebrow + club headline.
+	// Header: eyebrow + club headline (full width).
 	Col->AddChildToVerticalBox(MakeEyebrow(WidgetTree, TEXT("LAST SHOT")));
 	TowerClub = WidgetTree->ConstructWidget<UTextBlock>();
 	TowerClub->SetText(FText::FromString(TEXT("-")));
-	TowerClub->SetFont(Display(24, FName(TEXT("SemiBold"))));
+	TowerClub->SetFont(Display(28, FName(TEXT("SemiBold"))));
 	TowerClub->SetColorAndOpacity(FSlateColor(Color::Text()));
-	if (UVerticalBoxSlot* HS = Col->AddChildToVerticalBox(TowerClub)) { HS->SetPadding(FMargin(0.f, 2.f, 0.f, 8.f)); }
+	if (UVerticalBoxSlot* HS = Col->AddChildToVerticalBox(TowerClub)) { HS->SetPadding(FMargin(0.f, 2.f, 0.f, 2.f)); }
 
-	TowerBall      = BuildTowerRow(WidgetTree, Col, TEXT("BALL SPEED"), false);
-	TowerClubSpeed = BuildTowerRow(WidgetTree, Col, TEXT("CLUB SPEED"), false, &TowerClubSpeedRow);
-	TowerSmash     = BuildTowerRow(WidgetTree, Col, TEXT("SMASH"),      false, &TowerSmashRow);
-	TowerLaunch    = BuildTowerRow(WidgetTree, Col, TEXT("LAUNCH"),     false);
-	TowerSpin      = BuildTowerRow(WidgetTree, Col, TEXT("SPIN"),       false);
-	TowerCarry     = BuildTowerRow(WidgetTree, Col, TEXT("CARRY"),      true);
-	TowerTotal     = BuildTowerRow(WidgetTree, Col, TEXT("TOTAL"),      false);
-	TowerApex      = BuildTowerRow(WidgetTree, Col, TEXT("APEX"),       false);
-	TowerDescent   = BuildTowerRow(WidgetTree, Col, TEXT("DESCENT"),    false);
-	TowerHang      = BuildTowerRow(WidgetTree, Col, TEXT("HANG"),       false);
-	TowerOffline   = BuildTowerRow(WidgetTree, Col, TEXT("OFFLINE"),    false);
+	// 2-column tile grid: two BuildTowerTile cells per row split the width evenly.
+	auto NewRow = [&]() -> UHorizontalBox*
+	{
+		UHorizontalBox* R = WidgetTree->ConstructWidget<UHorizontalBox>();
+		Col->AddChildToVerticalBox(R);
+		return R;
+	};
 
-	// Club-delivery rows (AoA / path / face) -- collapsed unless the LM reports club data.
-	UVerticalBox* DeliveryCol = WidgetTree->ConstructWidget<UVerticalBox>();
-	TowerAttack = BuildTowerRow(WidgetTree, DeliveryCol, TEXT("ATTACK"), false);
-	TowerPath   = BuildTowerRow(WidgetTree, DeliveryCol, TEXT("PATH"),   false);
-	TowerFace   = BuildTowerRow(WidgetTree, DeliveryCol, TEXT("FACE"),   false);
-	if (UVerticalBoxSlot* DS = Col->AddChildToVerticalBox(DeliveryCol)) { DS->SetPadding(FMargin(0.f, 2.f, 0.f, 0.f)); }
-	TowerDeliveryRow = DeliveryCol;
+	UHorizontalBox* R = NewRow();
+	TowerBall   = BuildTowerTile(WidgetTree, R, TEXT("BALL SPEED"), false);
+	TowerLaunch = BuildTowerTile(WidgetTree, R, TEXT("LAUNCH"),     false);
 
-	// Fixed width, anchored mid-left over the scene.
+	R = NewRow();
+	TowerSpin  = BuildTowerTile(WidgetTree, R, TEXT("SPIN"),  false);
+	TowerCarry = BuildTowerTile(WidgetTree, R, TEXT("CARRY"), true);
+
+	R = NewRow();
+	TowerTotal = BuildTowerTile(WidgetTree, R, TEXT("TOTAL"), false);
+	TowerApex  = BuildTowerTile(WidgetTree, R, TEXT("APEX"),  false);
+
+	R = NewRow();
+	TowerDescent = BuildTowerTile(WidgetTree, R, TEXT("DESCENT"), false);
+	TowerHang    = BuildTowerTile(WidgetTree, R, TEXT("HANG"),    false);
+
+	// OFFLINE (always) pairs with CLUB SPEED (collapses to leave OFFLINE alone when no club data).
+	R = NewRow();
+	TowerOffline   = BuildTowerTile(WidgetTree, R, TEXT("OFFLINE"),    false);
+	TowerClubSpeed = BuildTowerTile(WidgetTree, R, TEXT("CLUB SPEED"), false, &TowerClubSpeedRow);
+
+	// Club-delivery rows -- collapsed as a unit unless the LM reports club data.
+	R = NewRow();
+	TowerSmashRow = R;
+	TowerSmash  = BuildTowerTile(WidgetTree, R, TEXT("SMASH"),  false);
+	TowerAttack = BuildTowerTile(WidgetTree, R, TEXT("ATTACK"), false);
+
+	R = NewRow();
+	TowerDeliveryRow = R;
+	TowerPath = BuildTowerTile(WidgetTree, R, TEXT("PATH"), false);
+	TowerFace = BuildTowerTile(WidgetTree, R, TEXT("FACE"), false);
+
+	// Fixed width (room for two columns), anchored mid-left over the scene.
 	USizeBox* Wrap = WidgetTree->ConstructWidget<USizeBox>();
-	Wrap->SetWidthOverride(212.f);
+	Wrap->SetWidthOverride(320.f);
 	Wrap->SetContent(Tower);
 	MetricsTower = Wrap;
 	if (UCanvasPanelSlot* TS = Root->AddChildToCanvas(Wrap))

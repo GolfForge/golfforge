@@ -2,6 +2,24 @@
 
 > Dated milestone summaries, newest on top. The durable outcome + the committed artifact, not the blow-by-blow — process detail lives in git history, `docs/ue5-cookbook.md`, and the scripts themselves.
 
+## 2026-06-19 — GOL-149/155: HUD upgrade — density cycle + 2-col metrics tower + shot-list reskin + club data
+
+Pre-0.0.8-alpha HUD pass (4 items). **(1) GOL-149 one-key HUD density cycle (`V`):** Full (telemetry
+card + control bar) -> Compact (a new **2-column left metrics tower**) -> Hidden (clean, for
+screenshots). Persisted via `GolfDisplay::Read/WriteHudDensity`; `AGolfRangeHUD::ApplyHudDensity` enforces
+it each Tick (after `UpdateInRoundHud`) so it survives the per-tick visibility logic; Hidden also drops the
+swing meter / round HUD / menu / ready badge. Controls never lock. **(2) Metrics tower:** tile grid with
+ball/club speed, smash, launch, spin, carry (accent), total, **apex / descent / hang** (pulled from
+`FBallTrajectory` in `OnShotOutcome`) + a conditional club-delivery block (club speed / smash / AoA / path
+/ face) that collapses when the LM sends no club data. **(3) GOL-155 (partial):** `UShotHistoryPanel`
+reskinned onto `GolfUITheme` (glass card, column header, mono columns, accent carry, zebra striping).
+**(4) Club data:** `ClubSpeedMps/AttackAngleDeg/ClubPathDeg/FaceToTargetDeg` on `FShotTakenEvent` +
+`FShotOutcomeEvent`; `GSProConnectDriver` parses `ClubData.{Speed,AngleOfAttack,Path,FaceToTarget}` when a
+connector bundles it (gated on `Speed>0`); new `Golfsim.GSProConnect.ClubDataCaptured` test. Suite
+**107/107** green on UE 5.8. Commits `7dabcc2` + the tower rework. Remaining: GOL-155 cheat-sheet /
+sessions / manual-shot panels; GOL-149 dispersion viz (deferred). Not yet cooked (0.0.8-alpha pending two
+more docket items).
+
 ## 2026-06-19 — GOL-181: Rapsodo MLM2PRO validated via MLM2PRO-BT-APP (docs only)
 
 The MLM2PRO connects to GolfForge with **zero new code**: ran [`Duwaynef/MLM2PRO-BT-APP`](https://github.com/Duwaynef/MLM2PRO-BT-APP)

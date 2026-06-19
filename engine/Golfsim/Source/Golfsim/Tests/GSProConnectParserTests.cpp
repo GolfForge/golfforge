@@ -256,4 +256,53 @@ bool FGolfsimGSProBackspinCasingTest::RunTest(const FString& /*Parameters*/)
 	return true;
 }
 
+// --- Club data captured when the message bundles real ClubData; ignored when it's the zero filler ----
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FGolfsimGSProClubDataTest, "Golfsim.GSProConnect.ClubDataCaptured",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FGolfsimGSProClubDataTest::RunTest(const FString& /*Parameters*/)
+{
+	// Ball + real club data in one message (a connector that bundles both).
+	{
+		const FString Json = TEXT("{\"BallData\":{\"Speed\":150.0,\"BackSpin\":2800.0,\"SideSpin\":0.0,\"VLA\":12.0},")
+			TEXT("\"ClubData\":{\"Speed\":105.0,\"AngleOfAttack\":-3.5,\"Path\":1.2,\"FaceToTarget\":-0.8},")
+			TEXT("\"ShotDataOptions\":{\"ContainsBallData\":true,\"ContainsClubData\":true,\"IsHeartBeat\":false}}");
+
+		FShotTakenEvent Out;
+		bool bSpinEstimated = false;
+		const bool bOk = UGSProConnectDriver::ParseShot(Json, Out, bSpinEstimated);
+
+		TestTrue(TEXT("parse succeeded"), bOk);
+		TestTrue(TEXT("club speed mph->m/s"), FMath::IsNearlyEqual(Out.ClubSpeedMps, 105.0 * 0.44704, 0.01));
+		TestTrue(TEXT("angle of attack captured"), FMath::IsNearlyEqual(Out.AttackAngleDeg, -3.5, 0.01));
+		TestTrue(TEXT("club path captured"), FMath::IsNearlyEqual(Out.ClubPathDeg, 1.2, 0.01));
+		TestTrue(TEXT("face-to-target captured"), FMath::IsNearlyEqual(Out.FaceToTargetDeg, -0.8, 0.01));
+	}
+
+	// Zero-Speed ClubData filler (the GSPro omitempty quirk) must NOT populate club metrics.
+	{
+		const FString Json = TEXT("{\"BallData\":{\"Speed\":150.0,\"BackSpin\":2800.0,\"VLA\":12.0},")
+			TEXT("\"ClubData\":{\"Speed\":0.0,\"AngleOfAttack\":0.0,\"Path\":0.0,\"FaceToTarget\":0.0},")
+			TEXT("\"ShotDataOptions\":{\"ContainsBallData\":true,\"ContainsClubData\":false,\"IsHeartBeat\":false}}");
+
+		FShotTakenEvent Out;
+		bool bSpinEstimated = false;
+		UGSProConnectDriver::ParseShot(Json, Out, bSpinEstimated);
+		TestTrue(TEXT("filler club speed stays 0"), FMath::IsNearlyEqual(Out.ClubSpeedMps, 0.0));
+	}
+
+	// Ball-only message (no ClubData key at all, e.g. MLM2PRO) leaves club metrics 0.
+	{
+		const FString Json = TEXT("{\"BallData\":{\"Speed\":150.0,\"BackSpin\":2800.0,\"VLA\":12.0},")
+			TEXT("\"ShotDataOptions\":{\"ContainsBallData\":true,\"IsHeartBeat\":false}}");
+
+		FShotTakenEvent Out;
+		bool bSpinEstimated = false;
+		UGSProConnectDriver::ParseShot(Json, Out, bSpinEstimated);
+		TestTrue(TEXT("ball-only club speed 0"), FMath::IsNearlyEqual(Out.ClubSpeedMps, 0.0));
+	}
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

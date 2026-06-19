@@ -91,6 +91,14 @@ struct FShotTakenEvent : public FGolfEvent
 	UPROPERTY() double SidespinRpm = 0.0;    // - draw, + fade
 	UPROPERTY() double SmashFactor = 0.0;    // provenance only; the integrator ignores it
 
+	// Optional club-delivery metrics -- populated only when a launch monitor reports club data (GSPro
+	// ContainsClubData). Ball-only monitors (e.g. MLM2PRO) leave these 0; consumers show a club row
+	// only when ClubSpeedMps > 0. SI: speed m/s, angles degrees.
+	UPROPERTY() double ClubSpeedMps = 0.0;
+	UPROPERTY() double AttackAngleDeg = 0.0;   // angle of attack; + = up
+	UPROPERTY() double ClubPathDeg = 0.0;      // + = in-to-out (right)
+	UPROPERTY() double FaceToTargetDeg = 0.0;  // face angle to target; + = open/right
+
 	UPROPERTY() FString Club;                // e.g. "7-Iron"
 	UPROPERTY() FString Lie = TEXT("tee");   // tee/fairway/rough/bunker/green/...
 	UPROPERTY() bool bSpinEstimated = false; // true if backspin was computed (not measured by the LM)
@@ -124,6 +132,12 @@ struct FShotOutcomeEvent : public FGolfEvent
 	UPROPERTY() double LaunchAngleDeg = 0.0;
 	UPROPERTY() double BackspinRpm = 0.0;
 	UPROPERTY() bool bSpinEstimated = false;
+
+	// Club-delivery metrics copied from shot.taken (all 0 when the LM reported no club data).
+	UPROPERTY() double ClubSpeedMps = 0.0;
+	UPROPERTY() double AttackAngleDeg = 0.0;
+	UPROPERTY() double ClubPathDeg = 0.0;
+	UPROPERTY() double FaceToTargetDeg = 0.0;
 
 	// In-process render payload: the sampled flight path the view replays. Deliberately NOT a
 	// UPROPERTY -- it never serializes (shot_outcome is local/non-replicated), it only carries the

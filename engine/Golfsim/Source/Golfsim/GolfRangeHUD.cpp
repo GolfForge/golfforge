@@ -247,6 +247,7 @@ void AGolfRangeHUD::Tick(float DeltaSeconds)
 
 	UpdateFollowCam(DeltaSeconds);
 	UpdateInRoundHud();   // GOL-144: drive the glass round panel + hole map; toggle vs the legacy panel
+	ApplyHudDensity();    // GOL-149: enforce the Full/Compact/Hidden layout after the per-tick visibility logic
 	UpdateAmbientPlayback();   // GOL-166: birds play only in-game, never under the menu / course select
 
 	// GOL-29: keep retrying the pin placement until the actor exists. EnsureInputBound calls
@@ -777,6 +778,9 @@ void AGolfRangeHUD::EnsureInputBound()
 	InputComponent->BindKey(EKeys::C,        IE_Pressed,  this, &AGolfRangeHUD::ToggleCameraMode);       // GOL-73 camera flip
 	InputComponent->BindKey(EKeys::G,        IE_Pressed,  this, &AGolfRangeHUD::ToggleBreakGrid);        // GOL-203 green break grid
 	InputComponent->BindKey(EKeys::H,        IE_Pressed,  this, &AGolfRangeHUD::ToggleHistoryFromKey);   // GOL-65
+	InputComponent->BindKey(EKeys::V,        IE_Pressed,  this, &AGolfRangeHUD::CycleHudDensity);        // GOL-149 HUD density
+	// GOL-149: restore the player's saved HUD density (Tick's ApplyHudDensity then enforces it).
+	HudDensity = static_cast<EHudDensity>(GolfDisplay::ReadHudDensity());
 	// Settings/credits menu. Escape works in packaged builds + PIE (the editor's Escape-stops-play
 	// only applies when the viewport hasn't captured focus); golfsim.Credits also opens it.
 	InputComponent->BindKey(EKeys::Escape,   IE_Pressed,  this, &AGolfRangeHUD::ToggleSettingsMenu);
@@ -1328,6 +1332,45 @@ void AGolfRangeHUD::ToggleHoleMap()
 		return;
 	}
 	RoundHud->CycleMapSize();   // chip -> card -> large -> chip; broadcasts -> persisted
+}
+
+void AGolfRangeHUD::CycleHudDensity()
+{
+	if (InputGated()) { return; }   // don't cycle while a modal owns the screen
+	const int32 Next = (static_cast<int32>(HudDensity) + 1) % 3;
+	HudDensity = static_cast<EHudDensity>(Next);
+	GolfDisplay::WriteHudDensity(Next);   // persist so the HUD opens how the player left it
+	ApplyHudDensity();
+}
+
+void AGolfRangeHUD::ApplyHudDensity()
+{
+	if (!Panel) { return; }
+	const bool bDensityHidden  = (HudDensity == EHudDensity::Hidden);
+	const bool bDensityFull    = (HudDensity == EHudDensity::Full);
+	const bool bDensityCompact = (HudDensity == EHudDensity::Compact);
+
+	// Card + control bar only in Full; the rich left tower only in Compact.
+	Panel->SetMetricsCardVisible(bDensityFull);
+	Panel->SetControlBarVisible(bDensityFull);
+	Panel->SetTowerVisible(bDensityCompact);
+
+	// Swing meter follows Game mode -- re-applied every tick (SetInputMode sets it only on a mode
+	// change, so leaving Hidden must restore it here). Hidden hides it outright.
+	if (SwingMeter)
+	{
+		const bool bShowMeter = !bDensityHidden && (CurrentInputMode == EInputMode::Game);
+		SwingMeter->SetVisibility(bShowMeter ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Collapsed);
+	}
+
+	// Hidden = a clean frame for screenshots: also drop the in-round HUD, menu button + ready badge.
+	// (Non-Hidden leaves those to UpdateInRoundHud, which ran just before this in Tick.)
+	if (bDensityHidden)
+	{
+		if (RoundHud) { RoundHud->SetVisibility(ESlateVisibility::Collapsed); }
+		Panel->SetMenuButtonVisible(false);
+		Panel->SetLaunchMonitorReady(false);
+	}
 }
 
 void AGolfRangeHUD::PushHoleMapStatic(const GolfsimRound::FRoundState& S)
@@ -3110,6 +3153,15 @@ void AGolfRangeHUD::OnShotOutcome(const FGolfEvent& Event)
 		const double StartTotalYd = (Ball && Ball->IsPlaying()) ? StartCarryYd : TotalYd;
 		Panel->UpdateMetrics(ClubName, SpeedMph, LaunchDeg, SpinRpm,
 			StartCarryYd, StartTotalYd, OfflineYd, Out.bSpinEstimated);
+
+		// GOL-149: the compact tower's non-animating extras + conditional club-delivery rows. Apex in
+		// feet (golf convention); smash from ball/club when the connector reported club speed (else 0 ->
+		// the club rows stay collapsed).
+		const double ApexFt  = Out.Trajectory.ApexM * 3.280839895;
+		const double ClubMph = Out.ClubSpeedMps * 2.2369362921;
+		const double Smash   = (Out.ClubSpeedMps > 0.0) ? (Out.BallSpeedMps / Out.ClubSpeedMps) : 0.0;
+		Panel->UpdateTowerExtras(ApexFt, Out.Trajectory.DescentAngleDeg, Out.Trajectory.FlightTimeS,
+			ClubMph, Smash, Out.AttackAngleDeg, Out.ClubPathDeg, Out.FaceToTargetDeg);
 	}
 	if (ManualDialog && bManualOpen)
 	{

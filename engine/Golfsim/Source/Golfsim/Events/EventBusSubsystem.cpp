@@ -189,6 +189,12 @@ void UEventBusSubsystem::OnShotTaken(const FGolfEvent& Event)
 	Out.BackspinRpm    = Shot.BackspinRpm;
 	Out.bSpinEstimated = Shot.bSpinEstimated;
 
+	// Club-delivery metrics (0 when the LM didn't report club data; the HUD gates display on ClubSpeedMps).
+	Out.ClubSpeedMps     = Shot.ClubSpeedMps;
+	Out.AttackAngleDeg   = Shot.AttackAngleDeg;
+	Out.ClubPathDeg      = Shot.ClubPathDeg;
+	Out.FaceToTargetDeg  = Shot.FaceToTargetDeg;
+
 	UE_LOG(LogTemp, Display,
 		TEXT("golfsim EventBus: shot.taken(%s) -> session.shot_outcome carry=%.1fm total=%.1fm lie=%s valid=%d"),
 		*Shot.Club, Out.CarryM, Out.TotalM, *Out.FinalLie, T.bValid ? 1 : 0);

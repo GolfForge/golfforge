@@ -21,6 +21,8 @@ class UBorder;
 class USpinBox;
 class UCheckBox;
 class UHorizontalBox;
+class UWidget;
+class UCanvasPanel;
 enum class ELaunchMonitorStatus : uint8;   // Drivers/LaunchMonitorManager.h
 
 UCLASS()
@@ -37,6 +39,18 @@ public:
 	// spin as computed (not measured by the LM) -- shown as "5600 rpm est". TotalYd is carry + ground roll.
 	void UpdateMetrics(const FString& Club, double SpeedMph, double LaunchDeg,
 		double SpinRpm, double CarryYd, double TotalYd, double OfflineYd, bool bSpinEstimated = false);
+
+	// GOL-149 density cycle: the HUD toggles these to switch HUD layouts. Full = card + bar; Compact =
+	// the left metrics tower (bar hidden); Hidden = none (clean, for screenshots).
+	void SetMetricsCardVisible(bool bVisible);
+	void SetControlBarVisible(bool bVisible);
+	void SetTowerVisible(bool bVisible);
+
+	// GOL-149: the tower's non-animating extras + conditional club rows. Called once per shot from the
+	// HUD (the animating ball/carry/total values flow through UpdateMetrics, which also feeds the tower).
+	// ClubSpeedMph <= 0 collapses the club-delivery rows. Apex feet, Descent degrees, Hang seconds.
+	void UpdateTowerExtras(double ApexFt, double DescentDeg, double HangS,
+		double ClubSpeedMph, double Smash, double AttackDeg, double ClubPathDeg, double FaceDeg);
 
 	// §6 launch-monitor status pill (GOL-145). Online -> green "Monitor / {Name} · Live"; Sim -> amber
 	// "Mode / Game · Keyboard"; Pairing/Off -> amber "Mode / {Name} · Pairing… | Offline". Driven by the
@@ -166,6 +180,7 @@ protected:
 
 private:
 	void BuildTree();
+	void BuildTower(UCanvasPanel* Root);   // GOL-149: left-side rich metrics tower
 	void EmitCtpConfig();   // read all CTP controls -> OnCtpConfigChanged (no-op while suppressed)
 	void EmitPuttingConfig();   // read the putting controls -> OnPuttingConfigChanged (no-op while suppressed)
 
@@ -205,6 +220,29 @@ private:
 	UPROPERTY(Transient) TObjectPtr<UTextBlock> ValCarry;
 	UPROPERTY(Transient) TObjectPtr<UTextBlock> ValTotal;
 	UPROPERTY(Transient) TObjectPtr<UTextBlock> ValOffline;
+
+	// GOL-149: density-cycle handles + the left metrics tower.
+	UPROPERTY(Transient) TObjectPtr<UWidget> TelemetryCard;   // bottom-left card (the Readout border)
+	UPROPERTY(Transient) TObjectPtr<UWidget> ControlBar;      // full-width bottom bar (the Bar border)
+	UPROPERTY(Transient) TObjectPtr<UWidget> MetricsTower;    // left-side compact tower (the wrap box)
+	UPROPERTY(Transient) TObjectPtr<UTextBlock> TowerClub;
+	UPROPERTY(Transient) TObjectPtr<UTextBlock> TowerBall;
+	UPROPERTY(Transient) TObjectPtr<UTextBlock> TowerClubSpeed;
+	UPROPERTY(Transient) TObjectPtr<UTextBlock> TowerSmash;
+	UPROPERTY(Transient) TObjectPtr<UTextBlock> TowerLaunch;
+	UPROPERTY(Transient) TObjectPtr<UTextBlock> TowerSpin;
+	UPROPERTY(Transient) TObjectPtr<UTextBlock> TowerCarry;
+	UPROPERTY(Transient) TObjectPtr<UTextBlock> TowerTotal;
+	UPROPERTY(Transient) TObjectPtr<UTextBlock> TowerApex;
+	UPROPERTY(Transient) TObjectPtr<UTextBlock> TowerDescent;
+	UPROPERTY(Transient) TObjectPtr<UTextBlock> TowerHang;
+	UPROPERTY(Transient) TObjectPtr<UTextBlock> TowerOffline;
+	UPROPERTY(Transient) TObjectPtr<UTextBlock> TowerAttack;
+	UPROPERTY(Transient) TObjectPtr<UTextBlock> TowerPath;
+	UPROPERTY(Transient) TObjectPtr<UTextBlock> TowerFace;
+	UPROPERTY(Transient) TObjectPtr<UWidget> TowerClubSpeedRow;  // collapsed when no club data
+	UPROPERTY(Transient) TObjectPtr<UWidget> TowerSmashRow;
+	UPROPERTY(Transient) TObjectPtr<UWidget> TowerDeliveryRow;   // AoA / path / face rows
 
 	// Range-only dev controls (pin distance + putt-from-green), hidden in a round.
 	UPROPERTY(Transient) TObjectPtr<UHorizontalBox> RangeControlsRow;

@@ -96,6 +96,15 @@ private:
 	// under menus).
 	void ToggleHoleMap();
 
+	// GOL-149: one-key HUD density cycle. V cycles Full -> Compact -> Hidden (persisted via GolfDisplay).
+	// Full = telemetry card + control bar; Compact = the left metrics tower (bar hidden); Hidden = clean
+	// (for screenshots). ApplyHudDensity (called every Tick, after UpdateInRoundHud) enforces the layout
+	// over the per-tick visibility logic. Values match the persisted int (0/1/2).
+	enum class EHudDensity : uint8 { Full = 0, Compact = 1, Hidden = 2 };
+	void CycleHudDensity();
+	void ApplyHudDensity();
+	EHudDensity HudDensity = EHudDensity::Full;
+
 	// Swing-meter polish: the verdict stays up through the flight/roll, then resets to the idle
 	// dashes 2 s after the ball settles (whiffs reset 2 s after the whiff -- nothing flies). The
 	// launch-monitor readout keeps the last shot -- only the meter cleans up.

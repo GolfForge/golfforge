@@ -54,6 +54,33 @@ namespace
 		}
 		return Val;
 	}
+
+	// GOL-149: one compact tower row -- a faint eyebrow label on the left, a mono value on the right,
+	// in a single line. Denser than BuildTile (no inset cell) so the tower fits many metrics. Returns
+	// the value text block; *OutRow (if given) receives the row widget so the caller can collapse it.
+	UTextBlock* BuildTowerRow(UWidgetTree* Tree, UVerticalBox* Col, const TCHAR* Label,
+		bool bAccent, TObjectPtr<UWidget>* OutRow = nullptr)
+	{
+		UHorizontalBox* Row = Tree->ConstructWidget<UHorizontalBox>();
+		if (UHorizontalBoxSlot* LS = Row->AddChildToHorizontalBox(MakeEyebrow(Tree, Label)))
+		{
+			LS->SetVerticalAlignment(VAlign_Center);
+		}
+		USpacer* Gap = Tree->ConstructWidget<USpacer>();
+		if (UHorizontalBoxSlot* GS = Row->AddChildToHorizontalBox(Gap)) { GS->SetSize(FSlateChildSize(ESlateSizeRule::Fill)); }
+		UTextBlock* Val = Tree->ConstructWidget<UTextBlock>();
+		Val->SetText(FText::FromString(TEXT("-")));
+		Val->SetFont(Mono(16, FName(TEXT("Medium"))));
+		Val->SetColorAndOpacity(FSlateColor(bAccent ? Color::Accent() : Color::Text()));
+		if (UHorizontalBoxSlot* VS = Row->AddChildToHorizontalBox(Val))
+		{
+			VS->SetVerticalAlignment(VAlign_Center);
+			VS->SetPadding(FMargin(16.f, 0.f, 0.f, 0.f));
+		}
+		if (UVerticalBoxSlot* RS = Col->AddChildToVerticalBox(Row)) { RS->SetPadding(FMargin(0.f, 3.f)); }
+		if (OutRow) { *OutRow = Row; }
+		return Val;
+	}
 }
 
 void UGolfRangePanel::NativeOnInitialized()
@@ -131,6 +158,7 @@ void UGolfRangePanel::BuildTree()
 
 	// ── Telemetry readout (bottom-left glass card) ───────────────────────────────────────────────
 	UBorder* Readout = MakeGlassPanel(WidgetTree);
+	TelemetryCard = Readout;   // GOL-149: density cycle toggles this whole card
 	if (UVerticalBoxSlot* RS = Stack->AddChildToVerticalBox(Readout))
 	{
 		RS->SetHorizontalAlignment(HAlign_Left);
@@ -410,6 +438,7 @@ void UGolfRangePanel::BuildTree()
 	UBorder* Bar = WidgetTree->ConstructWidget<UBorder>();
 	Bar->SetBrush(RoundedBrush(Color::GlassFill(), 0.f));
 	Bar->SetPadding(FMargin(24.f, 12.f));
+	ControlBar = Bar;   // GOL-149: density cycle toggles the whole control bar
 	if (UVerticalBoxSlot* BarSlot = Stack->AddChildToVerticalBox(Bar)) { BarSlot->SetHorizontalAlignment(HAlign_Fill); }
 
 	UHorizontalBox* BarRow = WidgetTree->ConstructWidget<UHorizontalBox>();
@@ -481,6 +510,9 @@ void UGolfRangePanel::BuildTree()
 
 	// Default look = Sim / game mode (the HUD re-applies this once the manager is wired).
 	SetLaunchMonitorStatus(ELaunchMonitorStatus::Sim, TEXT("Simulated (no device)"));
+
+	// GOL-149: the compact left-side metrics tower (hidden until the density cycle selects Compact).
+	BuildTower(Root);
 }
 
 namespace
@@ -517,7 +549,8 @@ void UGolfRangePanel::SetSelectedLaunchMonitorIndex(int32 Index) { SetComboIndex
 
 void UGolfRangePanel::SetMetricClubName(const FString& Club)
 {
-	if (ValClub) { ValClub->SetText(FText::FromString(Club.ToUpper())); }
+	if (ValClub)   { ValClub->SetText(FText::FromString(Club.ToUpper())); }
+	if (TowerClub) { TowerClub->SetText(FText::FromString(Club.ToUpper())); }
 }
 
 void UGolfRangePanel::SetRangeControlsVisible(bool bVisible)
@@ -746,27 +779,127 @@ void UGolfRangePanel::ReturnFocusToGameViewport()
 	}
 }
 
+void UGolfRangePanel::BuildTower(UCanvasPanel* Root)
+{
+	UBorder* Tower = MakeGlassPanel(WidgetTree);
+	UVerticalBox* Col = WidgetTree->ConstructWidget<UVerticalBox>();
+	Tower->SetContent(Col);
+
+	// Header: eyebrow + club headline.
+	Col->AddChildToVerticalBox(MakeEyebrow(WidgetTree, TEXT("LAST SHOT")));
+	TowerClub = WidgetTree->ConstructWidget<UTextBlock>();
+	TowerClub->SetText(FText::FromString(TEXT("-")));
+	TowerClub->SetFont(Display(24, FName(TEXT("SemiBold"))));
+	TowerClub->SetColorAndOpacity(FSlateColor(Color::Text()));
+	if (UVerticalBoxSlot* HS = Col->AddChildToVerticalBox(TowerClub)) { HS->SetPadding(FMargin(0.f, 2.f, 0.f, 8.f)); }
+
+	TowerBall      = BuildTowerRow(WidgetTree, Col, TEXT("BALL SPEED"), false);
+	TowerClubSpeed = BuildTowerRow(WidgetTree, Col, TEXT("CLUB SPEED"), false, &TowerClubSpeedRow);
+	TowerSmash     = BuildTowerRow(WidgetTree, Col, TEXT("SMASH"),      false, &TowerSmashRow);
+	TowerLaunch    = BuildTowerRow(WidgetTree, Col, TEXT("LAUNCH"),     false);
+	TowerSpin      = BuildTowerRow(WidgetTree, Col, TEXT("SPIN"),       false);
+	TowerCarry     = BuildTowerRow(WidgetTree, Col, TEXT("CARRY"),      true);
+	TowerTotal     = BuildTowerRow(WidgetTree, Col, TEXT("TOTAL"),      false);
+	TowerApex      = BuildTowerRow(WidgetTree, Col, TEXT("APEX"),       false);
+	TowerDescent   = BuildTowerRow(WidgetTree, Col, TEXT("DESCENT"),    false);
+	TowerHang      = BuildTowerRow(WidgetTree, Col, TEXT("HANG"),       false);
+	TowerOffline   = BuildTowerRow(WidgetTree, Col, TEXT("OFFLINE"),    false);
+
+	// Club-delivery rows (AoA / path / face) -- collapsed unless the LM reports club data.
+	UVerticalBox* DeliveryCol = WidgetTree->ConstructWidget<UVerticalBox>();
+	TowerAttack = BuildTowerRow(WidgetTree, DeliveryCol, TEXT("ATTACK"), false);
+	TowerPath   = BuildTowerRow(WidgetTree, DeliveryCol, TEXT("PATH"),   false);
+	TowerFace   = BuildTowerRow(WidgetTree, DeliveryCol, TEXT("FACE"),   false);
+	if (UVerticalBoxSlot* DS = Col->AddChildToVerticalBox(DeliveryCol)) { DS->SetPadding(FMargin(0.f, 2.f, 0.f, 0.f)); }
+	TowerDeliveryRow = DeliveryCol;
+
+	// Fixed width, anchored mid-left over the scene.
+	USizeBox* Wrap = WidgetTree->ConstructWidget<USizeBox>();
+	Wrap->SetWidthOverride(212.f);
+	Wrap->SetContent(Tower);
+	MetricsTower = Wrap;
+	if (UCanvasPanelSlot* TS = Root->AddChildToCanvas(Wrap))
+	{
+		TS->SetAnchors(FAnchors(0.f, 0.5f, 0.f, 0.5f));   // mid-left
+		TS->SetAlignment(FVector2D(0.f, 0.5f));
+		TS->SetAutoSize(true);
+		TS->SetOffsets(FMargin(28.f, 0.f, 0.f, 0.f));
+	}
+	SetTowerVisible(false);   // hidden until the density cycle selects Compact
+}
+
+void UGolfRangePanel::SetMetricsCardVisible(bool bVisible)
+{
+	if (TelemetryCard) { TelemetryCard->SetVisibility(bVisible ? ESlateVisibility::Visible : ESlateVisibility::Collapsed); }
+}
+
+void UGolfRangePanel::SetControlBarVisible(bool bVisible)
+{
+	if (ControlBar) { ControlBar->SetVisibility(bVisible ? ESlateVisibility::Visible : ESlateVisibility::Collapsed); }
+}
+
+void UGolfRangePanel::SetTowerVisible(bool bVisible)
+{
+	// Display-only: never eats clicks (HitTestInvisible), unlike the card/bar which hold controls.
+	if (MetricsTower) { MetricsTower->SetVisibility(bVisible ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Collapsed); }
+}
+
+void UGolfRangePanel::UpdateTowerExtras(double ApexFt, double DescentDeg, double HangS,
+	double ClubSpeedMph, double Smash, double AttackDeg, double ClubPathDeg, double FaceDeg)
+{
+	if (TowerApex)    { TowerApex->SetText(FText::FromString(FString::Printf(TEXT("%.0f ft"), ApexFt))); }
+	if (TowerDescent) { TowerDescent->SetText(FText::FromString(FString::Printf(TEXT("%.0f°"), DescentDeg))); }
+	if (TowerHang)    { TowerHang->SetText(FText::FromString(FString::Printf(TEXT("%.1f s"), HangS))); }
+
+	// Club-delivery rows appear only when the connector actually reported club data.
+	const bool bHasClub = (ClubSpeedMph > 0.0);
+	const ESlateVisibility ClubVis = bHasClub ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Collapsed;
+	if (TowerClubSpeedRow) { TowerClubSpeedRow->SetVisibility(ClubVis); }
+	if (TowerSmashRow)     { TowerSmashRow->SetVisibility(ClubVis); }
+	if (TowerDeliveryRow)  { TowerDeliveryRow->SetVisibility(ClubVis); }
+	if (bHasClub)
+	{
+		if (TowerClubSpeed) { TowerClubSpeed->SetText(FText::FromString(FString::Printf(TEXT("%.0f mph"), ClubSpeedMph))); }
+		if (TowerSmash)     { TowerSmash->SetText(FText::FromString(FString::Printf(TEXT("%.2f"), Smash))); }
+		if (TowerAttack)    { TowerAttack->SetText(FText::FromString(FString::Printf(TEXT("%+.1f°"), AttackDeg))); }
+		if (TowerPath)      { TowerPath->SetText(FText::FromString(FString::Printf(TEXT("%+.1f°"), ClubPathDeg))); }
+		if (TowerFace)      { TowerFace->SetText(FText::FromString(FString::Printf(TEXT("%+.1f°"), FaceDeg))); }
+	}
+}
+
 void UGolfRangePanel::UpdateMetrics(const FString& Club, double SpeedMph, double LaunchDeg,
 	double SpinRpm, double CarryYd, double TotalYd, double OfflineYd, bool bSpinEstimated)
 {
-	if (ValClub)   { ValClub->SetText(FText::FromString(Club.ToUpper())); }
-	if (ValSpeed)  { ValSpeed->SetText(FText::FromString(FString::Printf(TEXT("%.0f mph"), SpeedMph))); }
-	if (ValLaunch) { ValLaunch->SetText(FText::FromString(FString::Printf(TEXT("%.1f°"), LaunchDeg))); }
-	if (ValSpin)
-	{
-		// Mark estimated spin so it's clearly computed, not measured by the LM.
-		ValSpin->SetText(FText::FromString(bSpinEstimated
-			? FString::Printf(TEXT("%.0f rpm est"), SpinRpm)
-			: FString::Printf(TEXT("%.0f rpm"), SpinRpm)));
-	}
-	if (ValCarry)  { ValCarry->SetText(FText::FromString(FString::Printf(TEXT("%.0f yd"), CarryYd))); }
-	if (ValTotal)  { ValTotal->SetText(FText::FromString(FString::Printf(TEXT("%.0f yd"), TotalYd))); }
-	if (ValOffline)
-	{
-		ValOffline->SetText(FText::FromString(FMath::Abs(OfflineYd) < 0.5
-			? FString(TEXT("0 yd"))
-			: FString::Printf(TEXT("%.0f yd %s"), FMath::Abs(OfflineYd), (OfflineYd >= 0.0) ? TEXT("R") : TEXT("L"))));
-	}
+	const FString ClubStr   = Club.ToUpper();
+	const FString SpeedStr  = FString::Printf(TEXT("%.0f mph"), SpeedMph);
+	const FString LaunchStr = FString::Printf(TEXT("%.1f°"), LaunchDeg);
+	// Mark estimated spin so it's clearly computed, not measured by the LM.
+	const FString SpinStr   = bSpinEstimated
+		? FString::Printf(TEXT("%.0f rpm est"), SpinRpm)
+		: FString::Printf(TEXT("%.0f rpm"), SpinRpm);
+	const FString CarryStr  = FString::Printf(TEXT("%.0f yd"), CarryYd);
+	const FString TotalStr  = FString::Printf(TEXT("%.0f yd"), TotalYd);
+	const FString OfflineStr = (FMath::Abs(OfflineYd) < 0.5)
+		? FString(TEXT("0 yd"))
+		: FString::Printf(TEXT("%.0f yd %s"), FMath::Abs(OfflineYd), (OfflineYd >= 0.0) ? TEXT("R") : TEXT("L"));
+
+	// Bottom-left card.
+	if (ValClub)    { ValClub->SetText(FText::FromString(ClubStr)); }
+	if (ValSpeed)   { ValSpeed->SetText(FText::FromString(SpeedStr)); }
+	if (ValLaunch)  { ValLaunch->SetText(FText::FromString(LaunchStr)); }
+	if (ValSpin)    { ValSpin->SetText(FText::FromString(SpinStr)); }
+	if (ValCarry)   { ValCarry->SetText(FText::FromString(CarryStr)); }
+	if (ValTotal)   { ValTotal->SetText(FText::FromString(TotalStr)); }
+	if (ValOffline) { ValOffline->SetText(FText::FromString(OfflineStr)); }
+
+	// GOL-149 compact tower (shares the animating values; non-animating extras via UpdateTowerExtras).
+	if (TowerClub)    { TowerClub->SetText(FText::FromString(ClubStr)); }
+	if (TowerBall)    { TowerBall->SetText(FText::FromString(SpeedStr)); }
+	if (TowerLaunch)  { TowerLaunch->SetText(FText::FromString(LaunchStr)); }
+	if (TowerSpin)    { TowerSpin->SetText(FText::FromString(SpinStr)); }
+	if (TowerCarry)   { TowerCarry->SetText(FText::FromString(CarryStr)); }
+	if (TowerTotal)   { TowerTotal->SetText(FText::FromString(TotalStr)); }
+	if (TowerOffline) { TowerOffline->SetText(FText::FromString(OfflineStr)); }
 }
 
 void UGolfRangePanel::SetPrimaryActionLabel(const FString& Label)

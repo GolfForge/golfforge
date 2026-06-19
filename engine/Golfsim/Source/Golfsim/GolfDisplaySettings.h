@@ -82,4 +82,10 @@ namespace GolfDisplay
 	// play (HOLE on hole start, GREEN when the ball reaches the green).
 	int32 ReadHoleMapSize();
 	void WriteHoleMapSize(int32 Size);
+
+	// HUD density cycle (GOL-149). Same [GolfForge.Round] section, key HudDensity: 0 = Full (telemetry
+	// card + control bar), 1 = Compact (left metrics tower, bar hidden), 2 = Hidden (clean -- for
+	// screenshots). Persisted so the HUD opens how the player left it; clamped [0,2].
+	int32 ReadHudDensity();
+	void WriteHudDensity(int32 Density);
 }

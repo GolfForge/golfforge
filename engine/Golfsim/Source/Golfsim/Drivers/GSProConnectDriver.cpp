@@ -659,5 +659,24 @@ bool UGSProConnectDriver::ParseShotObject(const TSharedPtr<FJsonObject>& Root, F
 	}
 	Out.bSpinEstimated = bOutSpinEstimated;
 
+	// Optional club-delivery metrics. Captured only when this message also carries real club data
+	// (ClubData.Speed > 0 -- a zero filler is the GSPro omitempty quirk, so gate on the value). The HUD
+	// shows a club row only when ClubSpeedMps > 0. NOTE: arm-model connectors (e.g. squaregolf) send
+	// club data in a SEPARATE message we reject as "no ball data" above, so their club metrics aren't
+	// captured here -- a documented gap; connectors that bundle ball+club in one message work.
+	const TSharedPtr<FJsonObject>* ClubPtr = nullptr;
+	if (Root->TryGetObjectField(TEXT("ClubData"), ClubPtr) && ClubPtr && ClubPtr->IsValid())
+	{
+		const FJsonObject* Club = ClubPtr->Get();
+		double ClubSpeedMph = 0.0;
+		if (Club->TryGetNumberField(TEXT("Speed"), ClubSpeedMph) && ClubSpeedMph > 0.0)
+		{
+			Out.ClubSpeedMps = ClubSpeedMph * GMphToMps;
+			Club->TryGetNumberField(TEXT("AngleOfAttack"), Out.AttackAngleDeg);
+			Club->TryGetNumberField(TEXT("Path"), Out.ClubPathDeg);
+			Club->TryGetNumberField(TEXT("FaceToTarget"), Out.FaceToTargetDeg);
+		}
+	}
+
 	return true;
 }

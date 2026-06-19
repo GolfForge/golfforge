@@ -487,4 +487,21 @@ namespace GolfDisplay
 		GConfig->SetInt(PlayerNameSection, HoleMapSizeKey, FMath::Clamp(Size, 0, 2), GGameUserSettingsIni);
 		GConfig->Flush(/*bRead=*/false, GGameUserSettingsIni);
 	}
+
+	// GOL-149 HUD density cycle. Same [GolfForge.Round] section.
+	static const TCHAR* HudDensityKey = TEXT("HudDensity");
+
+	int32 ReadHudDensity()
+	{
+		int32 V = 0;   // default Full: the complete HUD until the player opts into a cleaner look
+		if (GConfig) { GConfig->GetInt(PlayerNameSection, HudDensityKey, V, GGameUserSettingsIni); }
+		return FMath::Clamp(V, 0, 2);
+	}
+
+	void WriteHudDensity(int32 Density)
+	{
+		if (!GConfig) { return; }
+		GConfig->SetInt(PlayerNameSection, HudDensityKey, FMath::Clamp(Density, 0, 2), GGameUserSettingsIni);
+		GConfig->Flush(/*bRead=*/false, GGameUserSettingsIni);
+	}
 }

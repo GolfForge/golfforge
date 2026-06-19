@@ -61,9 +61,22 @@ python3 build_splatmap.py \
     --course-id my-course \
     --bbox-wgs84=-121.953,36.566,-121.937,36.580 \
     --size 4033
+
+# Sculpt bunker depressions into the heightmap (GOL-34). REQUIRED for every course --
+# without it bunkers are flat paint and a ball rolls straight across. Writes
+# heightmap_bunkers.png; THAT is the UE Landscape import target (not heightmap.png).
+python3 build_bunker_depressions.py --course-id my-course
+
+# HUD minimap + a baseline pin sheet (greens -> pins, paired to hole.geojson).
+python3 build_minimap.py   --course-id my-course
+python3 build_pin_sheet.py --course-id my-course --name "Championship Pins"
 ```
 
 Note the `=` syntax for `--bbox-wgs84`. Negative longitudes start with `-` and argparse otherwise treats them as another flag.
+
+**Every new course runs all of the above**, in order. The bunker, minimap, and pin-sheet
+steps are easy to forget after heightmap+splatmap — skipping the bunker pass is why traps
+look flat in-game.
 
 ## Backends
 
@@ -92,8 +105,11 @@ python build_heightmap.py \
 
 Once `heightmap.png` exists, in UE5:
 
-1. Create a Landscape; import heightmap as the height source.
-2. Set Landscape `RelativeScale3D.Z` to the `ue5_z_scale_pct` value in `heightmap.json` (the script computes this for you).
+1. Create a Landscape; import **`heightmap_bunkers.png`** as the height source — the bunker-sculpted map
+   (depressions + lips) from `build_bunker_depressions.py`. (`heightmap.png` is the pristine baseline; only
+   import it directly if you deliberately skipped the bunker pass.)
+2. Set Landscape `RelativeScale3D.Z` to the `ue5_z_scale_pct` value in `heightmap.json` (the script computes
+   this for you — the bunker pass keeps the same encoding, so the Z scale is unchanged when you re-import).
 3. Create a Landscape Material with at least 4 weight layers: fairway, green, bunker, rough.
 4. Import `splatmap.png` as a weightmap; UE5 will detect the 4 channels.
 5. Assign layer 0 (R) = fairway, 1 (G) = green, 2 (B) = bunker, 3 (A) = rough.

@@ -3,7 +3,7 @@
 Open-source, cross-platform golf simulator with AI-assisted course building, walking/treadmill
 integration, and a clean BLE-based hardware story for launch monitors.
 
-> **Status:** early, pre-1.0, and moving fast. **v0.0.7-alpha** makes **putting** read like real putting — an auto **putt camera** frames the line with a terrain-following aim guide, an in-world **break grid** shows the slope, and a holed putt drops into a terrain-conformed cup with a sink animation, sound, and a score toast. It also adds a new **historic links course** (**OldAndre Links**, cooked from open LIDAR) — play a full round on it or just putt its real greens — and an in-round **minimap** that tracks your ball and the hole. These sit on top of v0.0.6's **closest-to-pin practice mode** and **real bunkers** (sculpted sand with a depressed floor + raised lip), v0.0.5's **art facelift** (mown turf with mowing stripes, pond water, a mixed-species tree line, golden-hour atmosphere, ambient birdsong, a fluttering branded pin flag, a dimpled ball), and **GSPro Open Connect** launch-monitor support — bring your own monitor over its connector, **no GSPro subscription required** (Square Omni validated; more connectors in progress). Play a full **18-hole single-player round on a real LIDAR-cooked course with just a keyboard**. Expect rough edges.
+> **Status:** early, pre-1.0, and moving fast. **v0.0.8-alpha** lets you **dial in the HUD** — one key (`V`) cycles from the full readout, to a compact left-side metrics **tower** (ball + club speed, smash, launch, spin, carry, total, apex, descent, hang), to a clean hidden mode for screenshots — gives the **shot-history** panel the premium treatment, and surfaces **club-delivery data** (club speed / angle of attack / path / face) when your launch monitor reports it. It adds a new **links course**, **East Long Island Hills** (an open-LIDAR cook of a famous championship venue), bringing the catalog to **seven cooked courses** with a now-scrolling course picker, and validates the **Rapsodo MLM2PRO** over its connector. These sit on top of v0.0.7's real **putting** (auto putt-camera, in-world break grid, terrain-conformed cup with a holed-putt drop), the **OldAndre Links** historic course, and an in-round **minimap**; v0.0.6's **closest-to-pin practice** and **real bunkers** (depressed floor + raised lip); v0.0.5's **art facelift**; and **GSPro Open Connect** launch-monitor support — bring your own monitor over its connector, **no GSPro subscription required**. Play a full **18-hole single-player round on a real LIDAR-cooked course with just a keyboard**. Expect rough edges.
 
 ## Why
 
@@ -20,7 +20,7 @@ attack:
 
 ## Try it
 
-Pre-built packages are attached to the latest [GitHub Release](https://github.com/GolfForge/golfforge/releases). v0.0.7-alpha ships with three ways to play:
+Pre-built packages are attached to the latest [GitHub Release](https://github.com/GolfForge/golfforge/releases). v0.0.8-alpha ships with three ways to play:
 
 - **Single-player round** — main menu → **Play Course** → a guided round-setup flow (pick the course, choose how many holes — full 18, front/back 9, or a custom set — and the hole-out rule) → land on hole 1's tee → play stroke play on a real LIDAR-cooked course. A glass HUD tracks your score, distance to pin and conditions; a scorecard caps the round. No launch monitor needed; the built-in keyboard swing meter handles it. _(The setup wizard also lays out game types, multiple players, handicaps and tee boxes, but those aren't wired into play yet — today's round is one player, stroke play. See [Coming soon](#coming-soon).)_
 - **Practice range** — fixed-distance target green with collar/flag, full 14-club bag, a moving pin, and launch-monitor support via [OpenFlight](https://github.com/jewbetcha/openflight) (Doppler radar), the **GSPro Open Connect** connectors (use your own launch monitor — see below), or a manual-shot dialog for hardware-free testing.
@@ -54,7 +54,11 @@ A Tab cheat sheet lists the keyboard controls at any time:
 
 ![Key bindings cheat sheet — club select, swing, aim, the camera toggle and more](docs/screenshots/cheatsheet.jpg)
 
-![In-game settings — resolution, window mode, quality preset, upscaler (TSR / DLSS / XeSS) and render scale](docs/screenshots/options.jpg)
+**Keyboard controls:** `Q` / `E` change club · `Space` swing (power, then accuracy) · `←` / `→` aim · `C` camera (tee / follow / putt) · `V` HUD density (full → compact metrics tower → hidden) · `G` green break grid · `M` hole map (in a round) · `H` shot history · `N` manual-shot entry · `Tab` cheat sheet · `Esc` settings · right-mouse drag to orbit the camera.
+
+![In-game settings — resolution, window mode, quality preset, upscaler and render scale](docs/screenshots/options.jpg)
+
+> **On upscaling:** this build runs on **TSR** only. NVIDIA **DLSS** and Intel **XeSS** are temporarily disabled while GolfForge is on **Unreal Engine 5.8** — the vendor plugin builds for 5.8 aren't out yet. They return as soon as NVIDIA/Intel ship 5.8-compatible versions (AMD FSR and Mac MetalFX likewise pending).
 
 ### Windows
 
@@ -91,7 +95,7 @@ In rough priority order:
 
 - **Practice modes.** Closest-to-the-pin (configurable distance range, optional putt-out) **shipped in v0.0.6**; still to come — a TopGolf-style islands practice map and putting drills.
 - **Local multiplayer.** Stroke play with 2–4 humans on the same machine; future online peer-to-peer.
-- **More real-world courses.** Six cooked tracks ship today — five GolfForge Demo parkland courses (Black / Blue / Red / Green / Yellow) plus **OldAndre Links**, an open-LIDAR cook of a historic coastal links course; the pipeline can produce others — add yours via the [course pipeline](pipeline/README.md).
+- **More real-world courses.** Seven cooked tracks ship today — five GolfForge Demo parkland courses (Black / Blue / Red / Green / Yellow) plus two open-LIDAR links cooks, **OldAndre Links** and **East Long Island Hills**; the pipeline can produce others — add yours via the [course pipeline](pipeline/README.md).
 - **Course-quality polish.** Course-side lighting bake, 3D grass, night/low-light presets, water caustics. (Bunkers with a depressed floor + raised lip landed in v0.0.6; mowing stripes, distinct mown surfaces, pond water, mixed-species trees and golden-hour atmosphere in v0.0.5.)
 - **Walking integration.** Bluetooth FTMS treadmill driver (build-it-yourself ESP32 reference design or any FTMS-compliant treadmill); compressed walk mode; eventual incline-matching from hole elevation profiles.
 - **More launch monitors.** Bringing up more GSPro Open Connect connectors against GolfForge (Square Omni and Rapsodo MLM2PRO confirmed so far; others in progress), plus native drivers for auth-gated devices (Rapsodo R50, Foresight Launch Pro, GCQuad).
@@ -133,7 +137,7 @@ to point it at GolfForge, and the connection order that matters.
 
 ## Getting started
 
-**Requirements:** the engine builds against **Unreal Engine 5.7**, which requires an Epic Games
+**Requirements:** the engine builds against **Unreal Engine 5.8**, which requires an Epic Games
 account and acceptance of the [Unreal Engine EULA](https://www.unrealengine.com/eula). Some
 ground/tree assets are fetched per-machine from Fab — see [`docs/ue5-cookbook.md`](docs/ue5-cookbook.md).
 

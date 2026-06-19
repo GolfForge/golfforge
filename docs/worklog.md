@@ -2,6 +2,22 @@
 
 > Dated milestone summaries, newest on top. The durable outcome + the committed artifact, not the blow-by-blow — process detail lives in git history, `docs/ue5-cookbook.md`, and the scripts themselves.
 
+## 2026-06-19 — East Long Island Hills: 7th cooked course (open-LIDAR cook of the US Open venue) + picker scroll
+
+A fantasy-named cook of Shinnecock Hills for the US Open weekend, via the standard demo-course recipe.
+**Pipeline** (opentopo 10 m DEM + OSM Overpass): the ~1.7 km bbox spanned **3 adjacent courses** (incl.
+National Golf Links), so `hole.geojson` was spatially filtered (point-in-polygon vs the OSM course
+boundary) to the **18 holes inside the championship property** (par 71) and tagged
+`golf:course:name=EastLongIsland`; ran the **bunker-depression** pass (305 traps, ~50 cm floors + 25 cm
+lips -> `heightmap_bunkers.png`), minimap, 18-pin sheet. **Wiring:** `CourseRegistry` card,
+`CourseLevelMap` row, `RoundState::DeriveTrackName` -> `EastLongIsland`, `DefaultGame.ini` cook entry.
+**Picker:** `RoundSetupWizard`'s course grid wrapped in a height-capped `UScrollBox` (7 courses now
+scroll). **Editor:** duplicated a demo map -> `/Game/Maps/EastLongIslandHills`, imported the
+bunker-sculpted heightmap + 4 splat layers (Z 6.187 %), `MIC_GolfsimCourse`, **rebuilt water** (6 bodies;
+the 10 stale demo water actors deleted). **Docs:** `pipeline/README.md` now lists bunker-depression +
+minimap + pin-sheet as **required** per-course steps (the bunker pass was the missed step). Suite
+107/107. Commits `1f87308` / `1b14e1e` / `0886548` / `63bb650`. Ships in **v0.0.8-alpha**.
+
 ## 2026-06-19 — GOL-149/155: HUD upgrade — density cycle + 2-col metrics tower + shot-list reskin + club data
 
 Pre-0.0.8-alpha HUD pass (4 items). **(1) GOL-149 one-key HUD density cycle (`V`):** Full (telemetry

@@ -20,6 +20,7 @@ namespace GolfsimCourseMap
 			{ TEXT("golfforge-demo-green"),  TEXT("GolfForgeDemoGreen")  },
 			{ TEXT("golfforge-demo-yellow"), TEXT("GolfForgeDemoYellow") },
 			{ TEXT("oldandre"),              TEXT("OldAndre")            },   // GOL-199 putting green (trademark-safe alias for the real links it's built from)
+			{ TEXT("east-long-island-hills"), TEXT("EastLongIslandHills") },  // open-LIDAR cook of the US Open venue (trademark-safe geographic name)
 		};
 		return Rows;
 	}

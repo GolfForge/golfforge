@@ -25,6 +25,13 @@ namespace GolfCourseRegistry
 		Out.Add({ TEXT("oldandre"), TEXT("OldAndre Links"),
 			TEXT("Historic coastal links, Scotland"), TEXT("Links"), 18, 72, TEXT("7,300"), 5, true });
 
+		// East Long Island Hills -- an open-LIDAR cook of the US Open venue, trademark-neutral name per
+		// GOL-20. The ~1.7 km extract spans three adjacent courses; the round filters to the 18 holes
+		// tagged golf:course:name="EastLongIsland" (the championship property), like OldAndre's "Old". Par
+		// 71 from hole.geojson. Built + cooked.
+		Out.Add({ TEXT("east-long-island-hills"), TEXT("East Long Island Hills"),
+			TEXT("Championship links, Long Island"), TEXT("Links"), 18, 71, TEXT("7,400"), 5, true });
+
 		return Out;
 	}
 }

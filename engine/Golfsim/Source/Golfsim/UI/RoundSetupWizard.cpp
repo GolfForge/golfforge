@@ -263,10 +263,16 @@ UWidget* URoundSetupWizard::BuildCourseStep()
 	AddRule();
 	if (UVerticalBoxSlot* DivSlot = Content->AddChildToVerticalBox(Divider)) { DivSlot->SetPadding(FMargin(0, 0, 0, 20.f)); }
 
-	// course grid (3-up); cards added in SetCourses
+	// course grid (3-up); cards added in SetCourses. Wrapped in a height-capped scroll box so that as
+	// the catalog grows past ~2 rows the extra rows scroll instead of overflowing the step.
 	CourseGrid = WidgetTree->ConstructWidget<UUniformGridPanel>();
 	CourseGrid->SetSlotPadding(FMargin(8.f));
-	Content->AddChildToVerticalBox(CourseGrid);
+	UScrollBox* CourseScroll = WidgetTree->ConstructWidget<UScrollBox>();
+	CourseScroll->AddChild(CourseGrid);
+	USizeBox* ScrollCap = WidgetTree->ConstructWidget<USizeBox>();
+	ScrollCap->SetMaxDesiredHeight(560.f);   // ~2 rows visible; further rows scroll within this cap
+	ScrollCap->SetContent(CourseScroll);
+	Content->AddChildToVerticalBox(ScrollCap);
 
 	// fixed-width left-aligned column (~1180), matching the design stage.
 	USizeBox* ColBox = WidgetTree->ConstructWidget<USizeBox>();
